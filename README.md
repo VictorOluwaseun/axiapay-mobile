@@ -34,7 +34,7 @@ Each flavor has `Debug` and `Release` variants, such as `demoDebug` and `prodRel
 
 Debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Replace `Dev` in the commands above with `Demo`, `Staging` or `Prod` for other flavors. Use explicit flavor task names for unit tests, lint and device tests.
 
-The demo dependency factory lives in `app/src/demo/java/`; a separate factory in `app/src/nonDemo/java/` is compiled into dev/staging/prod only. Both currently delegate to `createDemoViewModel`. This keeps one shared UI and sample implementation while giving future backend integrations a separate composition boundary. Environment choices belong in this wiring layer, not the Views or domain; no backend URLs or credentials have been invented.
+Hilt modules in `app/src/demo/java/` select the demo repositories and payment/SMS actions. Separate modules in `app/src/nonDemo/java/` are compiled into dev/staging/prod only and currently select the same simulations. Shared modules provide platform adapters, presentation collaborators and framework-independent use cases. This keeps one UI and sample implementation while giving future backend integrations a separate binding boundary. Environment choices stay out of Views and domain code; no backend URLs or credentials have been invented.
 
 Source-set and variant conventions follow the [Android build-variant guide](https://developer.android.com/build/build-variants).
 
@@ -75,7 +75,7 @@ To verify automatic mode on an emulator, disable **both** Wi-Fi and mobile data 
 
 ## Architecture
 
-The app follows Clean Architecture, MVVM with MVI, and explicit dependency injection. See [ARCHITECTURE.md](ARCHITECTURE.md) for boundaries, request/effect delivery, persistence, and extension guidance.
+The app follows Clean Architecture, MVVM with MVI, and Hilt dependency injection. See [ARCHITECTURE.md](ARCHITECTURE.md) for boundaries, request/effect delivery, persistence, and extension guidance.
 
 | Package | Responsibility |
 | --- | --- |
@@ -84,7 +84,7 @@ The app follows Clean Architecture, MVVM with MVI, and explicit dependency injec
 | `data` | Original demo fixtures, atomic session repository and saved-state snapshot adapter |
 | `presentation` | Immutable screen/form state, typed intents, form reducer, ViewModel and navigation restoration |
 | `ui` | Stateless Compose screens, sheets, formatting, icons and theme |
-| `di` | Factory that explicitly wires adapters and use cases into the ViewModel |
+| `di` | Hilt modules for platform dependencies, use cases, presentation collaborators and flavor bindings |
 
 `ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Run `./gradlew formatKotlin` to apply the pinned ktfmt 0.65 style. `checkKotlinFormat` checks all Kotlin source sets (including shared non-demo wiring and Android tests) and Gradle scripts. `verifyAllFlavors` runs this check, unit tests, lint, debug/release builds and instrumentation APK compilation. Device test execution remains a separate emulator command. The GitHub Actions workflow runs a verification matrix for dev/demo/staging/prod without publishing or signing releases.
 
@@ -107,3 +107,13 @@ Fresh launches open the welcome screen. Choose **Get started** for the name-and-
 Use **Profile → Preview welcome & sign-in** to revisit the design. Wallet funds, drafts, SMS requests, plans and dashboard navigation remain in their existing independent owner. The auth screens use the same automatic offline greyscale palette. Real account access and recovery methods remain a product/backend integration decision.
 
 Only a demo-entry navigation flag is stored in Android saved state. Form values stay in memory across configuration changes; a process-restored unfinished form starts at Welcome. Codes are cleared on resend, when leaving verification, and on completion. The flag never authorizes a financial operation.
+
+## Hilt wiring
+
+`AxiaPayApplication` owns the Hilt application component. `MainActivity` is an Android entry point and obtains `@HiltViewModel` owners through its default `ViewModelProvider`. The hand-written production factories have been removed. Domain/application classes remain plain Kotlin; shared modules provide them without DI annotations. Unit tests continue to construct controlled collaborators directly.
+
+The clock and application-context connectivity adapter are application-scoped. Each payment ViewModel receives one `@ViewModelScoped` session repository and navigation store backed by its own Hilt-supplied `SavedStateHandle`. Auth retains its separate owner and handle. No mutable wallet session becomes a singleton.
+
+Hilt runtime/compiler/plugin **2.60.1** and KSP **2.3.12** are pinned in the version catalog. The project keeps AGP 9.4.1 built-in Kotlin and the existing Compose compiler plugin; Java/Kotlin bytecode target 17 is used for the Hilt toolchain. `verifyAllFlavors` also compiles the generated Hilt graphs. `HiltGraphTest` exercises repository sharing within an owner, isolation across owners, and recreation against each installed flavor's actual graph, with the ordinary Android test runner. No separate Hilt test graph or test-only bindings are needed for these regression flows.
+
+Reference: [Hilt Gradle setup](https://dagger.dev/hilt/gradle-setup), [Hilt ViewModel scopes](https://dagger.dev/hilt/view-model), [AGP built-in Kotlin](https://developer.android.com/build/migrate-to-built-in-kotlin).

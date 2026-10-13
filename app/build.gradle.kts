@@ -2,6 +2,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -44,7 +46,7 @@ android {
     }
 
     sourceSets {
-        // Demo has a separate factory. Backend migration is shared only by these three flavors.
+        // Demo has separate Hilt bindings. Backend migration is shared only by these three flavors.
         listOf("dev", "staging", "prod").forEach { environment ->
             getByName(environment).kotlin.directories += "src/nonDemo/java"
         }
@@ -59,8 +61,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
         compose = true
@@ -69,6 +71,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

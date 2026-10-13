@@ -1,0 +1,64 @@
+package com.kesofty.axiapay
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.lifecycle.ViewModelProvider
+import com.kesofty.axiapay.domain.ConnectionMode
+import com.kesofty.axiapay.presentation.*
+import com.kesofty.axiapay.presentation.auth.AuthIntent
+import com.kesofty.axiapay.presentation.auth.AuthViewModel
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+
+/** Exercises the installed flavor's real Hilt graph without replacing its bindings in the test. */
+class HiltGraphTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Queries and commands share one repository per ViewModel. Independent owner keys must not
+     * share wallets, and recreation/auth navigation must retain the original funded session.
+     */
+    @Test
+    fun sessionBindingsShareWithinOwnersAndRemainIsolatedAcrossOwners() {
+        lateinit var primary: AxiaViewModel
+        lateinit var independent: AxiaViewModel
+        lateinit var auth: AuthViewModel
+        compose.runOnIdle {
+            val provider = ViewModelProvider(compose.activity)
+            primary = provider[AxiaViewModel::class.java]
+            independent = provider["independent-payment-preview", AxiaViewModel::class.java]
+            auth = provider[AuthViewModel::class.java]
+            primary.accept(AxiaIntent.SetConnectionMode(ConnectionMode.ForceOnline))
+            primary.accept(AxiaIntent.OpenService("Add money"))
+            primary.accept(AxiaIntent.EditPayment(PaymentIntent.Amount("5000")))
+            primary.accept(AxiaIntent.EditPayment(PaymentIntent.Review))
+            primary.accept(AxiaIntent.ConfirmPayment)
+            auth.accept(AuthIntent.ExploreDemo)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(13_345_000, primary.uiState.value.session.balance)
+            assertEquals(12_845_000, independent.uiState.value.session.balance)
+            assertTrue(primary.uiState.value.navigation.sheet is Sheet.Receipt)
+            assertNull(independent.uiState.value.navigation.sheet)
+            auth.accept(AuthIntent.PreviewAuth)
+            auth.accept(AuthIntent.ExploreDemo)
+        }
+        compose.onNodeWithText("All taken care of.").assertIsDisplayed()
+        compose.activityRule.scenario.recreate()
+        compose.runOnIdle {
+            val provider = ViewModelProvider(compose.activity)
+            assertSame(primary, provider[AxiaViewModel::class.java])
+            assertSame(
+                independent,
+                provider["independent-payment-preview", AxiaViewModel::class.java],
+            )
+            assertSame(auth, provider[AuthViewModel::class.java])
+            assertEquals(13_345_000, primary.uiState.value.session.balance)
+            assertEquals(12_845_000, independent.uiState.value.session.balance)
+        }
+        compose.onNodeWithText("All taken care of.").assertIsDisplayed()
+    }
+}

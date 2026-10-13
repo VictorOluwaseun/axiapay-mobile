@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kesofty.axiapay.application.*
 import com.kesofty.axiapay.domain.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,7 +15,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** MVI entry point. Views emit intents; only this owner publishes render state. */
-class AxiaViewModel(
+@HiltViewModel
+class AxiaViewModel
+@Inject
+constructor(
     private val observe: ObserveSession,
     private val submit: SubmitPayment,
     private val completeWaiting: CompletePayment,

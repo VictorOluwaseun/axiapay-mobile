@@ -8,6 +8,7 @@ import org.junit.Test
 class ArchitectureTest {
     private val root = File("src/main/java/com/kesofty/axiapay")
 
+    /** Keeps business layers independent of platform, DI frameworks and concrete outer adapters. */
     @Test
     fun `inner layers never import Android presentation or concrete data adapters`() {
         assertTrue(root.isDirectory)
@@ -18,6 +19,9 @@ class ArchitectureTest {
                         "android.",
                         "androidx.",
                         "org.json.",
+                        "dagger.",
+                        "javax.inject.",
+                        "jakarta.inject.",
                         "com.kesofty.axiapay.application.",
                         "com.kesofty.axiapay.data.",
                         "com.kesofty.axiapay.presentation.",
@@ -29,6 +33,9 @@ class ArchitectureTest {
                         "android.",
                         "androidx.",
                         "org.json.",
+                        "dagger.",
+                        "javax.inject.",
+                        "jakarta.inject.",
                         "com.kesofty.axiapay.data.",
                         "com.kesofty.axiapay.presentation.",
                         "com.kesofty.axiapay.ui.",

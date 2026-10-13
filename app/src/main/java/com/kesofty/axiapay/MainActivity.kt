@@ -12,8 +12,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kesofty.axiapay.data.DemoSessionSeed
-import com.kesofty.axiapay.di.AuthViewModelFactory
-import com.kesofty.axiapay.di.AxiaViewModelFactory
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthScreen
@@ -21,12 +19,13 @@ import com.kesofty.axiapay.presentation.auth.AuthViewModel
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.auth.AuthScreen
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
-import java.time.Clock
+import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDate
 
 /**
  * Hosts independent payment and account-preview owners and collects their lifecycle-aware state.
  */
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     /** Restores each owner without resubmitting commands when composition restarts. */
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,11 +34,8 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
-        val viewModel =
-            ViewModelProvider(this, AxiaViewModelFactory(Clock.systemDefaultZone()))[
-                AxiaViewModel::class.java]
-        val authViewModel =
-            ViewModelProvider(this, AuthViewModelFactory())[AuthViewModel::class.java]
+        val viewModel = ViewModelProvider(this)[AxiaViewModel::class.java]
+        val authViewModel = ViewModelProvider(this)[AuthViewModel::class.java]
         setContent {
             val authState by authViewModel.uiState.collectAsStateWithLifecycle()
             val state by viewModel.uiState.collectAsStateWithLifecycle()

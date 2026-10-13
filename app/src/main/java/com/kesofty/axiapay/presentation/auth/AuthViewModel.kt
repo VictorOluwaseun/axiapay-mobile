@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.kesofty.axiapay.application.CompleteDemoAccess
 import com.kesofty.axiapay.application.PrepareDemoAccess
 import com.kesofty.axiapay.domain.DemoAccessResult
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +20,10 @@ import kotlinx.coroutines.launch
  * recreation retains this ViewModel, while process restoration requires form details again. It
  * never owns, resets, authenticates, or authorizes the separate payment session.
  */
-class AuthViewModel(
+@HiltViewModel
+class AuthViewModel
+@Inject
+constructor(
     private val handle: SavedStateHandle,
     private val prepareAccess: PrepareDemoAccess,
     private val completeAccess: CompleteDemoAccess,

@@ -2,6 +2,8 @@
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.hilt) apply false
+    alias(libs.plugins.ksp) apply false
 }
 
 // Resolve the same pinned CLI used by local contributors; no global formatter installation needed.
