@@ -71,9 +71,12 @@ android {
 }
 
 dependencies {
+    // Reuse one BOM declaration to align the app and instrumentation-test Compose dependencies.
+    val composeBom = platform(libs.androidx.compose.bom)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(platform(libs.androidx.compose.bom))
+    implementation(composeBom)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
@@ -87,7 +90,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(composeBom)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
