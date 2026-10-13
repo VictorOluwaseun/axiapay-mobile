@@ -28,32 +28,30 @@ fun AxiapayTheme(offline: Boolean = false, content: @Composable () -> Unit) {
                 error = Danger,
             )
         val resolved =
-            when (offline) {
-                false -> colors
-                true ->
-                    colors.copy(
-                        onSecondary = Color.White,
-                        onSecondaryContainer = Ink,
-                        tertiary = Muted,
-                        onTertiary = Color.White,
-                        tertiaryContainer = Line,
-                        onTertiaryContainer = Ink,
-                        inversePrimary = Mint,
-                        inverseSurface = DeepPine,
-                        inverseOnSurface = Color.White,
-                        onError = Color.White,
-                        errorContainer = Line,
-                        onErrorContainer = Ink,
-                        surfaceTint = Pine,
-                        surfaceBright = Color.White,
-                        surfaceDim = Line,
-                        surfaceContainer = Canvas,
-                        surfaceContainerHigh = Line,
-                        surfaceContainerHighest = Line,
-                        surfaceContainerLow = Canvas,
-                        surfaceContainerLowest = Color.White,
-                    )
-            }
+            if (offline)
+                colors.copy(
+                    onSecondary = Color.White,
+                    onSecondaryContainer = Ink,
+                    tertiary = Muted,
+                    onTertiary = Color.White,
+                    tertiaryContainer = Line,
+                    onTertiaryContainer = Ink,
+                    inversePrimary = Mint,
+                    inverseSurface = DeepPine,
+                    inverseOnSurface = Color.White,
+                    onError = Color.White,
+                    errorContainer = Line,
+                    onErrorContainer = Ink,
+                    surfaceTint = Pine,
+                    surfaceBright = Color.White,
+                    surfaceDim = Line,
+                    surfaceContainer = Canvas,
+                    surfaceContainerHigh = Line,
+                    surfaceContainerHighest = Line,
+                    surfaceContainerLow = Canvas,
+                    surfaceContainerLowest = Color.White,
+                )
+            else colors
         MaterialTheme(colorScheme = resolved, typography = Typography, content = content)
     }
 }
