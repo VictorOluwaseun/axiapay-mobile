@@ -2,15 +2,19 @@ package com.kesofty.axiapay.ui.auth
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -29,53 +33,23 @@ private data class AuthChoice<T>(
     val testTag: String,
 )
 
-/** Gives phone/email equal, accessible treatment and delegates the selection to the ViewModel. */
+/**
+ * Keeps contact choices compact and distinct from the primary action; selection stays in the VM.
+ */
 @Composable
 internal fun AuthContactSelector(
     selected: AuthContactType,
     enabled: Boolean,
     onSelect: (AuthContactType) -> Unit,
 ) {
-    AuthChoiceSelector(
+    val choices =
         listOf(
             AuthChoice(AuthContactType.Phone, R.string.auth_contact_phone, "auth-contact-phone"),
             AuthChoice(AuthContactType.Email, R.string.auth_contact_email, "auth-contact-email"),
-        ),
-        selected,
-        enabled,
-        onSelect,
-    )
-}
-
-/** Renders the method choice with selected semantics; selecting it never submits the form. */
-@Composable
-internal fun AuthMethodSelector(
-    selected: AuthMethod,
-    enabled: Boolean,
-    onSelect: (AuthMethod) -> Unit,
-) {
-    AuthChoiceSelector(
-        listOf(
-            AuthChoice(AuthMethod.Password, R.string.auth_method_password, "auth-method-password"),
-            AuthChoice(AuthMethod.OneTimeCode, R.string.auth_method_code, "auth-method-code"),
-        ),
-        selected,
-        enabled,
-        onSelect,
-    )
-}
-
-/**
- * Shares Material single-choice semantics and the app's online/offline palette across both groups.
- */
-@Composable
-private fun <T> AuthChoiceSelector(
-    choices: List<AuthChoice<T>>,
-    selected: T,
-    enabled: Boolean,
-    onSelect: (T) -> Unit,
-) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        )
+    SingleChoiceSegmentedButtonRow(
+        Modifier.widthIn(max = 260.dp).fillMaxWidth().height(IntrinsicSize.Min),
+    ) {
         choices.forEachIndexed { index, choice ->
             SegmentedButton(
                 selected = selected == choice.value,
@@ -84,14 +58,14 @@ private fun <T> AuthChoiceSelector(
                 modifier =
                     Modifier.weight(1f)
                         .fillMaxHeight()
-                        .heightIn(min = 52.dp)
+                        .heightIn(min = 48.dp)
                         .testTag(choice.testTag),
                 enabled = enabled,
                 border = controlBorder(selected == choice.value, enabled),
                 colors =
                     SegmentedButtonDefaults.colors(
-                        activeContainerColor = Pine,
-                        activeContentColor = Color.White,
+                        activeContainerColor = Mint,
+                        activeContentColor = Pine,
                         activeBorderColor = Pine,
                         inactiveContainerColor = Color.White,
                         inactiveContentColor = Ink,
@@ -101,6 +75,55 @@ private fun <T> AuthChoiceSelector(
                     Text(stringResource(choice.label), style = MaterialTheme.typography.labelLarge)
                 },
             )
+        }
+    }
+}
+
+/** Shows quieter radio choices with a full-row touch target and a single accessible selection. */
+@Composable
+internal fun AuthMethodSelector(
+    selected: AuthMethod,
+    enabled: Boolean,
+    onSelect: (AuthMethod) -> Unit,
+) {
+    val choices =
+        listOf(
+            AuthChoice(AuthMethod.OneTimeCode, R.string.auth_method_code, "auth-method-code"),
+            AuthChoice(AuthMethod.Password, R.string.auth_method_password, "auth-method-password"),
+        )
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup()) {
+        choices.forEach { choice ->
+            Row(
+                Modifier.weight(1f)
+                    .fillMaxHeight()
+                    .heightIn(min = 48.dp)
+                    .testTag(choice.testTag)
+                    .selectable(
+                        selected = selected == choice.value,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(choice.value) },
+                    )
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = selected == choice.value,
+                    onClick = null,
+                    enabled = enabled,
+                    colors =
+                        RadioButtonDefaults.colors(
+                            selectedColor = Pine,
+                            unselectedColor = ControlOutline,
+                        ),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(choice.label),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (enabled) Ink else Muted.copy(alpha = .38f),
+                )
+            }
         }
     }
 }

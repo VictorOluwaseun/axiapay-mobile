@@ -129,12 +129,7 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
     }
     val isPhone = state.contactType == AuthContactType.Phone
     val usesPassword = state.method == AuthMethod.Password
-    IconTile(
-        if (state.isCreatingAccount) Glyph.Person else Glyph.Wallet,
-        Modifier.padding(bottom = 24.dp),
-        Mint,
-    )
-    AuthHeading(
+    AccountHeading(
         if (state.isCreatingAccount) R.string.auth_create_title else R.string.auth_sign_in_title,
         if (state.isCreatingAccount) R.string.auth_create_body else R.string.auth_sign_in_body,
     )
@@ -157,7 +152,7 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         focus.clearFocus()
         onIntent(AuthIntent.SelectContactType(it))
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(8.dp))
     AuthTextField(
         state.contact,
         if (isPhone) R.string.auth_phone else R.string.auth_email,
@@ -170,19 +165,30 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         submit,
         testTag = "auth-contact",
     )
-    Spacer(Modifier.height(10.dp))
+    if (isPhone) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(R.string.auth_country_hint),
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    Spacer(Modifier.height(22.dp))
     Text(
-        stringResource(if (isPhone) R.string.auth_country_hint else R.string.auth_email_support),
+        stringResource(
+            if (state.isCreatingAccount) R.string.auth_signup_method
+            else R.string.auth_signin_method,
+        ),
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )
-    Spacer(Modifier.height(22.dp))
+    Spacer(Modifier.height(4.dp))
     AuthMethodSelector(state.method, !state.isProcessing) {
         focus.clearFocus()
         onIntent(AuthIntent.SelectMethod(it))
     }
-    Spacer(Modifier.height(12.dp))
     if (usesPassword) {
+        Spacer(Modifier.height(8.dp))
         AuthTextField(
             state.password,
             R.string.auth_password,
@@ -205,13 +211,6 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    if (!usesPassword || state.isCreatingAccount) {
-        Text(
-            stringResource(R.string.auth_verification_next),
-            color = Muted,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
     AuthErrorMessage(state.error)
     Spacer(Modifier.height(24.dp))
     AuthSubmitButton(
@@ -221,31 +220,64 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         submit,
     )
     Spacer(Modifier.height(18.dp))
-    AuthNotice(R.string.auth_preview_notice, Glyph.Help)
-    Spacer(Modifier.height(24.dp))
     Text(
-        stringResource(
-            if (state.isCreatingAccount) R.string.auth_already_member else R.string.auth_new_member,
-        ),
-        style = MaterialTheme.typography.bodyLarge,
+        stringResource(R.string.auth_preview_notice),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Muted,
     )
+    Spacer(Modifier.height(18.dp))
+    AccountFooter(state.isCreatingAccount, onIntent)
+}
+
+/**
+ * Keeps form headings concise while retaining the established typeface and accessible hierarchy.
+ */
+@Composable
+private fun AccountHeading(@StringRes title: Int, @StringRes body: Int) {
+    Text(
+        stringResource(title),
+        style = MaterialTheme.typography.headlineLarge,
+        color = Ink,
+        modifier = Modifier.semantics { heading() },
+    )
+    Spacer(Modifier.height(10.dp))
+    Text(stringResource(body), style = MaterialTheme.typography.bodyLarge, color = Muted)
+}
+
+/** Groups the alternate account route into one action, keeping demo entry available below it. */
+@Composable
+private fun AccountFooter(isCreatingAccount: Boolean, onIntent: (AuthIntent) -> Unit) {
     TextButton(
-        { onIntent(if (state.isCreatingAccount) AuthIntent.SignIn else AuthIntent.CreateAccount) },
+        { onIntent(if (isCreatingAccount) AuthIntent.SignIn else AuthIntent.CreateAccount) },
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = 12.dp),
     ) {
         Text(
             stringResource(
-                if (state.isCreatingAccount) R.string.auth_sign_in
-                else R.string.auth_create_account,
+                if (isCreatingAccount) R.string.auth_already_member else R.string.auth_new_member,
+            ),
+            modifier = Modifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.bodyLarge,
+            color = Muted,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            stringResource(
+                if (isCreatingAccount) R.string.auth_sign_in else R.string.auth_create_account,
             ),
             style = MaterialTheme.typography.labelLarge,
         )
     }
     TextButton(
         { onIntent(AuthIntent.ExploreDemo) },
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = 12.dp),
     ) {
-        Text(stringResource(R.string.auth_explore), style = MaterialTheme.typography.labelMedium)
+        Text(
+            stringResource(R.string.auth_explore),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Muted,
+        )
     }
 }
 

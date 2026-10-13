@@ -22,6 +22,18 @@ private fun SignInPreview() {
     AxiapayTheme { AuthScreen(AuthUiState(screen = AuthScreen.SignIn), offline = false) {} }
 }
 
+/** Makes the initial password-free signup hierarchy reviewable without runtime dependencies. */
+@Preview(name = "Sign up", showBackground = true, device = "spec:width=412dp,height=915dp,dpi=420")
+@Composable
+private fun SignupPreview() {
+    AxiapayTheme {
+        AuthScreen(
+            AuthUiState(screen = AuthScreen.CreateAccount, isCreatingAccount = true),
+            offline = false,
+        ) {}
+    }
+}
+
 /** Keeps compact, larger-text and offline layouts reviewable alongside the default form. */
 @Preview(
     name = "Offline, large text",
@@ -44,6 +56,12 @@ private fun OfflineAuthPreview() {
     name = "Email signup with password",
     showBackground = true,
     device = "spec:width=412dp,height=915dp,dpi=420",
+)
+@Preview(
+    name = "Compact signup, large text",
+    showBackground = true,
+    device = "spec:width=360dp,height=800dp,dpi=320",
+    fontScale = 1.3f,
 )
 @Composable
 private fun EmailPasswordSignupPreview() {
