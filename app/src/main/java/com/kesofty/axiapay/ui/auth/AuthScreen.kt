@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -24,12 +22,12 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
+import com.kesofty.axiapay.domain.AuthContactType
+import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.presentation.auth.*
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
@@ -121,9 +119,7 @@ internal fun AuthHeading(@StringRes title: Int, @StringRes body: Int) {
     Text(stringResource(body), style = MaterialTheme.typography.bodyLarge, color = Muted)
 }
 
-/**
- * Displays sign-in and create-account variants using the same phone field and submission contract.
- */
+/** Displays the selected signup/sign-in contact and method with one explicit submission intent. */
 @Composable
 private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
     val focus = LocalFocusManager.current
@@ -131,6 +127,8 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         focus.clearFocus()
         onIntent(AuthIntent.Continue)
     }
+    val isPhone = state.contactType == AuthContactType.Phone
+    val usesPassword = state.method == AuthMethod.Password
     IconTile(
         if (state.isCreatingAccount) Glyph.Person else Glyph.Wallet,
         Modifier.padding(bottom = 24.dp),
@@ -151,29 +149,77 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
             KeyboardType.Text,
             ImeAction.Next,
             { onIntent(AuthIntent.EditName(it)) },
+            testTag = "auth-name",
         )
         Spacer(Modifier.height(20.dp))
     }
+    AuthContactSelector(state.contactType, !state.isProcessing) {
+        focus.clearFocus()
+        onIntent(AuthIntent.SelectContactType(it))
+    }
+    Spacer(Modifier.height(12.dp))
     AuthTextField(
-        state.phoneNumber,
-        R.string.auth_phone,
-        R.string.auth_phone_hint,
+        state.contact,
+        if (isPhone) R.string.auth_phone else R.string.auth_email,
+        if (isPhone) R.string.auth_phone_hint else R.string.auth_email_hint,
         state.isProcessing,
-        state.error == AuthError.Phone,
-        KeyboardType.Phone,
-        ImeAction.Done,
-        { onIntent(AuthIntent.EditPhone(it)) },
+        state.error == AuthError.Phone || state.error == AuthError.Email,
+        if (isPhone) KeyboardType.Phone else KeyboardType.Email,
+        if (usesPassword) ImeAction.Next else ImeAction.Done,
+        { onIntent(AuthIntent.EditContact(it)) },
         submit,
+        testTag = "auth-contact",
     )
     Spacer(Modifier.height(10.dp))
     Text(
-        stringResource(R.string.auth_country_hint),
+        stringResource(if (isPhone) R.string.auth_country_hint else R.string.auth_email_support),
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )
+    Spacer(Modifier.height(22.dp))
+    AuthMethodSelector(state.method, !state.isProcessing) {
+        focus.clearFocus()
+        onIntent(AuthIntent.SelectMethod(it))
+    }
+    Spacer(Modifier.height(12.dp))
+    if (usesPassword) {
+        AuthTextField(
+            state.password,
+            R.string.auth_password,
+            R.string.auth_password_hint,
+            state.isProcessing,
+            state.error == AuthError.Password,
+            KeyboardType.Password,
+            ImeAction.Done,
+            { onIntent(AuthIntent.EditPassword(it)) },
+            submit,
+            testTag = "auth-password",
+            isPassword = true,
+            isPasswordVisible = state.isPasswordVisible,
+            onTogglePasswordVisibility = { onIntent(AuthIntent.TogglePasswordVisibility) },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            stringResource(R.string.auth_password_demo_hint),
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    if (!usesPassword || state.isCreatingAccount) {
+        Text(
+            stringResource(R.string.auth_verification_next),
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
     AuthErrorMessage(state.error)
-    Spacer(Modifier.height(26.dp))
-    AuthSubmitButton(R.string.auth_continue, state.isProcessing, submit)
+    Spacer(Modifier.height(24.dp))
+    AuthSubmitButton(
+        if (usesPassword && !state.isCreatingAccount) R.string.auth_sign_in
+        else R.string.auth_continue,
+        state.isProcessing,
+        submit,
+    )
     Spacer(Modifier.height(18.dp))
     AuthNotice(R.string.auth_preview_notice, Glyph.Help)
     Spacer(Modifier.height(24.dp))
@@ -213,17 +259,24 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
         focus.clearFocus()
         onIntent(AuthIntent.Continue)
     }
-    IconTile(Glyph.Phone, Modifier.padding(bottom = 24.dp), Lavender)
-    AuthHeading(R.string.auth_verify_title, R.string.auth_verify_body)
+    IconTile(Glyph.Shield, Modifier.padding(bottom = 24.dp), Lavender)
+    AuthHeading(
+        R.string.auth_verify_title,
+        if (state.isCreatingAccount) R.string.auth_verify_signup_body
+        else R.string.auth_verify_body,
+    )
     Spacer(Modifier.height(22.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.auth_phone),
+                stringResource(
+                    if (state.contactType == AuthContactType.Phone) R.string.auth_phone
+                    else R.string.auth_email,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
             )
-            Text(state.phoneNumber, style = MaterialTheme.typography.titleLarge)
+            Text(state.contact, style = MaterialTheme.typography.titleLarge)
         }
         TextButton({ onIntent(AuthIntent.Back) }) {
             Text(stringResource(R.string.auth_change), style = MaterialTheme.typography.labelMedium)
@@ -241,6 +294,7 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
         { onIntent(AuthIntent.EditCode(it)) },
         submit,
         isCode = true,
+        testTag = "auth-code",
     )
     AuthErrorMessage(state.error)
     Spacer(Modifier.height(24.dp))
@@ -307,50 +361,6 @@ private fun PreviewFeature(icon: Glyph, @StringRes label: Int) {
     }
 }
 
-/** Renders a labelled accessible field; the ViewModel owns input and the form owns IME actions. */
-@Composable
-private fun AuthTextField(
-    value: String,
-    @StringRes label: Int,
-    @StringRes placeholder: Int,
-    isProcessing: Boolean,
-    isError: Boolean,
-    keyboardType: KeyboardType,
-    imeAction: ImeAction,
-    onChange: (String) -> Unit,
-    onDone: () -> Unit = {},
-    isCode: Boolean = false,
-) {
-    OutlinedTextField(
-        value,
-        onChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(label), style = MaterialTheme.typography.bodyLarge) },
-        placeholder = {
-            Text(stringResource(placeholder), style = MaterialTheme.typography.bodyLarge)
-        },
-        textStyle =
-            MaterialTheme.typography.bodyLarge.copy(
-                fontSize = if (isCode) 26.sp else 18.sp,
-                fontWeight = if (isCode) FontWeight.Bold else FontWeight.Medium,
-                letterSpacing = if (isCode) 8.sp else 0.sp,
-            ),
-        shape = RoundedCornerShape(18.dp),
-        singleLine = true,
-        enabled = !isProcessing,
-        isError = isError,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        keyboardActions = KeyboardActions(onDone = { onDone() }),
-        colors =
-            OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White,
-                unfocusedBorderColor = Line,
-                focusedBorderColor = Pine,
-            ),
-    )
-}
-
 /** Places validation in the form and announces changes to accessibility services. */
 @Composable
 private fun AuthErrorMessage(error: AuthError?) {
@@ -358,6 +368,8 @@ private fun AuthErrorMessage(error: AuthError?) {
     val message =
         when (error) {
             AuthError.Phone -> R.string.auth_phone_error
+            AuthError.Email -> R.string.auth_email_error
+            AuthError.Password -> R.string.auth_password_error
             AuthError.Name -> R.string.auth_name_error
             AuthError.Code -> R.string.auth_code_error
             AuthError.Unavailable -> R.string.auth_unavailable_error
@@ -377,7 +389,7 @@ private fun AuthErrorMessage(error: AuthError?) {
 private fun AuthSubmitButton(@StringRes label: Int, isProcessing: Boolean, onClick: () -> Unit) {
     Button(
         onClick,
-        Modifier.fillMaxWidth().heightIn(min = 58.dp),
+        Modifier.fillMaxWidth().heightIn(min = 58.dp).testTag("auth-submit"),
         enabled = !isProcessing,
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(16.dp),

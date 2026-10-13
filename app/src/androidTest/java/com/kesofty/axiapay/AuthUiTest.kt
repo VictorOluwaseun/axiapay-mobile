@@ -96,6 +96,9 @@ class AuthUiTest {
         compose.onNodeWithText("Save draft for later").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Open profile").performClick()
         compose.onNodeWithText("Preview welcome & sign-in").performScrollTo().performClick()
+        compose.onNodeWithText("Get started").performScrollTo().performClick()
+        compose.onNodeWithTag("auth-contact-email").performScrollTo().performClick()
+        compose.onNodeWithTag("auth-method-password").performScrollTo().performClick()
         val pixels = compose.onRoot().captureToImage().toPixelMap()
         assertTrue(
             (0 until pixels.height step 12).all { y ->

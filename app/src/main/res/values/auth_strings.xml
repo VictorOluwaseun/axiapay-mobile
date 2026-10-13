@@ -12,7 +12,7 @@
     <string name="auth_sign_in_title">Good to have\nyou back.</string>
     <string name="auth_sign_in_body">Your everyday essentials, right where you left them.</string>
     <string name="auth_create_title">A little less\nto worry about.</string>
-    <string name="auth_create_body">Start with your name and phone number. We’ll take it one step at a time.</string>
+    <string name="auth_create_body">Start with your name and phone number or email. We’ll take it one step at a time.</string>
     <string name="auth_name">Your name</string>
     <string name="auth_name_hint">What should we call you?</string>
     <string name="auth_phone">Phone number</string>
@@ -20,7 +20,7 @@
     <string name="auth_country_hint">Nigeria · Use 080… or +234…</string>
     <string name="auth_continue">Continue</string>
     <string name="auth_working">One moment…</string>
-    <string name="auth_preview_notice">This is a demo. No account is created and no SMS is sent.</string>
+    <string name="auth_preview_notice">Demo only. No account is created and no SMS or email is sent.</string>
     <string name="auth_already_member">Already have an account?</string>
     <string name="auth_new_member">New to AxiaPay?</string>
     <string name="auth_sign_in">Sign in</string>
@@ -31,7 +31,7 @@
     <string name="auth_code">6-digit code</string>
     <string name="auth_code_hint">Enter 6 digits</string>
     <string name="auth_verify">Verify demo code</string>
-    <string name="auth_code_demo_notice">Use any 6 digits for this preview. No SMS has been sent and this does not verify your number.</string>
+    <string name="auth_code_demo_notice">Use any 6 digits for this preview. No SMS or email is sent, and your contact is not verified.</string>
     <string name="auth_reset_code">Try sending a new code</string>
     <string name="auth_code_reset">Code preview reset. Enter any 6 digits to try again.</string>
     <string name="auth_phone_error">Enter a valid Nigerian phone number, such as 0801 234 5678.</string>
@@ -46,4 +46,22 @@
     <string name="auth_open_demo">Open demo wallet</string>
     <string name="auth_offline">You’re offline. You can still explore this demo. Real sign-in will need an internet connection.</string>
     <string name="auth_preview_shortcut">Preview welcome &amp; sign-in</string>
+    <string name="auth_contact_phone">Phone</string>
+    <string name="auth_contact_email">Email</string>
+    <string name="auth_email">Email address</string>
+    <string name="auth_email_hint">you@example.com</string>
+    <string name="auth_email_support">Use your email address for this preview.</string>
+    <string name="auth_method_password">Password</string>
+    <string name="auth_method_code">One-time code</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_password_hint">Enter a demo password</string>
+    <string name="auth_password_demo_hint">Use a sample password with at least 8 characters. Keep your real password private.</string>
+    <string name="auth_verification_next">Next, verify your phone number or email with a one-time code.</string>
+    <string name="auth_verify_signup_body">Verify your phone number or email to finish the signup preview.</string>
+    <string name="auth_email_error">Enter a valid email address, such as you@example.com.</string>
+    <string name="auth_password_error">Use at least 8 characters for your demo password.</string>
+    <string name="auth_show">Show</string>
+    <string name="auth_hide">Hide</string>
+    <string name="auth_show_password">Show password</string>
+    <string name="auth_hide_password">Hide password</string>
 </resources>

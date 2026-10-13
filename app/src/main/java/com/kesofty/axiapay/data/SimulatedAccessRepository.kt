@@ -1,23 +1,27 @@
 package com.kesofty.axiapay.data
 
+import com.kesofty.axiapay.domain.AuthContactType
+import com.kesofty.axiapay.domain.DemoAccessInput
 import com.kesofty.axiapay.domain.DemoAccessRepository
-import com.kesofty.axiapay.domain.DemoAccessResult
 import kotlinx.coroutines.delay
 
 /**
- * Adds a small cancellable delay for the auth prototype. It reads/writes no storage or network,
- * retains no phone numbers or codes, and has no cache, transaction, or wallet side effects.
+ * Adds cancellable latency for all auth previews. It accesses no storage/network, retains no input,
+ * and never creates an account, compares a stored password, or changes the independent wallet.
  */
 class SimulatedAccessRepository : DemoAccessRepository {
-    /** Simulates preparing a challenge without contacting an SMS service. */
-    override suspend fun preparePreview(phoneNumber: String): DemoAccessResult {
+    /** Simulates a submitted form; application use cases determine the next demo step. */
+    override suspend fun preparePreview(input: DemoAccessInput) {
         delay(450)
-        return DemoAccessResult.PreviewReady
     }
 
-    /** Simulates completing the preview without issuing a session or token. */
-    override suspend fun completePreview(code: String): DemoAccessResult {
+    /** Simulates explicit code completion without issuing a token or session. */
+    override suspend fun completePreview(code: String) {
         delay(450)
-        return DemoAccessResult.PreviewReady
+    }
+
+    /** Simulates another code request without sending SMS/email or retaining its destination. */
+    override suspend fun resendPreview(contactType: AuthContactType, contact: String) {
+        delay(450)
     }
 }

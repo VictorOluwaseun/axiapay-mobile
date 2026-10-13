@@ -4,9 +4,8 @@ import androidx.annotation.MainThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kesofty.axiapay.application.CompleteDemoAccess
-import com.kesofty.axiapay.application.PrepareDemoAccess
-import com.kesofty.axiapay.domain.DemoAccessResult
+import com.kesofty.axiapay.application.*
+import com.kesofty.axiapay.domain.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -27,6 +26,7 @@ constructor(
     private val handle: SavedStateHandle,
     private val prepareAccess: PrepareDemoAccess,
     private val completeAccess: CompleteDemoAccess,
+    private val resendAccessCode: ResendDemoAccessCode,
 ) : ViewModel() {
     private val mutableState =
         MutableStateFlow(
@@ -61,27 +61,92 @@ constructor(
                 if (mutableState.value.screen != AuthScreen.Verification) return
                 execute(isReset = true)
             }
-            is AuthIntent.EditPhone ->
-                edit {
-                    copy(phoneNumber = intent.value.take(20), error = null, failureCause = null)
-                }
-            is AuthIntent.EditName ->
-                edit { copy(name = intent.value.take(80), error = null, failureCause = null) }
-            is AuthIntent.EditCode ->
-                edit {
+            is AuthIntent.SelectContactType -> selectContactType(intent.contactType)
+            is AuthIntent.SelectMethod -> selectMethod(intent.method)
+            is AuthIntent.EditContact ->
+                editForm {
                     copy(
-                        code = intent.value.filter { it in '0'..'9' }.take(6),
+                        contact =
+                            intent.value.take(
+                                if (contactType == AuthContactType.Phone) 20 else 254,
+                            ),
                         error = null,
                         failureCause = null,
                     )
                 }
+            is AuthIntent.EditName ->
+                editForm { copy(name = intent.value.take(80), error = null, failureCause = null) }
+            is AuthIntent.EditPassword -> editPassword(intent.value)
+            AuthIntent.TogglePasswordVisibility ->
+                editForm {
+                    copy(isPasswordVisible = method == AuthMethod.Password && !isPasswordVisible)
+                }
+            is AuthIntent.EditCode -> editCode(intent.value)
         }
     }
 
-    /** Keeps fields stable while a submitted operation owns their values. */
-    private fun edit(update: AuthUiState.() -> AuthUiState) {
-        if (mutableState.value.isProcessing) return
+    /** Keeps form inputs stable during a submission and excludes edits from other routes. */
+    private fun editForm(update: AuthUiState.() -> AuthUiState) {
+        if (mutableState.value.isProcessing || !isAccountForm()) return
         mutableState.value = mutableState.value.update()
+    }
+
+    /** Identifies the routes where contact, name and method choices are editable. */
+    private fun isAccountForm(): Boolean =
+        mutableState.value.screen == AuthScreen.SignIn ||
+            mutableState.value.screen == AuthScreen.CreateAccount
+
+    /** Drops values belonging to the previous contact format without requesting a code. */
+    private fun selectContactType(contactType: AuthContactType) {
+        if (contactType == mutableState.value.contactType) return
+        editForm {
+            copy(
+                contactType = contactType,
+                contact = "",
+                password = "",
+                isPasswordVisible = false,
+                code = "",
+                error = null,
+                failureCause = null,
+                previewReset = false,
+            )
+        }
+    }
+
+    /**
+     * Makes the selected method explicit and prevents a hidden password from reaching code flows.
+     */
+    private fun selectMethod(method: AuthMethod) {
+        if (method == mutableState.value.method) return
+        editForm {
+            copy(
+                method = method,
+                password = "",
+                isPasswordVisible = false,
+                code = "",
+                error = null,
+                failureCause = null,
+                previewReset = false,
+            )
+        }
+    }
+
+    /** Preserves password characters exactly and accepts them only in the password form. */
+    private fun editPassword(password: String) {
+        if (mutableState.value.method != AuthMethod.Password) return
+        editForm { copy(password = password, error = null, failureCause = null) }
+    }
+
+    /** Keeps leading code zeros without submitting or admitting code input on the account form. */
+    private fun editCode(code: String) {
+        val state = mutableState.value
+        if (state.isProcessing || state.screen != AuthScreen.Verification) return
+        mutableState.value =
+            state.copy(
+                code = code.filter { it in '0'..'9' }.take(6),
+                error = null,
+                failureCause = null,
+            )
     }
 
     /**
@@ -98,6 +163,8 @@ constructor(
                             if (state.isCreatingAccount) AuthScreen.CreateAccount
                             else AuthScreen.SignIn,
                         code = "",
+                        password = "",
+                        isPasswordVisible = false,
                         error = null,
                         failureCause = null,
                         previewReset = false,
@@ -142,10 +209,20 @@ constructor(
             try {
                 val result =
                     when {
-                        state.screen == AuthScreen.Verification && !isReset ->
-                            completeAccess(state.code)
+                        state.screen == AuthScreen.Verification && isReset ->
+                            resendAccessCode(state.contactType, state.contact)
+                        state.screen == AuthScreen.Verification -> completeAccess(state.code)
                         else ->
-                            prepareAccess(state.phoneNumber, state.name, state.isCreatingAccount)
+                            prepareAccess(
+                                DemoAccessInput(
+                                    state.contactType,
+                                    state.contact,
+                                    state.method,
+                                    state.password,
+                                    state.name,
+                                    state.isCreatingAccount,
+                                ),
+                            )
                     }
                 if (visit != origin) return@launch
                 applyResult(result, state, isReset)
@@ -166,17 +243,20 @@ constructor(
     /** Replaces form state with an explicit next route; no navigation effects can be replayed. */
     private fun applyResult(result: DemoAccessResult, submitted: AuthUiState, isReset: Boolean) {
         val nextScreen =
-            when {
-                result != DemoAccessResult.PreviewReady -> submitted.screen
-                submitted.screen == AuthScreen.Verification && !isReset -> AuthScreen.Complete
-                else -> AuthScreen.Verification
+            when (result) {
+                DemoAccessResult.CodeRequired -> AuthScreen.Verification
+                DemoAccessResult.PreviewComplete -> AuthScreen.Complete
+                else -> submitted.screen
             }
         val error =
             when (result) {
                 DemoAccessResult.InvalidPhone -> AuthError.Phone
+                DemoAccessResult.InvalidEmail -> AuthError.Email
                 DemoAccessResult.InvalidName -> AuthError.Name
+                DemoAccessResult.InvalidPassword -> AuthError.Password
                 DemoAccessResult.InvalidCode -> AuthError.Code
-                DemoAccessResult.PreviewReady -> null
+                DemoAccessResult.CodeRequired,
+                DemoAccessResult.PreviewComplete -> null
             }
         if (nextScreen == AuthScreen.Complete) {
             mutableState.value =
@@ -189,6 +269,11 @@ constructor(
                 isProcessing = false,
                 error = error,
                 previewReset = isReset,
+                password =
+                    if (nextScreen == AuthScreen.Verification) "" else mutableState.value.password,
+                isPasswordVisible =
+                    nextScreen != AuthScreen.Verification && mutableState.value.isPasswordVisible,
+                code = if (result == DemoAccessResult.CodeRequired) "" else mutableState.value.code,
             )
     }
 

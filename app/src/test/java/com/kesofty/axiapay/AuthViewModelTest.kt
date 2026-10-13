@@ -2,10 +2,8 @@ package com.kesofty.axiapay
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
-import com.kesofty.axiapay.application.CompleteDemoAccess
-import com.kesofty.axiapay.application.PrepareDemoAccess
-import com.kesofty.axiapay.domain.DemoAccessRepository
-import com.kesofty.axiapay.domain.DemoAccessResult
+import com.kesofty.axiapay.application.*
+import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.auth.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -39,29 +37,15 @@ class AuthViewModelTest {
         repository: DemoAccessRepository,
         handle: SavedStateHandle = SavedStateHandle(),
     ): AuthViewModel =
-        AuthViewModel(handle, PrepareDemoAccess(repository), CompleteDemoAccess(repository)).also {
-            owner.put("auth", it)
-        }
-
-    /**
-     * Invalid inputs never reach the adapter; normalized phone and leading code zeros are
-     * preserved.
-     */
-    @Test
-    fun `use cases validate and normalize without changing code meaning`() = runTest {
-        val repository = RecordingAccessRepository()
-        val prepare = PrepareDemoAccess(repository)
-        assertEquals(DemoAccessResult.InvalidPhone, prepare("123", "", false))
-        assertEquals(DemoAccessResult.InvalidName, prepare("08012345678", " ", true))
-        assertEquals(0, repository.preparations)
-        assertEquals(DemoAccessResult.PreviewReady, prepare("+234 801 234 5678", "Ada", true))
-        assertEquals("+2348012345678", repository.lastPhone)
-        val complete = CompleteDemoAccess(repository)
-        assertEquals(DemoAccessResult.InvalidCode, complete("12345"))
-        assertEquals(DemoAccessResult.InvalidCode, complete("１２３４５６"))
-        assertEquals(DemoAccessResult.PreviewReady, complete("001234"))
-        assertEquals("001234", repository.lastCode)
-    }
+        AuthViewModel(
+                handle,
+                PrepareDemoAccess(repository),
+                CompleteDemoAccess(repository),
+                ResendDemoAccessCode(repository),
+            )
+            .also {
+                owner.put("auth", it)
+            }
 
     /** A second tap is ignored; navigating back cancels work and rejects late completion. */
     @Test
@@ -69,7 +53,7 @@ class AuthViewModelTest {
         val repository = RecordingAccessRepository().apply { gate = CompletableDeferred() }
         val vm = viewModel(repository)
         vm.accept(AuthIntent.SignIn)
-        vm.accept(AuthIntent.EditPhone("08012345678"))
+        vm.accept(AuthIntent.EditContact("08012345678"))
         vm.accept(AuthIntent.Continue)
         vm.accept(AuthIntent.Continue)
         assertEquals(1, repository.preparations)
@@ -87,7 +71,7 @@ class AuthViewModelTest {
         val repository = RecordingAccessRepository()
         val vm = viewModel(repository)
         vm.accept(AuthIntent.SignIn)
-        vm.accept(AuthIntent.EditPhone("08012345678"))
+        vm.accept(AuthIntent.EditContact("08012345678"))
         vm.accept(AuthIntent.Continue)
         vm.accept(AuthIntent.EditCode("001234"))
         assertNull(repository.lastCode)
@@ -97,13 +81,13 @@ class AuthViewModelTest {
         vm.accept(AuthIntent.EditCode("001234"))
         vm.accept(AuthIntent.Back)
         assertEquals("", vm.uiState.value.code)
-        assertEquals("08012345678", vm.uiState.value.phoneNumber)
+        assertEquals("08012345678", vm.uiState.value.contact)
         vm.accept(AuthIntent.Continue)
         vm.accept(AuthIntent.EditCode("001234"))
         vm.accept(AuthIntent.Continue)
         assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
         assertEquals("", vm.uiState.value.code)
-        assertEquals("", vm.uiState.value.phoneNumber)
+        assertEquals("", vm.uiState.value.contact)
     }
 
     /** Process restoration saves no form inputs and cannot replay challenge requests. */
@@ -114,7 +98,11 @@ class AuthViewModelTest {
         val vm = viewModel(repository, handle)
         vm.accept(AuthIntent.CreateAccount)
         vm.accept(AuthIntent.EditName("Ada"))
-        vm.accept(AuthIntent.EditPhone("08012345678"))
+        vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
+        vm.accept(AuthIntent.EditContact("Ada@example.com"))
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditPassword("synthetic password"))
+        assertTrue(handle.keys().isEmpty())
         vm.accept(AuthIntent.Continue)
         vm.accept(AuthIntent.EditCode("001234"))
         assertTrue(handle.keys().isEmpty())
@@ -147,7 +135,7 @@ class AuthViewModelTest {
         val repository = RecordingAccessRepository().apply { exception = failure }
         val vm = viewModel(repository)
         vm.accept(AuthIntent.SignIn)
-        vm.accept(AuthIntent.EditPhone("08012345678"))
+        vm.accept(AuthIntent.EditContact("08012345678"))
         vm.accept(AuthIntent.Continue)
         assertEquals(AuthScreen.SignIn, vm.uiState.value.screen)
         assertEquals(AuthError.Unavailable, vm.uiState.value.error)
@@ -158,30 +146,142 @@ class AuthViewModelTest {
         assertEquals(AuthScreen.Verification, vm.uiState.value.screen)
         assertNull(vm.uiState.value.failureCause)
     }
-}
 
-/**
- * Controlled in-memory test adapter records only synthetic inputs and provides a suspension gate.
- */
-private class RecordingAccessRepository : DemoAccessRepository {
-    var preparations = 0
-    var lastPhone: String? = null
-    var lastCode: String? = null
-    var gate: CompletableDeferred<Unit>? = null
-    var exception: Exception? = null
-
-    /** Captures the normalized input and waits until the test allows completion. */
-    override suspend fun preparePreview(phoneNumber: String): DemoAccessResult {
-        preparations += 1
-        lastPhone = phoneNumber
-        gate?.await()
-        exception?.let { throw it }
-        return DemoAccessResult.PreviewReady
+    /**
+     * Contact/method changes clear credentials without sending a hidden password or starting work.
+     */
+    @Test
+    fun `method and contact selection clear transient credentials without submitting`() {
+        val repository = RecordingAccessRepository()
+        val vm = viewModel(repository)
+        vm.accept(AuthIntent.SignIn)
+        vm.accept(AuthIntent.EditContact("08012345678"))
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditPassword(" sample password "))
+        vm.accept(AuthIntent.TogglePasswordVisibility)
+        assertTrue(vm.uiState.value.isPasswordVisible)
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.OneTimeCode))
+        assertEquals("", vm.uiState.value.password)
+        assertFalse(vm.uiState.value.isPasswordVisible)
+        assertEquals("08012345678", vm.uiState.value.contact)
+        vm.accept(AuthIntent.EditPassword("hidden password"))
+        assertEquals("", vm.uiState.value.password)
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditPassword("sample password"))
+        vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
+        assertEquals("", vm.uiState.value.contact)
+        assertEquals("", vm.uiState.value.password)
+        assertEquals(AuthContactType.Email, vm.uiState.value.contactType)
+        assertEquals(0, repository.preparations)
     }
 
-    /** Records exact code characters so leading-zero preservation is observable. */
-    override suspend fun completePreview(code: String): DemoAccessResult {
-        lastCode = code
-        return DemoAccessResult.PreviewReady
+    /**
+     * Signup always verifies; resend uses the destination after the submitted password is
+     * discarded.
+     */
+    @Test
+    fun `password signup verifies and resends without retaining the password`() {
+        val repository = RecordingAccessRepository()
+        val vm = viewModel(repository)
+        vm.accept(AuthIntent.CreateAccount)
+        vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
+        vm.accept(AuthIntent.EditContact("Ada@example.com"))
+        vm.accept(AuthIntent.EditName("Ada"))
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditPassword(" sample password "))
+        vm.accept(AuthIntent.Continue)
+        assertEquals(AuthScreen.Verification, vm.uiState.value.screen)
+        assertEquals(" sample password ", repository.lastInput?.password)
+        assertEquals("", vm.uiState.value.password)
+        vm.accept(AuthIntent.EditCode("001234"))
+        vm.accept(AuthIntent.ResetCodePreview)
+        assertEquals(1, repository.resends)
+        assertEquals("Ada@example.com", repository.lastResendContact)
+        assertEquals(1, repository.preparations)
+        assertEquals("", vm.uiState.value.code)
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.OneTimeCode))
+        vm.accept(AuthIntent.EditPassword("not a form"))
+        assertEquals(AuthMethod.Password, vm.uiState.value.method)
+        assertEquals("", vm.uiState.value.password)
+        vm.accept(AuthIntent.Back)
+        assertEquals(AuthScreen.CreateAccount, vm.uiState.value.screen)
+        assertEquals("Ada@example.com", vm.uiState.value.contact)
+        assertEquals("", vm.uiState.value.password)
+        vm.accept(AuthIntent.Continue)
+        assertEquals(AuthError.Password, vm.uiState.value.error)
+    }
+
+    /**
+     * Password sign-in completes directly, clearing inputs without requesting or verifying a code.
+     */
+    @Test
+    fun `password sign in completes directly and clears all form inputs`() {
+        val repository = RecordingAccessRepository()
+        val vm = viewModel(repository)
+        vm.accept(AuthIntent.SignIn)
+        vm.accept(AuthIntent.EditContact("08012345678"))
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditPassword(" demo pass "))
+        vm.accept(AuthIntent.TogglePasswordVisibility)
+        vm.accept(AuthIntent.Continue)
+        assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+        assertEquals("", vm.uiState.value.contact)
+        assertEquals("", vm.uiState.value.password)
+        assertFalse(vm.uiState.value.isPasswordVisible)
+        assertNull(repository.lastCode)
+        assertEquals(0, repository.resends)
+    }
+
+    /**
+     * A busy submission retains its captured method/contact despite attempted edits or selection
+     * changes.
+     */
+    @Test
+    fun `pending password sign in locks its form and navigation discards credentials`() {
+        val repository = RecordingAccessRepository().apply { gate = CompletableDeferred() }
+        val vm = viewModel(repository)
+        vm.accept(AuthIntent.SignIn)
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
+        vm.accept(AuthIntent.EditContact("08012345678"))
+        vm.accept(AuthIntent.EditPassword("demo password"))
+        vm.accept(AuthIntent.Continue)
+        vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
+        vm.accept(AuthIntent.SelectMethod(AuthMethod.OneTimeCode))
+        vm.accept(AuthIntent.EditPassword("different password"))
+        vm.accept(AuthIntent.TogglePasswordVisibility)
+        vm.accept(AuthIntent.Continue)
+        assertEquals(1, repository.preparations)
+        assertEquals(AuthContactType.Phone, vm.uiState.value.contactType)
+        assertEquals(AuthMethod.Password, vm.uiState.value.method)
+        assertEquals("demo password", vm.uiState.value.password)
+        assertFalse(vm.uiState.value.isPasswordVisible)
+        vm.accept(AuthIntent.Back)
+        assertEquals("", vm.uiState.value.password)
+        repository.gate!!.complete(Unit)
+        assertEquals(AuthScreen.Welcome, vm.uiState.value.screen)
+        assertNull(vm.uiState.value.error)
+    }
+
+    /** Failed resend clears the entered code and releases its gate for another explicit request. */
+    @Test
+    fun `resend failure retains verification destination and allows a retry`() {
+        val repository = RecordingAccessRepository()
+        val vm = viewModel(repository)
+        vm.accept(AuthIntent.SignIn)
+        vm.accept(AuthIntent.EditContact("08012345678"))
+        vm.accept(AuthIntent.Continue)
+        vm.accept(AuthIntent.EditCode("001234"))
+        val failure = IllegalStateException("Synthetic resend failure")
+        repository.exception = failure
+        vm.accept(AuthIntent.ResetCodePreview)
+        assertEquals(AuthScreen.Verification, vm.uiState.value.screen)
+        assertEquals("", vm.uiState.value.code)
+        assertEquals("08012345678", vm.uiState.value.contact)
+        assertSame(failure, vm.uiState.value.failureCause)
+        repository.exception = null
+        vm.accept(AuthIntent.ResetCodePreview)
+        assertTrue(vm.uiState.value.previewReset)
+        assertNull(vm.uiState.value.failureCause)
+        assertEquals(2, repository.resends)
     }
 }

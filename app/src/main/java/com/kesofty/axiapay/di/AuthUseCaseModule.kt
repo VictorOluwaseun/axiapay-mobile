@@ -2,6 +2,7 @@ package com.kesofty.axiapay.di
 
 import com.kesofty.axiapay.application.CompleteDemoAccess
 import com.kesofty.axiapay.application.PrepareDemoAccess
+import com.kesofty.axiapay.application.ResendDemoAccessCode
 import com.kesofty.axiapay.domain.DemoAccessRepository
 import dagger.Module
 import dagger.Provides
@@ -14,7 +15,7 @@ import dagger.hilt.android.components.ViewModelComponent
 @Module
 @InstallIn(ViewModelComponent::class)
 internal object AuthUseCaseModule {
-    /** Validates demo phone/name input before preparing the simulated verification screen. */
+    /** Validates contact/method inputs and chooses direct password sign-in or code verification. */
     @Provides
     fun providePrepareDemoAccess(repository: DemoAccessRepository): PrepareDemoAccess =
         PrepareDemoAccess(repository)
@@ -23,4 +24,9 @@ internal object AuthUseCaseModule {
     @Provides
     fun provideCompleteDemoAccess(repository: DemoAccessRepository): CompleteDemoAccess =
         CompleteDemoAccess(repository)
+
+    /** Resets verification independently of the discarded signup password. */
+    @Provides
+    fun provideResendDemoAccessCode(repository: DemoAccessRepository): ResendDemoAccessCode =
+        ResendDemoAccessCode(repository)
 }

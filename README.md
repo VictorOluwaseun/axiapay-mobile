@@ -102,11 +102,13 @@ Offline: palette tokens and inline accents resolve to their greyscale luminance,
 
 ## Account-entry design preview
 
-Fresh launches open the welcome screen. Choose **Get started** for the name-and-phone form, **I already have an account** for phone sign-in, or **Explore demo** to enter the original dashboard immediately. A valid Nigerian phone number opens the verification preview; any six ASCII digits complete it. No account is created, no SMS is sent, and no identity is verified. All four flavors currently use this simulation.
+Fresh launches open the welcome screen. Choose **Get started** for signup, **I already have an account** for sign-in, or **Explore demo** for the original dashboard. Both forms offer **Phone / Email** and **Password / One-time code**. Signup keeps the existing name field and verifies the selected contact with a code, with or without a password. Code sign-in also verifies; password sign-in opens the completion preview directly. Any six ASCII digits complete code entry. All four flavors use the same simulation: no account is created, no SMS/email is delivered, no stored password is checked, and no identity or session is verified.
 
-Use **Profile → Preview welcome & sign-in** to revisit the design. Wallet funds, drafts, SMS requests, plans and dashboard navigation remain in their existing independent owner. The auth screens use the same automatic offline greyscale palette. Real account access and recovery methods remain a product/backend integration decision.
+Phone + code remains the default. Use a valid Nigerian number (080… or +234…) or a typical email address. Password previews require a nonblank sample password of at least eight characters, with whitespace/case preserved; this is a demo validation rule, not a confirmed backend password policy. The password field starts masked and has explicit Show/Hide controls.
 
-Only a demo-entry navigation flag is stored in Android saved state. Form values stay in memory across configuration changes; a process-restored unfinished form starts at Welcome. Codes are cleared on resend, when leaving verification, and on completion. The flag never authorizes a financial operation.
+Use **Profile → Preview welcome & sign-in** to revisit the design. Wallet funds, drafts, SMS requests, plans and dashboard navigation remain in their existing independent owner. The auth screens use the same automatic offline greyscale palette. Live account access, code delivery and recovery still require backend integration.
+
+Only a demo-entry navigation flag is stored in Android saved state. Form values stay in memory across configuration changes; a process-restored unfinished form starts at Welcome. Passwords are cleared on method/contact changes, navigation away from the form, entry into verification, and completion. Resend uses a separate use case and does not retain a signup password. Codes are cleared on resend, when leaving verification, and on completion. Input/state descriptions redact personal and credential values. The flag never authorizes a financial operation.
 
 ## Hilt wiring
 

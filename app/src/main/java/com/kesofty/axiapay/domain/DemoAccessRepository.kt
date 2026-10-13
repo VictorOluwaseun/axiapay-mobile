@@ -1,21 +1,60 @@
 package com.kesofty.axiapay.domain
 
-/** Demo access outcomes describe a preview, never verified ownership or payment authorization. */
+/** Identifies the contact format selected explicitly by the customer. */
+enum class AuthContactType {
+    Phone,
+    Email,
+}
+
+/** Selects password entry or a one-time-code preview; signup verifies contact in either case. */
+enum class AuthMethod {
+    Password,
+    OneTimeCode,
+}
+
+/** Application outcomes describe the next demo step, never ownership or payment authorization. */
 enum class DemoAccessResult {
-    PreviewReady,
+    CodeRequired,
+    PreviewComplete,
     InvalidPhone,
+    InvalidEmail,
     InvalidName,
+    InvalidPassword,
     InvalidCode,
 }
 
 /**
- * Simulates account-entry requests without storing credentials, sending SMS, or creating accounts.
- * Implementations must be main-safe and propagate cancellation. No payment session is modified.
+ * Captures one explicit form submission. Contact normalization belongs to the application layer;
+ * password characters must remain exact. Inputs are transient and must never be saved or logged.
+ */
+data class DemoAccessInput(
+    val contactType: AuthContactType,
+    val contact: String,
+    val method: AuthMethod,
+    val password: String = "",
+    val name: String = "",
+    val isCreatingAccount: Boolean = false,
+) {
+    /** Prevents accidental diagnostic interpolation from exposing contact or credential values. */
+    override fun toString(): String =
+        "DemoAccessInput(contactType=$contactType, method=$method, isCreatingAccount=$isCreatingAccount, inputs=redacted)"
+}
+
+/**
+ * Simulates account-entry operations without storing credentials, sending SMS/email, or creating
+ * accounts. The application owns validation and next-step decisions. Implementations are main-safe,
+ * propagate cancellation/failure, and never change the payment session. No cache or transaction is
+ * used.
  */
 interface DemoAccessRepository {
-    /** Prepares the code-entry preview for a normalized Nigerian phone number. */
-    suspend fun preparePreview(phoneNumber: String): DemoAccessResult
+    /** Previews a validated submission; returning normally establishes no identity or session. */
+    suspend fun preparePreview(input: DemoAccessInput)
 
-    /** Completes a preview using any six ASCII digits; this does not authenticate a person. */
-    suspend fun completePreview(code: String): DemoAccessResult
+    /** Previews completion using exact code characters, including leading zeros. */
+    suspend fun completePreview(code: String)
+
+    /**
+     * Resets the code preview for an existing destination without needing the original password.
+     */
+    suspend fun resendPreview(contactType: AuthContactType, contact: String)
 }
