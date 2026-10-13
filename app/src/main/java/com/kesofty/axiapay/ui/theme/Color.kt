@@ -28,6 +28,10 @@ val Muted: Color
     @Composable get() = Color(0xFF5B6E66).modeColor()
 val Line: Color
     @Composable get() = Color(0xFFE5ECE8).modeColor()
+
+/** Contrasting sage edges for interactive controls; surface fills and dividers keep using Line. */
+val ControlOutline: Color
+    @Composable get() = Color(0xFF7A8F86).modeColor()
 val Peach: Color
     @Composable get() = Color(0xFFFBE8D8).modeColor()
 val Lavender: Color

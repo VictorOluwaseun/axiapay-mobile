@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
+/** Supplies the established palette, visible control outlines and automatic greyscale rendering. */
 @Composable
 fun AxiapayTheme(offline: Boolean = false, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalOfflinePalette provides offline) {
@@ -24,7 +25,7 @@ fun AxiapayTheme(offline: Boolean = false, content: @Composable () -> Unit) {
                 surfaceVariant = Canvas,
                 onSurfaceVariant = Muted,
                 outline = Muted,
-                outlineVariant = Line,
+                outlineVariant = ControlOutline,
                 error = Danger,
             )
         val resolved =

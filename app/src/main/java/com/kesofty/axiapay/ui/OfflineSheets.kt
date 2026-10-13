@@ -138,6 +138,7 @@ internal fun OfflineFormNote(eligible: Boolean, cachedTime: String) {
     }
 }
 
+/** Shows cached payment details and outlined SIM choices, delegating selection and submission. */
 @Composable
 internal fun ColumnScope.OfflinePaymentReview(
     form: PaymentFormState,
@@ -165,6 +166,7 @@ internal fun ColumnScope.OfflinePaymentReview(
                     { onIntent(PaymentIntent.Sim(sim)) },
                     { Text("SIM $sim") },
                     shape = RoundedCornerShape(12.dp),
+                    border = controlBorder(form.smsSim == sim),
                 )
             }
         }

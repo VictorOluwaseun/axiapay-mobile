@@ -1,6 +1,7 @@
 package com.kesofty.axiapay.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -30,6 +31,7 @@ internal fun ConnectionModeControls(mode: ConnectionMode, onIntent: (AxiaIntent)
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
                 .background(Canvas)
+                .border(controlBorder(), RoundedCornerShape(20.dp))
                 .selectableGroup(),
         ) {
             ConnectionMode.entries.forEach { option ->

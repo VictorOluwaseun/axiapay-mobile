@@ -87,6 +87,7 @@ private fun <T> AuthChoiceSelector(
                         .heightIn(min = 52.dp)
                         .testTag(choice.testTag),
                 enabled = enabled,
+                border = controlBorder(selected == choice.value, enabled),
                 colors =
                     SegmentedButtonDefaults.colors(
                         activeContainerColor = Pine,
@@ -94,7 +95,7 @@ private fun <T> AuthChoiceSelector(
                         activeBorderColor = Pine,
                         inactiveContainerColor = Color.White,
                         inactiveContentColor = Ink,
-                        inactiveBorderColor = Line,
+                        inactiveBorderColor = ControlOutline,
                     ),
                 label = {
                     Text(stringResource(choice.label), style = MaterialTheme.typography.labelLarge)
@@ -181,7 +182,8 @@ internal fun AuthTextField(
             OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.White,
                 unfocusedContainerColor = Color.White,
-                unfocusedBorderColor = Line,
+                unfocusedBorderColor = ControlOutline,
+                disabledBorderColor = ControlOutline.copy(alpha = .38f),
                 focusedBorderColor = Pine,
             ),
     )

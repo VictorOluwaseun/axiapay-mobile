@@ -26,6 +26,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * Renders provider, destination and recurrence choices with visible edges and explicit selection
+ * callbacks.
+ */
 @Composable
 private fun ChoiceRow(
     options: List<String>,
@@ -43,6 +47,7 @@ private fun ChoiceRow(
                 { onSelect(label) },
                 { Text(label, style = MaterialTheme.typography.labelMedium) },
                 shape = RoundedCornerShape(12.dp),
+                border = controlBorder(selected == label),
             )
         }
     }

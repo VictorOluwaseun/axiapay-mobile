@@ -48,6 +48,9 @@ fun IconTile(icon: Glyph, modifier: Modifier = Modifier, tint: Color = glyphTint
     }
 }
 
+/**
+ * Outlines compact icon actions while retaining their accessible label and standard touch target.
+ */
 @Composable
 fun RoundIconButton(
     icon: Glyph,
@@ -57,7 +60,10 @@ fun RoundIconButton(
 ) {
     IconButton(
         onClick,
-        modifier.size(48.dp).background(Color.White, CircleShape).border(1.dp, Line, CircleShape),
+        modifier
+            .size(48.dp)
+            .background(Color.White, CircleShape)
+            .border(controlBorder(), CircleShape),
     ) {
         AxiaIcon(icon, description = label, modifier = Modifier.size(21.dp))
     }

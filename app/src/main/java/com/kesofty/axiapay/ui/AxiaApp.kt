@@ -516,6 +516,7 @@ private fun PageHeader(title: String, subtitle: String, icon: Glyph = Glyph.Bran
     }
 }
 
+/** Renders the searchable service catalog and forwards query edits and service selection. */
 @Composable
 private fun PaymentsScreen(query: String, onQuery: (String) -> Unit, open: (String) -> Unit) {
     LazyColumn(
@@ -536,7 +537,7 @@ private fun PaymentsScreen(query: String, onQuery: (String) -> Unit, open: (Stri
                 shape = RoundedCornerShape(18.dp),
                 colors =
                     OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Line,
+                        unfocusedBorderColor = ControlOutline,
                         unfocusedContainerColor = Color.White,
                     ),
             )
@@ -619,6 +620,7 @@ private fun UtilityCard(
     }
 }
 
+/** Displays demo activity and visibly outlined filters; all changes remain callback-driven. */
 @Composable
 private fun ActivityScreen(
     state: DemoSession,
@@ -695,6 +697,7 @@ private fun ActivityScreen(
                         { onFilter(name) },
                         { Text(name) },
                         shape = RoundedCornerShape(14.dp),
+                        border = controlBorder(filter == name),
                     )
                 }
             }
