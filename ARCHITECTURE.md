@@ -101,16 +101,24 @@ For production, introduce backend application ports and repositories for authori
 ## Verification
 
 ```sh
-./gradlew :app:testDevDebugUnitTest :app:lintDevDebug :app:assembleDevDebug
+./gradlew verifyAllFlavors
+# A smaller iteration loop for one flavor:
+./gradlew :app:verifyDev
+# Reformat all Kotlin source sets and build scripts with the pinned formatter:
+./gradlew formatKotlin
+# Requires a running, explicitly selected emulator:
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
-# Repeat with Demo, Staging and Prod to check each environment.
-./gradlew :app:assembleDebug
 ```
+
+`verifyAllFlavors` includes formatting, unit tests, Android lint, debug/release APK assembly and instrumentation APK compilation for all four environments. Device execution is separate and must target an emulator. `.github/workflows/android.yml` runs each flavor's verification in a CI matrix with read-only permissions and pinned action commits. It does not deploy, sign release builds or run device tests. A first run requires network access to resolve the pinned tooling.
+
+Run `./gradlew :app:compileDemoReleaseKotlin -PcomposeReports=true --rerun-tasks` to emit Compose compiler reports under `app/build/reports/compose/` and `compose-metrics/` for inspection of stability and skipping. Enable this property only for one compile task at a time: variants and test compilations share report filenames. These reports are diagnostics, not proof of frame-rate improvements; profile actual device behavior before optimizing. No experimental compiler flags or unverified stability promises are added.
+
 
 Use-case tests cover exact amounts, invalid recipients/providers/quotes/dates, atomic failure recovery, idempotency, concurrent spending/funding, waiting-payment recovery, batch retry and recurring calendar boundaries. Installed-variant tests verify application IDs and launcher labels for each flavor. ViewModel tests cover review/confirm, duplicate intents, restoration, error consumption and preferences. Android tests exercise the existing UI and actual saved-state codecs, offline draft/SIM/outbox restoration, SMS failure/retry/reconnect, and greyscale rendering. Network tests cover unvalidated/captive-portal capability states, validation loss, Wi-Fi/cellular handover, app blocking, cold/restored connection state and subscription cleanup. Emulator tests disable and restore real radios while checking greyscale/colour restoration, open forms, saved drafts and pending SMS requests. Offline use-case tests verify no debit on transport, eligibility, retry limits, expiry, cross-channel duplicate rejection, concurrent reconciliation, funding follow-up and storage failure recovery.
 
-Changed Kotlin files use ktfmt 0.65 with `--kotlinlang-style`. Control-flow review uses the Kotlin syntax tree to verify no nested `if` expressions; guard clauses and named presentation values keep branching flat.
+All Kotlin sources and Gradle scripts are checked with ktfmt 0.65 (`org.jetbrains.kotlinx:ktfmt`) in Kotlin language style, resolved by Gradle rather than a machine-local installation. Suspension tests cover duplicate admission, cancellation, navigation changes and recovery; snapshot tests cover mutable aliases and atomic cancellation. Control-flow review uses the Kotlin syntax tree to verify no nested `if` expressions; guard clauses and named presentation values keep branching flat.
 
 References: [Android architecture recommendations](https://developer.android.com/topic/architecture/recommendations), [UI state and events](https://developer.android.com/topic/architecture/ui-layer), [ViewModel saved state](https://developer.android.com/topic/libraries/architecture/viewmodel/viewmodel-savedstate).
 
-Suspension tests cover duplicate admission, cancellation, late results and explicit recovery; snapshot tests cover collection aliases and atomic cancellation.
+Coroutine and compiler references: [Android coroutine practices](https://developer.android.com/kotlin/coroutines/coroutines-best-practices), [Compose compiler options](https://kotlinlang.org/docs/compose-compiler-options.html).

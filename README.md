@@ -8,7 +8,9 @@ Open this folder in Android Studio, select `devDebug` or `demoDebug` in **Build 
 
 ```sh
 ./gradlew :app:assembleDevDebug
-./gradlew :app:testDevDebugUnitTest :app:lintDevDebug
+./gradlew :app:verifyDev
+# Verify formatting, unit tests, lint and debug/release/test APKs for every flavor:
+./gradlew verifyAllFlavors
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
 
 # Build the four debug APKs together.
@@ -84,9 +86,11 @@ The app follows Clean Architecture, MVVM with MVI, and explicit dependency injec
 | `ui` | Stateless Compose screens, sheets, formatting, icons and theme |
 | `di` | Factory that explicitly wires adapters and use cases into the ViewModel |
 
-`ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Source was formatted with ktfmt 0.65 (`--kotlinlang-style`); unchanged visual assets and theme values are retained.
+`ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Run `./gradlew formatKotlin` to apply the pinned ktfmt 0.65 style. `checkKotlinFormat` checks all Kotlin source sets (including shared non-demo wiring and Android tests) and Gradle scripts. `verifyAllFlavors` runs this check, unit tests, lint, debug/release builds and instrumentation APK compilation. Device test execution remains a separate emulator command. The GitHub Actions workflow runs a verification matrix for dev/demo/staging/prod without publishing or signing releases.
 
 Payment actions use suspending application contracts and ViewModel-owned coroutines. An in-flight action shows progress and rejects repeated submissions; later results update the session without taking over a newly opened screen. Cancellation is not reported as payment failure, and restored state cannot replay a command. Repository snapshots own and protect their lists against external mutation. All four flavors still use the same demo operations.
+
+Run `./gradlew :app:compileDemoReleaseKotlin -PcomposeReports=true --rerun-tasks` to generate Compose compiler stability/skipping reports in `app/build/reports/compose/` and `compose-metrics/`. Use them alongside device profiling; they do not replace runtime performance measurements.
 
 ## Visual system
 

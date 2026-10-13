@@ -90,3 +90,26 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
+
+// Opt in for a single compile task; multi-variant/test compilations share report filenames.
+if (providers.gradleProperty("composeReports").map(String::toBoolean).getOrElse(false)) {
+    composeCompiler {
+        reportsDestination = layout.buildDirectory.dir("reports/compose")
+        metricsDestination = layout.buildDirectory.dir("reports/compose-metrics")
+    }
+}
+
+listOf("Dev", "Demo", "Staging", "Prod").forEach { flavor ->
+    tasks.register("verify$flavor") {
+        group = "verification"
+        description = "Verifies $flavor formatting, unit tests, lint and all installable outputs."
+        dependsOn(
+            ":checkKotlinFormat",
+            "test${flavor}DebugUnitTest",
+            "lint${flavor}Debug",
+            "assemble${flavor}Debug",
+            "assemble${flavor}Release",
+            "assemble${flavor}DebugAndroidTest",
+        )
+    }
+}
