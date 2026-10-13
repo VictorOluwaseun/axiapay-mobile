@@ -4,13 +4,37 @@ A native Jetpack Compose UI preview for everyday payments.
 
 ## Run
 
-Open this folder in Android Studio and run the `app` configuration on an Android 8.0+ device or emulator. The existing project uses Android SDK 37, Gradle 9.6.0 and the Gradle-managed Java 25 toolchain.
+Open this folder in Android Studio, select `devDebug` or `demoDebug` in **Build Variants**, and run the `app` configuration on an Android 8.0+ device or emulator. The existing project uses Android SDK 37, Gradle 9.6.0 and the Gradle-managed Java 25 toolchain.
 
 ```sh
+./gradlew :app:assembleDevDebug
+./gradlew :app:testDevDebugUnitTest :app:lintDevDebug
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
+
+# Build the four debug APKs together.
 ./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest :app:lintDebug
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 ```
+
+## Environments
+
+| Flavor | Application ID | Launcher name | Long-term purpose |
+| --- | --- | --- | --- |
+| `dev` | `com.kesofty.axiapay.dev` | AxiaPay Dev | Development backend integrations |
+| `demo` | `com.kesofty.axiapay.demo` | AxiaPay Demo | Permanent sample experience |
+| `staging` | `com.kesofty.axiapay.staging` | AxiaPay Staging | Pre-production backend validation |
+| `prod` | `com.kesofty.axiapay` | AxiaPay | Production backend integrations |
+
+**Today all four use the current UI, sample data and local payment/SMS simulations.** Choosing `prod` does not connect real financial services. Backend replacements will arrive feature by feature for dev/staging/prod, while demo retains sample repositories and simulated operations. Existing demo labels stay until the corresponding feature actually uses real data.
+
+The four apps can be installed together, each with a separate Android sandbox, saved session, drafts and preferences. The unsuffixed ID is preserved for prod; existing installs using that ID belong to prod, and demo begins as a separate install. Kotlin packages and the resource namespace remain `com.kesofty.axiapay`.
+
+Each flavor has `Debug` and `Release` variants, such as `demoDebug` and `prodRelease`. A flavor uses the same application ID for both build types, so debug and release of that same flavor do not install side by side. Flavor selects the environment; build type controls debugging and optimization. Release signing has not been configured.
+
+Debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Replace `Dev` in the commands above with `Demo`, `Staging` or `Prod` for other flavors. Use explicit flavor task names for unit tests, lint and device tests.
+
+The demo dependency factory lives in `app/src/demo/java/`; a separate factory in `app/src/nonDemo/java/` is compiled into dev/staging/prod only. Both currently delegate to `createDemoViewModel`. This keeps one shared UI and sample implementation while giving future backend integrations a separate composition boundary. Environment choices belong in this wiring layer, not the Views or domain; no backend URLs or credentials have been invented.
+
+Source-set and variant conventions follow the [Android build-variant guide](https://developer.android.com/build/build-variants).
 
 ## Explore
 

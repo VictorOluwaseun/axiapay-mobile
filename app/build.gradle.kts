@@ -1,3 +1,4 @@
+/** Defines the four installable environments and their shared Android build configuration. */
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -19,6 +20,36 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // One environment per APK; build types control debugging/optimization, not backend selection.
+    flavorDimensions += "environment"
+    productFlavors {
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
+        create("demo") {
+            dimension = "environment"
+            applicationIdSuffix = ".demo"
+            versionNameSuffix = "-demo"
+        }
+        create("staging") {
+            dimension = "environment"
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-staging"
+        }
+        create("prod") {
+            dimension = "environment"
+        }
+    }
+
+    sourceSets {
+        // Demo has a separate factory. Backend migration is shared only by these three flavors.
+        listOf("dev", "staging", "prod").forEach { environment ->
+            getByName(environment).kotlin.directories += "src/nonDemo/java"
+        }
+    }
+
     buildTypes {
         release {
             optimization {
@@ -33,6 +64,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

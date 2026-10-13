@@ -11,7 +11,7 @@ The project remains one Gradle application module. Named packages provide explic
 - **Data** owns illustrative fixtures, snapshot serialization and storage coordination. `DemoSessionRepository` serializes access to one session aggregate, invokes the supplied transition exactly once, saves before publishing, and leaves the observable snapshot unchanged if storage fails. It does not decide whether a payment is allowed or sufficient funds exist.
 - **Presentation** owns immutable MVI state and typed intents. `AxiaViewModel` invokes use cases, handles explicit results, and exposes only a read-only `StateFlow`. `PaymentFormPresenter` is a pure form reducer; business validation is delegated to the application layer. `SavedNavigationStore` handles Android-specific restoration behind a small presentation port.
 - **UI** renders state and emits intents. It may format values and own framework-only scroll, modal animation and native date-picker state. It cannot mutate the session or invoke a repository. Icons and human-readable labels are presentation details, mapped from domain types at this boundary.
-- **Composition root** is `AxiaViewModelFactory`, invoked by `MainActivity`. Concrete dependencies are constructed explicitly for each ViewModel lifetime. There is no service locator, mutable singleton, or DI framework requirement.
+- **Composition root** is `AxiaViewModelFactory`, invoked by `MainActivity`. It supplies Android adapters to the flavor-selected `createFlavorViewModel` factory. Both flavor paths currently delegate to `createDemoViewModel`, which assembles the existing demo use cases and repository. Concrete dependencies are constructed explicitly for each ViewModel lifetime. There is no service locator, mutable singleton, or DI framework requirement.
 
 ```text
 User action → AxiaIntent → AxiaViewModel → application use case
@@ -24,6 +24,19 @@ User action → AxiaIntent → AxiaViewModel → application use case
                                              ↓
                            read-only state → lifecycle-aware Compose
 ```
+
+## Flavor boundaries and backend migration
+
+The single `environment` dimension contains dev, demo, staging and prod, each with a unique application ID. Debug/release remain build types, independent of environment and payment simulation. `BuildConfig.FLAVOR` identifies the selected environment at the composition boundary; it is not a business rule or an authentication mechanism. The resource namespace remains stable.
+
+- `src/main/` contains the shared UI, domain/application contracts and current sample implementations.
+- `src/demo/java/.../di/FlavorViewModelFactory.kt` permanently selects demo wiring.
+- `src/nonDemo/java/.../di/FlavorViewModelFactory.kt` is added only to dev/staging/prod source sets. It currently selects exactly the same demo wiring; future integrations are selected here.
+- Flavor resource overlays distinguish launcher labels without changing in-app screens.
+
+For each future backend feature, introduce the required application/domain port and its backend adapter, then bind it in the non-demo composition path. Preserve the existing simulated implementation and bind it in the demo path. Do not silently fall back to sample balances/results on a backend failure. Authentication, payment execution and authoritative financial decisions must move to their backend operations together; replacing a session repository alone is not sufficient. The current ViewModel still takes concrete demo use cases; add narrow operation contracts when a feature gains its second implementation rather than pretending the present ledger is backend-ready.
+
+Backend URLs, credentials, real SMS and release signing remain unconfigured. The non-demo factory is a migration boundary, not a live backend implementation. Keep demo copy and data until each feature's real source is connected; share UI changes so demo remains representative instead of freezing a duplicate UI. The common Android regression suite currently runs against all four flavors; move sample-specific expectations into demo tests as backend behavior arrives, retaining shared behavior coverage.
 
 ## State ownership and delivery
 
@@ -82,11 +95,13 @@ For production, introduce backend application ports and repositories for authori
 ## Verification
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
+./gradlew :app:testDevDebugUnitTest :app:lintDevDebug :app:assembleDevDebug
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
+# Repeat with Demo, Staging and Prod to check each environment.
+./gradlew :app:assembleDebug
 ```
 
-Use-case tests cover exact amounts, invalid recipients/providers/quotes/dates, atomic failure recovery, idempotency, concurrent spending/funding, waiting-payment recovery, batch retry and recurring calendar boundaries. ViewModel tests cover review/confirm, duplicate intents, restoration, error consumption and preferences. Android tests exercise the existing UI and actual saved-state codecs, offline draft/SIM/outbox restoration, SMS failure/retry/reconnect, and greyscale rendering. Network tests cover unvalidated/captive-portal capability states, validation loss, Wi-Fi/cellular handover, app blocking, cold/restored connection state and subscription cleanup. Emulator tests disable and restore real radios while checking greyscale/colour restoration, open forms, saved drafts and pending SMS requests. Offline use-case tests verify no debit on transport, eligibility, retry limits, expiry, cross-channel duplicate rejection, concurrent reconciliation, funding follow-up and storage failure recovery.
+Use-case tests cover exact amounts, invalid recipients/providers/quotes/dates, atomic failure recovery, idempotency, concurrent spending/funding, waiting-payment recovery, batch retry and recurring calendar boundaries. Installed-variant tests verify application IDs and launcher labels for each flavor. ViewModel tests cover review/confirm, duplicate intents, restoration, error consumption and preferences. Android tests exercise the existing UI and actual saved-state codecs, offline draft/SIM/outbox restoration, SMS failure/retry/reconnect, and greyscale rendering. Network tests cover unvalidated/captive-portal capability states, validation loss, Wi-Fi/cellular handover, app blocking, cold/restored connection state and subscription cleanup. Emulator tests disable and restore real radios while checking greyscale/colour restoration, open forms, saved drafts and pending SMS requests. Offline use-case tests verify no debit on transport, eligibility, retry limits, expiry, cross-channel duplicate rejection, concurrent reconciliation, funding follow-up and storage failure recovery.
 
 Changed Kotlin files use ktfmt 0.65 with `--kotlinlang-style`. Control-flow review uses the Kotlin syntax tree to verify no nested `if` expressions; guard clauses and named presentation values keep branching flat.
 
