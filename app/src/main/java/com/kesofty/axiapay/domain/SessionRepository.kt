@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** One atomic snapshot contains balance, receipts, plans and demo preferences. */
 interface SessionRepository {
+    /** Read-only committed snapshots; consumers cannot mutate their backing collections. */
     val session: StateFlow<DemoSession>
 
     /**

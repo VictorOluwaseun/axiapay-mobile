@@ -86,6 +86,8 @@ The app follows Clean Architecture, MVVM with MVI, and explicit dependency injec
 
 `ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Source was formatted with ktfmt 0.65 (`--kotlinlang-style`); unchanged visual assets and theme values are retained.
 
+Payment actions use suspending application contracts and ViewModel-owned coroutines. An in-flight action shows progress and rejects repeated submissions; later results update the session without taking over a newly opened screen. Cancellation is not reported as payment failure, and restored state cannot replay a command. Repository snapshots own and protect their lists against external mutation. All four flavors still use the same demo operations.
+
 ## Visual system
 
 Online: deep pine (#103F38), mint (#C5F2D8), soft white (#F6F8F7), peach (#FBE8D8), lavender (#ECE8F7), and ink (#173D35). Bundled variable Manrope typography uses explicit weight axes. The wallet is the principal visual anchor; quiet service tiles and unboxed transaction rows keep the rest readable. Vector icons and the launcher mark are drawn locally. The Manrope license is bundled in `app/src/main/assets/licenses`.

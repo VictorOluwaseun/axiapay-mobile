@@ -60,22 +60,27 @@ internal class DemoTestFixture(
         )
 
     /** Builds a ViewModel with controlled connectivity and in-memory session persistence. */
-    fun viewModel(navigation: NavigationStore = MemoryNavigationStore()) =
+    fun viewModel(
+        navigation: NavigationStore = MemoryNavigationStore(),
+        submitAction: SubmitPayment = SubmitPayment { input, id -> submit(input, id) },
+    ) =
         AxiaViewModel(
             ObserveSession(repository),
-            submit,
-            complete,
-            batch,
-            SetPlanEnabled(repository),
+            submitAction,
+            CompletePayment { complete(it) },
+            RetryBatchPayment { batch() },
+            UpdatePlan { id, enabled -> SetPlanEnabled(repository)(id, enabled) },
             SetBalanceVisibility(repository),
             SetPaymentReminders(repository),
             MarkNotificationsRead(repository),
             UpdateConnectionState(repository, clock),
             SetConnectionMode(repository, connection, clock),
             ObserveInternetConnection(connection),
-            PrepareSmsPayment(repository, prepare, clock),
-            SendDemoSms(repository, clock),
-            ReconcileDemoSms(repository, clock),
+            PrepareSmsRequest { input, id, sim ->
+                PrepareSmsPayment(repository, prepare, clock)(input, id, sim)
+            },
+            SendSmsRequest { id, failure -> SendDemoSms(repository, clock)(id, failure) },
+            ReconcileSmsRequest { id -> ReconcileDemoSms(repository, clock)(id) },
             PaymentFormPresenter(prepare, clock),
             navigation,
             { java.util.UUID.randomUUID().toString() },

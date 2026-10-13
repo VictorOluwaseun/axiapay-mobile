@@ -30,11 +30,15 @@ data class NavigationState(
     val draft: PaymentFormState? = null,
 )
 
-/** Immutable render contract. Navigation and errors are state, not replayable event streams. */
+/**
+ * Immutable render contract. Navigation and errors are state, not replayable event streams.
+ * Processing describes the current owner only; restoration must never resume a command from it.
+ */
 data class AxiaUiState(
     val session: DemoSession,
     val navigation: NavigationState,
     val error: String? = null,
+    val isProcessing: Boolean = false,
 )
 
 sealed interface AxiaIntent {

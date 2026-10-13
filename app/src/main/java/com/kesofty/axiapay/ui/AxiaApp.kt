@@ -53,6 +53,7 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit) {
             Modifier.fillMaxSize().padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (uiState.isProcessing) PaymentProgress()
             if (state.offline || state.connectionMode != ConnectionMode.Automatic)
                 ConnectionBanner(state.connectionMode) { open("offline") }
             Crossfade(
@@ -81,7 +82,7 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit) {
             }
         }
     }
-    navigation.sheet?.let { AppSheet(it, state, navigation.draft, onIntent) }
+    navigation.sheet?.let { AppSheet(it, state, navigation.draft, uiState.isProcessing, onIntent) }
     uiState.error?.let { message ->
         AlertDialog(
             onDismissRequest = { onIntent(AxiaIntent.DismissError) },
@@ -92,12 +93,27 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit) {
     }
 }
 
+/** Displays accessible in-flight feedback in the current palette without taking navigation away. */
+@Composable
+private fun PaymentProgress() {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
+        Text("Processing your request…", style = MaterialTheme.typography.bodyMedium, color = Pine)
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            color = Pine,
+            trackColor = Mint,
+        )
+    }
+}
+
+/** Routes sheet state to existing forms and renders ephemeral progress without owning commands. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppSheet(
     sheet: Sheet,
     state: DemoSession,
     draft: PaymentFormState?,
+    isProcessing: Boolean,
     onIntent: (AxiaIntent) -> Unit,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
@@ -111,7 +127,8 @@ private fun AppSheet(
         dragHandle = { BottomSheetDefaults.DragHandle(color = Line) },
     ) {
         Box(Modifier.fillMaxWidth().imePadding(), contentAlignment = Alignment.TopCenter) {
-            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                if (isProcessing) PaymentProgress()
                 when (sheet) {
                     is Sheet.Receipt ->
                         state.payments

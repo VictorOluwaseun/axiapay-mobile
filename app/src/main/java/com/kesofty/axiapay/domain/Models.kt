@@ -106,6 +106,9 @@ sealed interface DemoError {
     data class ConnectionMonitoring(val cause: Throwable) : DemoError
 
     data class Storage(val cause: Exception) : DemoError
+
+    /** Unexpected execution failure retains its cause without claiming the payment failed. */
+    data class OperationUnconfirmed(val cause: Exception) : DemoError
 }
 
 sealed interface Outcome<out T> {

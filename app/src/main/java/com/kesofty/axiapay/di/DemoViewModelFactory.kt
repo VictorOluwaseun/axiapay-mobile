@@ -27,19 +27,21 @@ internal fun createDemoViewModel(
     val prepare = PreparePayment(clock)
     return AxiaViewModel(
         ObserveSession(repository),
-        SubmitDemoPayment(repository, prepare, clock),
-        CompleteWaitingPayment(repository),
-        RetryDemoBatchPayment(repository, clock),
-        SetPlanEnabled(repository),
+        SubmitPayment { input, id -> SubmitDemoPayment(repository, prepare, clock)(input, id) },
+        CompletePayment { id -> CompleteWaitingPayment(repository)(id) },
+        RetryBatchPayment { RetryDemoBatchPayment(repository, clock)() },
+        UpdatePlan { id, enabled -> SetPlanEnabled(repository)(id, enabled) },
         SetBalanceVisibility(repository),
         SetPaymentReminders(repository),
         MarkNotificationsRead(repository),
         UpdateConnectionState(repository, clock),
         SetConnectionMode(repository, connection, clock),
         ObserveInternetConnection(connection),
-        PrepareSmsPayment(repository, prepare, clock),
-        SendDemoSms(repository, clock),
-        ReconcileDemoSms(repository, clock),
+        PrepareSmsRequest { input, id, sim ->
+            PrepareSmsPayment(repository, prepare, clock)(input, id, sim)
+        },
+        SendSmsRequest { id, failure -> SendDemoSms(repository, clock)(id, failure) },
+        ReconcileSmsRequest { id -> ReconcileDemoSms(repository, clock)(id) },
         PaymentFormPresenter(prepare, clock),
         SavedNavigationStore(handle),
         { UUID.randomUUID().toString() },
