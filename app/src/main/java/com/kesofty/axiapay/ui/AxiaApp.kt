@@ -40,7 +40,7 @@ import java.time.format.DateTimeFormatter
 
 /** Renders immutable app state; every action returns to the ViewModel as an intent. */
 @Composable
-fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit) {
+fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit, onPreviewAuth: () -> Unit = {}) {
     val state = uiState.session
     val navigation = uiState.navigation
     val onTab: (Int) -> Unit = { onIntent(AxiaIntent.SelectTab(it)) }
@@ -82,7 +82,9 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit) {
             }
         }
     }
-    navigation.sheet?.let { AppSheet(it, state, navigation.draft, uiState.isProcessing, onIntent) }
+    navigation.sheet?.let {
+        AppSheet(it, state, navigation.draft, uiState.isProcessing, onIntent, onPreviewAuth)
+    }
     uiState.error?.let { message ->
         AlertDialog(
             onDismissRequest = { onIntent(AxiaIntent.DismissError) },
@@ -115,6 +117,7 @@ private fun AppSheet(
     draft: PaymentFormState?,
     isProcessing: Boolean,
     onIntent: (AxiaIntent) -> Unit,
+    onPreviewAuth: () -> Unit,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -140,7 +143,7 @@ private fun AppSheet(
                             }
                     Sheet.Notifications ->
                         NotificationsSheet(state, addMoney) { onIntent(AxiaIntent.SelectTab(3)) }
-                    Sheet.Profile -> ProfileSheet(state, onIntent)
+                    Sheet.Profile -> ProfileSheet(state, onIntent, onPreviewAuth)
                     Sheet.Bulk -> BulkSheet(state) { onIntent(AxiaIntent.RetryBatch) }
                     Sheet.Offline -> OfflineSheet(state, draft, onIntent)
                     is Sheet.Sms ->

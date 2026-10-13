@@ -20,6 +20,7 @@ class OfflineUiTest {
     fun prepareNetwork() {
         internet.capture()
         reconnect()
+        compose.onNodeWithText("Explore demo").performScrollTo().performClick()
     }
 
     @After

@@ -2,11 +2,18 @@ package com.kesofty.axiapay
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 class AxiaUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /** Enters the unchanged demo dashboard through the public welcome action. */
+    @Before
+    fun enterDemo() {
+        compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+    }
 
     @Test
     fun fundingUpdatesWalletAndSurvivesActivityRecreation() {

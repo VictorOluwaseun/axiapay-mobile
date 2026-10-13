@@ -11,10 +11,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.components.*
@@ -184,10 +186,16 @@ private fun NotificationCard(
 
 /** Renders demo profile preferences and emits changes through typed intents. */
 @Composable
-fun ProfileSheet(state: DemoSession, onIntent: (AxiaIntent) -> Unit) {
+fun ProfileSheet(state: DemoSession, onIntent: (AxiaIntent) -> Unit, onPreviewAuth: () -> Unit) {
     SheetContent {
         IconTile(Glyph.Person, tint = Peach)
         SheetHeading("A space for you.", "Alex Morgan • @alex • Demo profile")
+        TextButton(onPreviewAuth, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                stringResource(R.string.auth_preview_shortcut),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
         InfoRow("Wallet", "NGN wallet")
         InfoRow("Account", "Interactive preview")
         ConnectionStatus(state.offline, state.connectionMode)

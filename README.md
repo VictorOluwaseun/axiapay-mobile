@@ -99,3 +99,11 @@ Online: deep pine (#103F38), mint (#C5F2D8), soft white (#F6F8F7), peach (#FBE8D
 Offline: palette tokens and inline accents resolve to their greyscale luminance, including dialogs, controls and the native date picker. Selected and enabled controls retain contrast; typography and layout stay unchanged.
 
 `ui/AxiaApp.kt` contains the four main screens, `ui/PaymentSheet.kt` renders payment forms/reviews, `ui/OfflineSheets.kt` renders connection/outbox/SMS states, `ui/Sheets.kt` contains the other sheets, `ui/components` contains the shared controls and vector icons, and `ui/theme` defines the palette and typography. `AxiaHomePreview` provides an Android Studio Compose preview.
+
+## Account-entry design preview
+
+Fresh launches open the welcome screen. Choose **Get started** for the name-and-phone form, **I already have an account** for phone sign-in, or **Explore demo** to enter the original dashboard immediately. A valid Nigerian phone number opens the verification preview; any six ASCII digits complete it. No account is created, no SMS is sent, and no identity is verified. All four flavors currently use this simulation.
+
+Use **Profile → Preview welcome & sign-in** to revisit the design. Wallet funds, drafts, SMS requests, plans and dashboard navigation remain in their existing independent owner. The auth screens use the same automatic offline greyscale palette. Real account access and recovery methods remain a product/backend integration decision.
+
+Only a demo-entry navigation flag is stored in Android saved state. Form values stay in memory across configuration changes; a process-restored unfinished form starts at Welcome. Codes are cleared on resend, when leaving verification, and on completion. The flag never authorizes a financial operation.

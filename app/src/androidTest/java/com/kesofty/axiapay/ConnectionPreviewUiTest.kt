@@ -7,12 +7,19 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.espresso.Espresso
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 /** Exercises the preview controls and palette without changing the device's connectivity. */
 class ConnectionPreviewUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /** Enters the unchanged demo dashboard through the public welcome action. */
+    @Before
+    fun enterDemo() {
+        compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+    }
 
     /** Both entry points share one persisted choice and leave demo funds unchanged. */
     @Test
