@@ -1,0 +1,5 @@
+name,recipient,provider,amount
+Ada,08030000001,MTN,1500.25
+Tunde,08030000002,Airtel,1000
+Duplicate,08030000001,MTN,2000
+Broken,0803,Glo,500
