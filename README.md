@@ -52,7 +52,7 @@ Education, insurance, airtime conversion and merchant payments have service prev
 
 Recurring plans keep their original calendar anchor: a plan starting on 31 January previews 28/29 February and 31 March. The chosen frequency is included in payment review, receipts and Plans, and survives activity recreation. Creating a recurring plan does not debit the wallet or launch a background payment.
 
-The demo repository stores immutable session snapshots with integer NGN kobo. Payment use cases avoid debiting insufficient-funds requests and complete waiting requests only on an explicit action. Stable request IDs prevent repeated confirmation, restoration, or bulk retry from charging the same logical request twice. `SavedStateHandle` restores the session, form and navigation after Android recreation; this remains a demo session rather than a disk-backed financial ledger.
+The demo repository stores immutable session snapshots with integer NGN kobo. Payment use cases avoid debiting insufficient-funds requests and complete waiting requests only on an explicit action. Stable request IDs prevent repeated confirmation, restoration, or bulk retry from charging the same logical request twice. App-private atomic checkpoints restore the session, form and navigation after Android recreation. `SavedStateHandle` retains only small checkpoint identities; these files are demo snapshots, not a financial ledger.
 
 ## Offline SMS preview
 
@@ -67,7 +67,7 @@ Open the SMS card at the bottom of Payments or **Home avatar → Open SMS outbox
 3. **Send demo SMS** simulates transport only. **Try a failed-send scenario** demonstrates a failed attempt and an explicit retry with the same request ID, terms and SIM (maximum three attempts).
 4. A sent request remains **Awaiting confirmation**. Activity and the outbox retain it across recreation. Reconnect, then **Check demo status**, or use **Simulate backend reply** offline. Only this explicit simulated backend result changes demo wallet funds. An insufficient-funds result waits for explicit completion after funding.
 
-Other services and new schedules can be saved as a form draft and resumed after reconnecting. Existing schedules remain intact; changing accepted plans, funding, transfers and bulk execution need online mode, while payment execution still uses demo data. Force online only enables that demo path and does not provide real internet access. One in-progress form draft is retained, alongside the SMS outbox; both use the existing saved-state session lifetime, not permanent disk storage.
+Other services and new schedules can be saved as a form draft and resumed after reconnecting. Existing schedules remain intact; changing accepted plans, funding, transfers and bulk execution need online mode, while payment execution still uses demo data. Force online only enables that demo path and does not provide real internet access. One in-progress form draft is retained, alongside the SMS outbox; both use private checkpoints tied to the existing task/session identity, not a production durable outbox.
 
 No SMS is sent and no SMS permission is requested. No gateway phone number, wire format, enrollment/security scheme or verified reply channel is invented. The route and SIMs are sample data; carrier SMS charges are separate from the demo payment limit. The backend must authorize and settle real payments. Missing acknowledgement is not a failed payment, and reusing an SMS request through the online submission path is rejected in favour of reconciliation.
 
@@ -80,8 +80,8 @@ The app follows Clean Architecture, MVVM with MVI, and Hilt dependency injection
 | Package | Responsibility |
 | --- | --- |
 | `domain` | Android-independent payment models, exact-amount and recurrence policies, demo payment transitions, repository contract, explicit errors |
-| `application` | Validation/preparation, submission, waiting-payment completion, plan/preferences actions, batch retry, and observing the session |
-| `data` | Original demo fixtures, atomic session repository and saved-state snapshot adapter |
+| `application` | Validation/preparation, submission, waiting-payment completion, plan/preferences actions, bulk validation/queue/run/retry, and observing the session |
+| `data` | Original demo fixtures, atomic session repository and private checkpoint adapters |
 | `presentation` | Immutable screen/form state, typed intents, form reducer, ViewModel and navigation restoration |
 | `ui` | Stateless Compose screens, sheets, formatting, icons and theme |
 | `di` | Hilt modules for platform dependencies, use cases, presentation collaborators and flavor bindings |
@@ -114,8 +114,45 @@ Only a demo-entry navigation flag is stored in Android saved state. Form values 
 
 `AxiaPayApplication` owns the Hilt application component. `MainActivity` is an Android entry point and obtains `@HiltViewModel` owners through its default `ViewModelProvider`. The hand-written production factories have been removed. Domain/application classes remain plain Kotlin; shared modules provide them without DI annotations. Unit tests continue to construct controlled collaborators directly.
 
-The clock and application-context connectivity adapter are application-scoped. Each payment ViewModel receives one `@ViewModelScoped` session repository and navigation store backed by its own Hilt-supplied `SavedStateHandle`. Auth retains its separate owner and handle. No mutable wallet session becomes a singleton.
+The clock and application-context connectivity adapter are application-scoped. Each payment ViewModel receives one `@ViewModelScoped` session repository and navigation store with checkpoint identities in its own Hilt-supplied `SavedStateHandle`. Auth retains its separate owner and handle. No mutable wallet session becomes a singleton.
 
 Hilt runtime/compiler/plugin **2.60.1** and KSP **2.3.12** are pinned in the version catalog. The project keeps AGP 9.4.1 built-in Kotlin and the existing Compose compiler plugin; Java/Kotlin bytecode target 17 is used for the Hilt toolchain. `verifyAllFlavors` also compiles the generated Hilt graphs. `HiltGraphTest` exercises repository sharing within an owner, isolation across owners, and recreation against each installed flavor's actual graph, with the ordinary Android test runner. No separate Hilt test graph or test-only bindings are needed for these regression flows.
 
 Reference: [Hilt Gradle setup](https://dagger.dev/hilt/gradle-setup), [Hilt ViewModel scopes](https://dagger.dev/hilt/view-model), [AGP built-in Kotlin](https://developer.android.com/build/migrate-to-built-in-kotlin).
+
+
+## Bulk payment preview
+
+Payments opens a service picker for Airtime, Data, Electricity or TV. Each quick list contains one payment type: enter a recipient, tap **+ Add another recipient**, and continue on the same screen. The next row reuses the provider and amount or plan, while identifiers stay blank. No batch name or separate setup is required. Inline edits update the running total; review includes the final entered row and ignores only an unused new row. Immediate individual payment forms offer the same add-recipient action, carrying the current form into the matching list. Try demo list adds four same-service examples. Each list supports up to 1,000 recipients. Data and TV quotes are illustrative, with no provider purchase. Review shows the demo wallet reservation and offers funding when needed. The optional failure scenario declines the last recipient once, releases its reservation and enables a separately reviewed failed-only retry. Activity’s Batches filter opens saved per-recipient progress, including two sample histories.
+
+Independent service drafts, inline editor input, logical request IDs, reservations and outcomes use private, atomic demo checkpoints with small identities in SavedStateHandle. Leaving the screen does not interrupt an active run. Cancellation or losing internet retains queued/processing rows; restoration and reconnection never submit or resume them automatically. Use Resume demo explicitly. Bulk SMS, durable background execution and live providers are not implemented. History is bounded to 20 batches for this local demo; it is not a production storage or throughput limit. All four flavors retain this simulation through their existing Hilt composition boundary.
+
+Named reusable groups and group membership are deferred product work; quick bulk payment does not create a group.
+
+
+## Import bulk recipients
+
+In the **demo flavor only**, the import screen includes **Download CSV sample** and **Download Excel sample**. The standard files have three synthetic recipients for the selected service. **Download 1,000 recipients · CSV** generates a full-size synthetic list on the phone; airtime uses ₦100 per row so a fresh demo wallet can cover it. Data and TV samples retain their catalog prices and may require explicit demo funding. Android's Save dialog lets you put it in Downloads or another folder, then choose it for import. Samples are bundled in the demo APK and work offline. Downloading never adds recipients or submits a payment. Cancellation and save failures leave the current draft and preview intact. Dev, staging and prod contain neither this capability nor its sample assets.
+
+Choose a service in Payments → Bulk payments, then **Import list**. CSV, modern Excel (`.xlsx`) and Excel 97–2003 (`.xls`) are read locally through Android’s document picker; no storage permission or upload is required. Excel uses the first worksheet in tab order. Files are limited to 2 MB, 1,000 recipient rows plus the header, 16 columns and 256 characters per cell; XLSX expansion is bounded to 8 MB. Password protection and formulas are unsupported.
+
+Required headings (case-insensitive; column order is flexible):
+
+| Service | Columns |
+| --- | --- |
+| Airtime | `recipient`, `provider`, `amount` |
+| Data / TV | `recipient`, `provider`, `product` |
+| Electricity | `recipient`, `provider`, `product`, `amount` |
+
+`name` is optional; `phone`, `meter`, `smartcard`, `network`, `plan` and `account_type` are accepted aliases. Optional `service` must match the chosen list. Use the demo provider/product choices shown in the import guide. Amounts are naira decimals without currency symbols or thousands separators; supplied fixed-product amounts must match the demo quote. CSV supports comma separators, quoted fields, UTF-8 and BOM-marked UTF-16. In Excel, enter account identifiers as **Text** including the leading zero: numeric identifiers are flagged instead of guessed.
+
+The preview shows source row numbers, valid entries, duplicates and actionable errors. Select the valid rows to add; invalid and unselected rows are excluded explicitly. Selection must fit the existing 1,000-recipient list, including unfinished input. Imports preserve manual recipients and the current editor, and never submit a payment. Local files can be imported offline; cloud-only documents may need downloading first. Rotation retains the preview; process recreation retains the draft and returns to recipient entry without reopening a file grant. The original file and preview are not persisted or uploaded.
+
+
+## Large-batch verification
+
+Recipient entry has a pinned search field, compact lazy rows with stable IDs, multi-selection and confirmed removal. Search never changes the full-list total. Imports have ready/needs-attention/selected filters and explicit select-available/clear actions. Review and progress can search the full batch; every recipient retains its outcome and attempt identity. Large demos advance in groups of up to 25, with atomic reservation/refund checkpoints rather than a save per recipient.
+
+`BulkScaleTest` covers all four services at 1,000 rows, overflow, exact totals, last-row editing and interrupted/resumed execution. `RecipientDocumentParserTest` exercises 1,000 and 1,001 rows in CSV, XLSX and XLS. `BulkScaleDeviceTest` covers the full Hilt/UI/import/offline/retry path and asserts the lazy viewport does not compose the whole list. `BulkCheckpointTest` exercises large draft/reservation restoration, small saved-state payloads, write failure, corrupt-read recovery and cancellation during commit.
+
+The JVM preparation probe measured 1,000 rows at approximately 458 ms before linear duplicate checks and 10 ms afterward on this development host. These are diagnostic CPU measurements, not phone frame-rate guarantees. Device checks use an explicitly selected emulator; production throughput still depends on future backend and provider integrations.
