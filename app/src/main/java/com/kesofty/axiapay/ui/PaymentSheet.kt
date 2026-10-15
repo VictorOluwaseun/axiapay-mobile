@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -40,17 +41,11 @@ private fun ChoiceRow(
     onSelect: (String) -> Unit,
 ) {
     Row(
-        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         options.forEach { label ->
-            FilterChip(
-                selected == label,
-                { onSelect(label) },
-                { Text(label, style = MaterialTheme.typography.labelMedium) },
-                shape = RoundedCornerShape(12.dp),
-                border = controlBorder(selected == label),
-            )
+            SelectionChip(label, selected == label, { onSelect(label) })
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -720,21 +721,14 @@ private fun ActivityScreen(
         }
         item {
             Row(
-                Modifier.horizontalScroll(rememberScrollState()),
+                Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 listOf("All", "Batches", "Money in", "Money out", "Pending").forEach { name ->
-                    FilterChip(
+                    SelectionChip(
+                        if (name == "Batches") stringResource(R.string.bulk_batches) else name,
                         filter == name,
                         { onFilter(name) },
-                        {
-                            Text(
-                                if (name == "Batches") stringResource(R.string.bulk_batches)
-                                else name,
-                            )
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        border = controlBorder(filter == name),
                     )
                 }
             }

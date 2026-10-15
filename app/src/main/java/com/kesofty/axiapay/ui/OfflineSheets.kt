@@ -3,6 +3,7 @@ package com.kesofty.axiapay.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -166,15 +167,9 @@ internal fun ColumnScope.OfflinePaymentReview(
     }
     if (form.offlineEligible) {
         Text("Sample SIM", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             (1..2).forEach { sim ->
-                FilterChip(
-                    form.smsSim == sim,
-                    { onIntent(PaymentIntent.Sim(sim)) },
-                    { Text("SIM $sim") },
-                    shape = RoundedCornerShape(12.dp),
-                    border = controlBorder(form.smsSim == sim),
-                )
+                SelectionChip("SIM $sim", form.smsSim == sim, { onIntent(PaymentIntent.Sim(sim)) })
             }
         }
         Text(

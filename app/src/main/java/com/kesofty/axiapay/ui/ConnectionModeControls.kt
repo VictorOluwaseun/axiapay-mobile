@@ -1,20 +1,14 @@
 package com.kesofty.axiapay.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.kesofty.axiapay.domain.ConnectionMode
 import com.kesofty.axiapay.presentation.AxiaIntent
+import com.kesofty.axiapay.ui.components.SelectionCard
 import com.kesofty.axiapay.ui.theme.*
 
 /** Renders session-scoped demo choices; selection is emitted through the existing MVI contract. */
@@ -28,11 +22,8 @@ internal fun ConnectionModeControls(mode: ConnectionMode, onIntent: (AxiaIntent)
             color = Muted,
         )
         Column(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(Canvas)
-                .border(controlBorder(), RoundedCornerShape(20.dp))
-                .selectableGroup(),
+            Modifier.fillMaxWidth().selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ConnectionMode.entries.forEach { option ->
                 ConnectionModeOption(option, mode == option) {
@@ -46,15 +37,13 @@ internal fun ConnectionModeControls(mode: ConnectionMode, onIntent: (AxiaIntent)
 /** Makes each complete row one accessible radio target, with readable wrapping descriptions. */
 @Composable
 private fun ConnectionModeOption(mode: ConnectionMode, selected: Boolean, select: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .selectable(selected = selected, role = Role.RadioButton, onClick = select)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    SelectionCard(
+        selected,
+        select,
+        Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        RadioButton(selected = selected, onClick = null)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 when (mode) {
                     ConnectionMode.Automatic -> "Automatic"

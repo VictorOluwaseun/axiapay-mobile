@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.BulkService
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.components.PrimaryButton
+import com.kesofty.axiapay.ui.components.SelectionChip
 import com.kesofty.axiapay.ui.theme.*
 
 /**
@@ -240,7 +242,7 @@ private fun ImportListControls(state: BulkImportState, emit: (BulkIntent) -> Uni
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BulkRecipientSearch(state.query) { emit(BulkIntent.SearchImport(it)) }
         Row(
-            Modifier.horizontalScroll(rememberScrollState()),
+            Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ImportRecipientFilter.entries.forEach { filter ->
@@ -254,11 +256,10 @@ private fun ImportListControls(state: BulkImportState, emit: (BulkIntent) -> Uni
                         ImportRecipientFilter.Selected ->
                             stringResource(R.string.import_selected_filter, state.selectedIds.size)
                     }
-                FilterChip(
+                SelectionChip(
+                    label,
                     state.filter == filter,
                     { emit(BulkIntent.FilterImport(filter)) },
-                    { Text(label) },
-                    border = controlBorder(state.filter == filter),
                 )
             }
         }

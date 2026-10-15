@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -417,14 +418,13 @@ private fun LazyListScope.bulkEditorItems(state: BulkFlowState, emit: (BulkInten
 /** Wraps product choices instead of hiding options offscreen at larger font sizes. */
 @Composable
 private fun BulkChoices(choices: List<String>, selected: String, onSelect: (String) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        Modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         choices.forEach { value ->
-            FilterChip(
-                selected == value,
-                { onSelect(value) },
-                { Text(value) },
-                border = controlBorder(selected == value),
-            )
+            SelectionChip(value, selected == value, { onSelect(value) })
         }
     }
 }

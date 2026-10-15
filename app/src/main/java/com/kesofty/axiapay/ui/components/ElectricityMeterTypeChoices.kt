@@ -1,13 +1,11 @@
 package com.kesofty.axiapay.ui.components
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,38 +29,19 @@ fun ElectricityMeterTypeChoices(
             style = MaterialTheme.typography.titleMedium,
             color = Ink,
         )
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth(), space = ControlBorderWidth) {
-            ElectricityMeterType.entries.forEachIndexed { index, type ->
-                SegmentedButton(
+        Row(
+            Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ElectricityMeterType.entries.forEach { type ->
+                SelectionChip(
+                    label = stringResource(electricityMeterTypeLabel(type)),
                     selected = selected == type,
-                    onClick = { onSelect(type) },
-                    shape =
-                        SegmentedButtonDefaults.itemShape(
-                            index,
-                            ElectricityMeterType.entries.size,
-                            RoundedCornerShape(12.dp),
-                        ),
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("meter-type-${type.name}"),
-                    border =
-                        BorderStroke(
-                            ControlBorderWidth,
-                            if (selected == type) Pine else ControlOutline,
-                        ),
-                    colors =
-                        SegmentedButtonDefaults.colors(
-                            activeContainerColor = Mint,
-                            activeContentColor = Pine,
-                            activeBorderColor = Pine,
-                            inactiveContainerColor = Color.White,
-                            inactiveContentColor = Ink,
-                            inactiveBorderColor = ControlOutline,
-                        ),
-                ) {
-                    Text(
-                        stringResource(electricityMeterTypeLabel(type)),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
+                    onSelect = { onSelect(type) },
+                    modifier =
+                        Modifier.weight(1f).fillMaxHeight().testTag("meter-type-${type.name}"),
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                )
             }
         }
     }

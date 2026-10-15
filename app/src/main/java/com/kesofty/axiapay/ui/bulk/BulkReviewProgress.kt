@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -249,7 +250,7 @@ internal fun BulkProgress(
             Surface(color = Canvas) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
+                        Modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         BulkRecipientFilter.entries.forEach { filter ->
@@ -261,11 +262,10 @@ internal fun BulkProgress(
                                         R.string.bulk_filter_successful
                                     BulkRecipientFilter.Failed -> R.string.bulk_filter_failed
                                 }
-                            FilterChip(
+                            SelectionChip(
+                                stringResource(label),
                                 state.filter == filter,
                                 { onIntent(BulkIntent.Filter(filter)) },
-                                { Text(stringResource(label)) },
-                                border = controlBorder(state.filter == filter),
                             )
                         }
                     }

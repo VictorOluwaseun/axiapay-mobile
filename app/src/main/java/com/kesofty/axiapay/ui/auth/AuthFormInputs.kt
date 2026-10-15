@@ -2,19 +2,16 @@ package com.kesofty.axiapay.ui.auth
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.AuthMethod
+import com.kesofty.axiapay.ui.components.SelectionChip
 import com.kesofty.axiapay.ui.theme.*
 
 /** Describes one UI choice without owning its selection or invoking an application operation. */
@@ -47,39 +45,24 @@ internal fun AuthContactSelector(
             AuthChoice(AuthContactType.Phone, R.string.auth_contact_phone, "auth-contact-phone"),
             AuthChoice(AuthContactType.Email, R.string.auth_contact_email, "auth-contact-email"),
         )
-    SingleChoiceSegmentedButtonRow(
-        Modifier.widthIn(max = 260.dp).fillMaxWidth().height(IntrinsicSize.Min),
+    Row(
+        Modifier.widthIn(max = 260.dp).fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        choices.forEachIndexed { index, choice ->
-            SegmentedButton(
+        choices.forEach { choice ->
+            SelectionChip(
+                label = stringResource(choice.label),
                 selected = selected == choice.value,
-                onClick = { onSelect(choice.value) },
-                shape = SegmentedButtonDefaults.itemShape(index, choices.size),
-                modifier =
-                    Modifier.weight(1f)
-                        .fillMaxHeight()
-                        .heightIn(min = 48.dp)
-                        .testTag(choice.testTag),
+                onSelect = { onSelect(choice.value) },
+                modifier = Modifier.weight(1f).fillMaxHeight().testTag(choice.testTag),
                 enabled = enabled,
-                border = controlBorder(selected == choice.value, enabled),
-                colors =
-                    SegmentedButtonDefaults.colors(
-                        activeContainerColor = Mint,
-                        activeContentColor = Pine,
-                        activeBorderColor = Pine,
-                        inactiveContainerColor = Color.White,
-                        inactiveContentColor = Ink,
-                        inactiveBorderColor = ControlOutline,
-                    ),
-                label = {
-                    Text(stringResource(choice.label), style = MaterialTheme.typography.labelLarge)
-                },
+                textStyle = MaterialTheme.typography.labelLarge,
             )
         }
     }
 }
 
-/** Shows quieter radio choices with a full-row touch target and a single accessible selection. */
+/** Keeps method labels stationary inside full-target radio cards owned by the auth ViewModel. */
 @Composable
 internal fun AuthMethodSelector(
     selected: AuthMethod,
@@ -91,39 +74,19 @@ internal fun AuthMethodSelector(
             AuthChoice(AuthMethod.OneTimeCode, R.string.auth_method_code, "auth-method-code"),
             AuthChoice(AuthMethod.Password, R.string.auth_method_password, "auth-method-password"),
         )
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup()) {
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         choices.forEach { choice ->
-            Row(
-                Modifier.weight(1f)
-                    .fillMaxHeight()
-                    .heightIn(min = 48.dp)
-                    .testTag(choice.testTag)
-                    .selectable(
-                        selected = selected == choice.value,
-                        enabled = enabled,
-                        role = Role.RadioButton,
-                        onClick = { onSelect(choice.value) },
-                    )
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = selected == choice.value,
-                    onClick = null,
-                    enabled = enabled,
-                    colors =
-                        RadioButtonDefaults.colors(
-                            selectedColor = Pine,
-                            unselectedColor = ControlOutline,
-                        ),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(choice.label),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (enabled) Ink else Muted.copy(alpha = .38f),
-                )
-            }
+            SelectionChip(
+                label = stringResource(choice.label),
+                selected = selected == choice.value,
+                onSelect = { onSelect(choice.value) },
+                modifier = Modifier.weight(1f).fillMaxHeight().testTag(choice.testTag),
+                enabled = enabled,
+                textStyle = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
 }
