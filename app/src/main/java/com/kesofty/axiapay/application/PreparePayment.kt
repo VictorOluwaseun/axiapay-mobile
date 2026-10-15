@@ -43,10 +43,25 @@ data class PaymentValidation(
 
 /** Illustrative providers and quotes belong to the demo application, not to a Composable. */
 object DemoCatalog {
+    /** Shares demo provider identities across individual, scheduled, bulk and imported forms. */
     fun providers(type: PaymentType): List<String> =
         when (type) {
             PaymentType.TV -> listOf("DStv", "GOtv", "StarTimes")
-            PaymentType.Electricity -> listOf("Ikeja Electric", "Eko Electric", "Abuja Electric")
+            PaymentType.Electricity ->
+                listOf(
+                    "Ikeja Electric",
+                    "Eko Electric",
+                    "Abuja Electric",
+                    "Kano Electric",
+                    "Port Harcourt Electric",
+                    "Jos Electric",
+                    "Kaduna Electric",
+                    "Enugu Electric",
+                    "Ibadan Electric",
+                    "Benin Electric",
+                    "Aba Electric",
+                    "Yola Electric",
+                )
             PaymentType.Transfer -> listOf("GTBank", "Access", "UBA")
             PaymentType.Funding -> emptyList()
             else -> listOf("MTN", "Airtel", "Glo")

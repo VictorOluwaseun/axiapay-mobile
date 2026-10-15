@@ -1,0 +1,10 @@
+<resources>
+    <string name="electricity_provider_label">Electricity provider</string>
+    <string name="electricity_provider_change">Change electricity provider</string>
+    <string name="electricity_provider_close">Close provider list</string>
+    <string name="electricity_provider_search">Search providers</string>
+    <string name="electricity_provider_search_hint">Name or abbreviation</string>
+    <string name="electricity_provider_clear_search">Clear provider search</string>
+    <string name="electricity_provider_no_results">No providers found</string>
+    <string name="electricity_provider_search_help">Try another name or abbreviation.</string>
+</resources>

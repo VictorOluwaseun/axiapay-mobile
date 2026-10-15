@@ -1,0 +1,110 @@
+Provider logo credits
+Logos identify providers in the AxiaPay UI; they do not imply endorsement or live integration.
+
+MTN
+Source: https://www.mtn.ng/wp-content/themes/mtn-vivid-wp/public/img/mtn-logo.svg?x59954
+Attribution: MTN
+License: Provider-owned brand artwork; source and brand ownership retained.
+Android SDK 32.4.1 Svg2Vector; original SVG retained beside this manifest.
+
+Airtel
+Source: https://commons.wikimedia.org/wiki/File:Airtel_Africa_logo.svg
+Attribution: Airtel
+License: Public-domain simple logo per linked Commons record; trademark retained by its owner.
+Android SDK 32.4.1 Svg2Vector; intrinsic size bounded, original viewport and paths retained. Source SVG is in artwork/providers.
+
+Glo
+Source: https://www.gloworld.com/logo.png
+Attribution: Glo
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+StarTimes
+Source: https://www.startimestv.com/Uploads/Picture/2016/08/23/s57bc2bb73663d.png
+Attribution: StarTimes
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Ikeja Electric
+Source: https://www.ikejaelectric.com/wp-content/uploads/2020/05/Ikeja-Electric-Logo-new-1.png
+Attribution: Ikeja Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Eko Electric
+Source: https://ekedp.com/front/assets/images/resources/logo-1.png
+Attribution: Eko Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Abuja Electric
+Source: https://www.abujaelectricity.com/wp-content/uploads/2024/01/aedc_logo_02.png
+Attribution: Abuja Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+DStv
+Source: https://commons.wikimedia.org/wiki/File:DStv_Logo_(2023).svg
+Attribution: DStv
+License: Public-domain simple logo per linked Commons record; trademark retained by its owner.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+GOtv
+Source: https://commons.wikimedia.org/wiki/File:GOTV_logo.png
+Attribution: GOtv
+License: Public-domain simple logo per linked Commons record; trademark retained by its owner.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Kano Electric
+Source: https://kedco.ng/public/wp-content/uploads/2024/04/kedcologo.png
+Attribution: Kano Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Port Harcourt Electric
+Source: https://phed.com.ng/PHED-logo-transparent.png
+Attribution: Port Harcourt Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Jos Electric
+Source: https://jedplc.com/img/jed-logo.png
+Attribution: Jos Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Kaduna Electric
+Source: https://kadunaelectric.com/static/images/kelogo.svg
+Attribution: Kaduna Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original embedded PNG decoded from the official SVG; source SVG retained in artwork/providers. Display fitting and greyscale only.
+
+Ibadan Electric
+Source: https://www.ibedc.com/assets/img/logo.png
+Attribution: Ibadan Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Aba Electric
+Source: https://abapower.com/apl-logo.jpg
+Attribution: Aba Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Yola Electric
+Source: https://yedc.com.ng/assets/images/logo.png
+Attribution: Yola Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Enugu Electric
+Source: https://enugudisco.com/templates/kdsg2/images/s5_logo.png
+Attribution: Enugu Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Benin Electric
+Source: https://beninelectric.com/images/BEDCLogo.png
+Attribution: Benin Electric
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
