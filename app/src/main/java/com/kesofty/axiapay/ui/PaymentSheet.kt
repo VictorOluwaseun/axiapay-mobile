@@ -117,6 +117,11 @@ private fun ColumnScope.PaymentReview(
         InfoRow("Payment", form.reviewTitle)
         if (!form.isFunding) InfoRow("Recipient", input.recipient)
         if (form.service == "Data") InfoRow("Sample plan", "${input.dataPlan} • 30 days")
+        if (form.isElectricity)
+            InfoRow(
+                stringResource(R.string.electricity_meter_type),
+                stringResource(electricityMeterTypeLabel(input.electricityMeterType)),
+            )
         InfoRow("Fee", "₦0.00 (demo)")
         InfoRow(
             if (recurring) "First payment" else "When",
@@ -167,6 +172,11 @@ private fun ColumnScope.PaymentFields(
     addRecipient: () -> Unit,
 ) {
     ServiceChoices(form, onIntent)
+    if (form.isElectricity)
+        ElectricityMeterTypeChoices(
+            form.input.electricityMeterType,
+            { onIntent(PaymentIntent.MeterType(it)) },
+        )
     if (!form.isFunding) RecipientField(form, onIntent)
     if (form.service == "Data") {
         Text("Sample monthly plans", style = MaterialTheme.typography.titleSmall)

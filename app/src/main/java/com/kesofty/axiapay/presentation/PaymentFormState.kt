@@ -154,6 +154,8 @@ class PaymentFormPresenter(private val prepare: PreparePayment, private val cloc
                 is PaymentIntent.Destination -> changeDestination(form, intent.value)
                 is PaymentIntent.Recipient ->
                     form.copy(input = input.copy(recipient = intent.value.take(30)))
+                is PaymentIntent.MeterType ->
+                    form.copy(input = input.copy(electricityMeterType = intent.value))
                 is PaymentIntent.Amount ->
                     form.copy(input = input.copy(amount = intent.value.take(10)))
                 is PaymentIntent.DataPlan ->
@@ -185,6 +187,7 @@ class PaymentFormPresenter(private val prepare: PreparePayment, private val cloc
                     provider = defaultProvider(type),
                     amount = defaultAmount(type),
                     dataPlan = "8 GB",
+                    electricityMeterType = ElectricityMeterType.Prepaid,
                 ),
         )
 

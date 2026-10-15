@@ -1,6 +1,7 @@
 package com.kesofty.axiapay.application
 
 import com.kesofty.axiapay.domain.BulkService
+import com.kesofty.axiapay.domain.ElectricityMeterType
 
 /** Illustrative options only; eligibility and live quotes will come from backend contracts. */
 object BulkServiceCatalog {
@@ -21,7 +22,7 @@ object BulkServiceCatalog {
         when (service) {
             BulkService.Airtime -> emptyList()
             BulkService.Data -> listOf("2 GB", "8 GB", "20 GB")
-            BulkService.Electricity -> listOf("Prepaid", "Postpaid")
+            BulkService.Electricity -> ElectricityMeterType.entries.map { it.name }
             BulkService.TV -> listOf("Basic preview", "Plus preview")
         }
 

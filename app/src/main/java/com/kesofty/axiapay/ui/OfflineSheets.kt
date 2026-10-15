@@ -9,8 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.components.*
@@ -155,6 +157,11 @@ internal fun ColumnScope.OfflinePaymentReview(
         InfoRow("Payment", form.reviewTitle)
         if (!form.isFunding) InfoRow("Recipient", form.input.recipient)
         if (form.service == "Data") InfoRow("Sample plan", "${form.input.dataPlan} • 30 days")
+        if (form.isElectricity)
+            InfoRow(
+                stringResource(R.string.electricity_meter_type),
+                stringResource(electricityMeterTypeLabel(form.input.electricityMeterType)),
+            )
         InfoRow("Cached balance", if (state.hidden) "••••" else money(state.balance, true))
     }
     if (form.offlineEligible) {

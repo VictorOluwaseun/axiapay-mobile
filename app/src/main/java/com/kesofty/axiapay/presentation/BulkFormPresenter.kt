@@ -166,6 +166,7 @@ class BulkFormPresenter(private val prepare: PrepareBulkBatch, private val newId
         val product =
             when (service) {
                 BulkService.Data -> form.input.dataPlan
+                BulkService.Electricity -> form.input.electricityMeterType.name
                 BulkService.TV ->
                     BulkServiceCatalog.products(service)
                         .firstOrNull { BulkServiceCatalog.quote(service, it) == form.input.amount }

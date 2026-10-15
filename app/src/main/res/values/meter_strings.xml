@@ -1,0 +1,5 @@
+<resources>
+    <string name="electricity_meter_type">Meter type</string>
+    <string name="electricity_meter_prepaid">Prepaid</string>
+    <string name="electricity_meter_postpaid">Postpaid</string>
+</resources>

@@ -127,6 +127,12 @@ class PrepareBulkBatch(private val preparePayment: PreparePayment, private val c
             recipient = canonicalReference(input),
             amount = BulkServiceCatalog.quote(input.service, input.product) ?: input.amount,
             dataPlan = input.product,
+            // validateRecipient rejects unknown electricity products before constructing these
+            // terms.
+            electricityMeterType =
+                if (input.service == BulkService.Electricity)
+                    ElectricityMeterType.valueOf(input.product)
+                else ElectricityMeterType.Prepaid,
             date = LocalDate.now(clock),
         )
 

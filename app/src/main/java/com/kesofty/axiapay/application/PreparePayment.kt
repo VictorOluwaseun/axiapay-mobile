@@ -29,6 +29,7 @@ data class PaymentInput(
     val scheduled: Boolean = false,
     val date: LocalDate,
     val recurrence: Recurrence = Recurrence.Once,
+    val electricityMeterType: ElectricityMeterType = ElectricityMeterType.Prepaid,
 )
 
 data class PaymentValidation(
@@ -112,6 +113,8 @@ class PreparePayment(private val clock: Clock) {
                 PaymentType.Funding -> "Demo wallet funding"
                 PaymentType.Transfer -> "${transferTarget(input)} • ${input.recipient}"
                 PaymentType.Data -> "${input.provider} • ${input.dataPlan} • ${input.recipient}"
+                PaymentType.Electricity ->
+                    "${input.provider} • ${input.electricityMeterType.name} • ${input.recipient}"
                 else -> "${input.provider} • ${input.recipient}"
             }
         val date = input.date.takeIf { input.scheduled && input.type != PaymentType.Funding }

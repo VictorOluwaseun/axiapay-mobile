@@ -2,6 +2,7 @@ package com.kesofty.axiapay.presentation
 
 import androidx.lifecycle.SavedStateHandle
 import com.kesofty.axiapay.application.*
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.Recurrence
 import java.time.LocalDate
 import org.json.JSONObject
@@ -88,6 +89,7 @@ internal object NavigationSnapshotCodec {
             put("amount", input.amount)
             put("destination", input.destination.name)
             put("plan", input.dataPlan)
+            put("meterType", input.electricityMeterType.name)
             put("scheduled", input.scheduled)
             put("date", input.date.toString())
             put("recurrence", input.recurrence.name)
@@ -107,6 +109,10 @@ internal object NavigationSnapshotCodec {
                 json.getBoolean("scheduled"),
                 LocalDate.parse(json.getString("date")),
                 Recurrence.valueOf(json.getString("recurrence")),
+                electricityMeterType =
+                    ElectricityMeterType.valueOf(
+                        json.optString("meterType", ElectricityMeterType.Prepaid.name),
+                    ),
             ),
             json.getBoolean("reviewing"),
             smsSim = json.optInt("sim", 1),

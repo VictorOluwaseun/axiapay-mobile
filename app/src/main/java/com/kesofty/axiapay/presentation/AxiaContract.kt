@@ -2,6 +2,7 @@ package com.kesofty.axiapay.presentation
 
 import com.kesofty.axiapay.domain.ConnectionMode
 import com.kesofty.axiapay.domain.DemoSession
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import java.time.LocalDate
 
 sealed interface Sheet {
@@ -103,6 +104,9 @@ sealed interface PaymentIntent {
     data class Recipient(val value: String) : PaymentIntent
 
     data class Amount(val value: String) : PaymentIntent
+
+    /** Changes electricity billing terms without submitting or changing the request identity. */
+    data class MeterType(val value: ElectricityMeterType) : PaymentIntent
 
     data class DataPlan(val value: String) : PaymentIntent
 
