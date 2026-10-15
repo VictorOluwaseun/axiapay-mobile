@@ -357,7 +357,12 @@ private fun LazyListScope.bulkEditorItems(state: BulkFlowState, emit: (BulkInten
                     onSelect = selectProvider,
                 )
             else ->
-                ProviderChoices(state.editorProviders, editor.provider, onSelect = selectProvider)
+                ProviderChoices(
+                    state.editorProviders,
+                    editor.provider,
+                    showInternationalAirtime = state.showsInternationalAirtime,
+                    onSelect = selectProvider,
+                )
         }
     }
     item(key = "${editor.id}-reference") {

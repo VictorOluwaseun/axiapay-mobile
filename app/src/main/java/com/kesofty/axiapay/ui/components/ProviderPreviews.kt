@@ -11,7 +11,7 @@ import com.kesofty.axiapay.ui.theme.AxiapayTheme
 import com.kesofty.axiapay.ui.theme.Canvas
 
 /** Keeps all bundled provider artwork reviewable at compact width in both connection palettes. */
-@Preview(name = "Provider logos", widthDp = 360, heightDp = 300, showBackground = true)
+@Preview(name = "Provider logos", widthDp = 360, heightDp = 440, showBackground = true)
 @Composable
 private fun ProviderLogosPreview() {
     ProviderGallery(offline = false)
@@ -21,7 +21,7 @@ private fun ProviderLogosPreview() {
 @Preview(
     name = "Offline provider logos",
     widthDp = 360,
-    heightDp = 300,
+    heightDp = 500,
     showBackground = true,
     fontScale = 1.3f,
 )
@@ -36,7 +36,12 @@ private fun ProviderGallery(offline: Boolean) {
     AxiapayTheme(offline = offline) {
         Surface(color = Canvas) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ProviderChoices(listOf("MTN", "Airtel", "Glo"), "MTN", onSelect = {})
+                ProviderChoices(
+                    listOf("MTN", "Airtel", "Glo", "T2 (9mobile)", "Smile"),
+                    "T2 (9mobile)",
+                    showInternationalAirtime = true,
+                    onSelect = {},
+                )
                 ProviderChoices(listOf("DStv", "GOtv", "StarTimes"), "GOtv", onSelect = {})
                 ElectricityProviderSelector(
                     electricityPreviewProviders,

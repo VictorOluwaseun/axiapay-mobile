@@ -216,6 +216,30 @@
       "attribution": "Benin Electric",
       "license": "Provider-owned brand artwork; source and brand ownership retained.",
       "license_url": null
+    },
+    {
+      "provider": "T2 (9mobile)",
+      "asset": "app/src/main/res/drawable-nodpi/provider_t2.png",
+      "source_page": "https://t2mobile.com.ng/",
+      "download_url": "https://t2mobile.com.ng/images/icon-192.png",
+      "retrieved": "2026-10-15",
+      "sha256": "1bd8b9453e0f9a783db3c31bd7d4f1c2744ef345c44db14912c3d27cb4ee1519",
+      "conversion": "Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.",
+      "attribution": "T2mobile",
+      "license": "Provider-owned brand artwork; source and brand ownership retained.",
+      "license_url": null
+    },
+    {
+      "provider": "Smile",
+      "asset": "app/src/main/res/drawable-nodpi/provider_smile.png",
+      "source_page": "https://smile.com.ng/home",
+      "download_url": "https://smile.com.ng/pub/media/wysiwyg/smile-logo.png",
+      "retrieved": "2026-10-15",
+      "sha256": "ac842ad1193a291264ee03c4e86b1dff112bc89e8a30f8ad194b2df7a3fb4f6a",
+      "conversion": "Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.",
+      "attribution": "Smile Communications Nigeria",
+      "license": "Provider-owned brand artwork; source and brand ownership retained.",
+      "license_url": null
     }
   ]
 }

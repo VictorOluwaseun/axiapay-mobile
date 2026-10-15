@@ -245,7 +245,11 @@ private fun ServiceChoices(form: PaymentFormState, onIntent: (PaymentIntent) -> 
         )
         return
     }
-    ProviderChoices(form.providerOptions, form.input.provider) {
+    ProviderChoices(
+        form.providerOptions,
+        form.input.provider,
+        showInternationalAirtime = form.showsInternationalAirtime,
+    ) {
         onIntent(PaymentIntent.Provider(it))
     }
 }

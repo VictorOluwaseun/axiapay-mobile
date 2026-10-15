@@ -65,7 +65,8 @@ object DemoCatalog {
                 )
             PaymentType.Transfer -> listOf("GTBank", "Access", "UBA")
             PaymentType.Funding -> emptyList()
-            else -> listOf("MTN", "Airtel", "Glo")
+            PaymentType.Airtime,
+            PaymentType.Data -> listOf("MTN", "Airtel", "Glo", "T2 (9mobile)", "Smile")
         }
 
     fun dataAmount(plan: String): String? =

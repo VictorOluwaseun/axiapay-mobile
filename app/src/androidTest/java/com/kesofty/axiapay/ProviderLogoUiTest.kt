@@ -164,4 +164,55 @@ class ProviderLogoUiTest {
             .performScrollToNode(hasTestTag("electricity-provider-Yola Electric"))
         compose.onNodeWithTag("electricity-provider-Yola Electric").assertIsSelected()
     }
+
+    /** Additional logos retain draft identity while the international entry cannot be selected. */
+    @Test
+    fun addedAirtimeProviderRestoresAndInternationalRemainsDisabled() {
+        compose.onNodeWithText("Airtime", useUnmergedTree = true).performClick()
+        compose
+            .onNodeWithContentDescription("T2 (9mobile)")
+            .performScrollTo()
+            .performClick()
+            .assertIsSelected()
+        compose.onNodeWithContentDescription("Smile").assertIsNotSelected()
+        compose
+            .onNodeWithTag("provider-international-airtime")
+            .performScrollTo()
+            .assertIsNotEnabled()
+            .performTouchInput { click() }
+        compose.onNodeWithContentDescription("T2 (9mobile)").assertIsSelected()
+        compose.onNodeWithText("Phone number").performScrollTo().performTextInput("08030000001")
+        compose.onNodeWithText("Amount (₦)").performScrollTo().performTextInput("1250.25")
+        dismissKeyboard()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithContentDescription("T2 (9mobile)").performScrollTo().assertIsSelected()
+        compose
+            .onNodeWithTag("provider-international-airtime")
+            .performScrollTo()
+            .assertIsNotEnabled()
+        compose.onNodeWithText("Review payment").performScrollTo().performClick()
+        compose.onNodeWithText("T2 (9mobile) Airtime").assertIsDisplayed()
+    }
+
+    /** Data uses the same new artwork and carries Smile into the next bulk recipient. */
+    @Test
+    fun smileDataBecomesTheNextBulkRecipientDefault() {
+        compose.onNodeWithText("Data", useUnmergedTree = true).performClick()
+        compose
+            .onNodeWithContentDescription("Smile")
+            .performScrollTo()
+            .performClick()
+            .assertIsSelected()
+        compose.onNodeWithTag("provider-international-airtime").assertDoesNotExist()
+        compose.onNodeWithText("Phone number").performScrollTo().performTextInput("08030000001")
+        dismissKeyboard()
+        compose.onNodeWithText("Add another recipient").performScrollTo().performClick()
+        compose.activityRule.scenario.recreate()
+        compose
+            .onNodeWithTag("bulk-recipients-list")
+            .performScrollToNode(hasTestTag("provider-Smile"))
+        compose.onNodeWithContentDescription("Smile").assertIsSelected()
+        compose.onNodeWithContentDescription("T2 (9mobile)").assertIsNotSelected()
+        compose.onNodeWithTag("provider-international-airtime").assertDoesNotExist()
+    }
 }

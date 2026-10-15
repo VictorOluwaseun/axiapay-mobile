@@ -46,7 +46,11 @@ data class BulkFlowState(
     val selectedRecipientIds: Set<String> = emptySet(),
     val confirmingRemoval: Boolean = false,
     val providerPicker: ProviderPickerState = ProviderPickerState(),
-)
+) {
+    /** Keeps the unavailable international route outside this list's valid provider terms. */
+    val showsInternationalAirtime
+        get() = editor?.service == BulkService.Airtime
+}
 
 /** Explicit edits and commands enter the same ViewModel; only confirmation can reserve funds. */
 sealed interface BulkIntent {

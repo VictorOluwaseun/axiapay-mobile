@@ -25,6 +25,8 @@ enum class Glyph {
     Calendar,
     Phone,
     Wifi,
+    /** Country and network selection for international airtime. */
+    Globe,
     Bolt,
     Tv,
     School,
@@ -129,6 +131,11 @@ fun AxiaIcon(
                     )
                     drawArc(color, 218f, 104f, false, Offset(9f, 14f), Size(6f, 6f), style = stroke)
                     drawCircle(color, 1.2f, Offset(12f, 20f))
+                }
+                Glyph.Globe -> {
+                    circle(12f, 12f, 9f)
+                    drawOval(color, Offset(8f, 3f), Size(8f, 18f), style = stroke)
+                    line(3f, 12f, 21f, 12f)
                 }
                 Glyph.Bolt -> line(13f, 2f, 4f, 14f, 11f, 14f, 10f, 22f, 20f, 9f, 13f, 9f, 13f, 2f)
                 Glyph.Tv -> {

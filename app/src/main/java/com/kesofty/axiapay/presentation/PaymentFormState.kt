@@ -24,6 +24,10 @@ data class PaymentFormState(
     val isElectricity
         get() = input.type == PaymentType.Electricity
 
+    /** International airtime is a visible placeholder and is never an eligible provider. */
+    val showsInternationalAirtime
+        get() = input.type == PaymentType.Airtime
+
     /** Only immediate service payments can expand into a same-service recipient list. */
     val supportsMoreRecipients
         get() =

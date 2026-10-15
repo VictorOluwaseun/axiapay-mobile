@@ -108,3 +108,15 @@ Source: https://beninelectric.com/images/BEDCLogo.png
 Attribution: Benin Electric
 License: Provider-owned brand artwork; source and brand ownership retained.
 Original downloaded image bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+T2 (9mobile)
+Source: https://t2mobile.com.ng/images/icon-192.png
+Attribution: T2mobile
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.
+
+Smile
+Source: https://smile.com.ng/pub/media/wysiwyg/smile-logo.png
+Attribution: Smile Communications Nigeria
+License: Provider-owned brand artwork; source and brand ownership retained.
+Original downloaded PNG bytes; aspect-ratio fitting and greyscale are applied only at display time.

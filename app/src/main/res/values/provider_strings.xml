@@ -7,4 +7,6 @@
     <string name="electricity_provider_clear_search">Clear provider search</string>
     <string name="electricity_provider_no_results">No providers found</string>
     <string name="electricity_provider_search_help">Try another name or abbreviation.</string>
+    <string name="provider_international_airtime">International airtime</string>
+    <string name="provider_coming_soon">Coming soon</string>
 </resources>
