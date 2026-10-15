@@ -62,6 +62,11 @@ object DemoSessionSeed {
                     recurrence = Recurrence.Monthly,
                 ),
             )
-        return DemoSession(balance = 12_845_000L, payments = payments, plans = plans)
+        return DemoSession(
+            balance = 12_845_000L,
+            payments = payments,
+            plans = plans,
+            batches = DemoBulkSeed.history(today),
+        )
     }
 }

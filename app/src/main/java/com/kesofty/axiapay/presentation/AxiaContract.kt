@@ -17,8 +17,6 @@ sealed interface Sheet {
 
     data object Profile : Sheet
 
-    data object Bulk : Sheet
-
     data object Offline : Sheet
 }
 
@@ -28,6 +26,7 @@ data class NavigationState(
     val serviceQuery: String = "",
     val activityFilter: String = "All",
     val draft: PaymentFormState? = null,
+    val bulk: BulkFlowState = BulkFlowState(),
 )
 
 /**
@@ -39,6 +38,8 @@ data class AxiaUiState(
     val navigation: NavigationState,
     val error: String? = null,
     val isProcessing: Boolean = false,
+    val isRestoring: Boolean = false,
+    val restorationFailed: Boolean = false,
     @androidx.annotation.StringRes val errorResource: Int? = null,
 )
 
@@ -66,7 +67,11 @@ sealed interface AxiaIntent {
 
     data class CompleteWaiting(val id: String) : AxiaIntent
 
-    data object RetryBatch : AxiaIntent
+    /** Routes explicit bulk edits and commands to the existing payment state owner. */
+    data class Bulk(val intent: BulkIntent) : AxiaIntent
+
+    /** Retries only loading local state, never a payment command. */
+    data object RetryRestore : AxiaIntent
 
     data object DismissError : AxiaIntent
 
@@ -86,6 +91,9 @@ sealed interface AxiaIntent {
 }
 
 sealed interface PaymentIntent {
+    /** Routes presentation-only provider search through the existing form state owner. */
+    data class ProviderPicker(val intent: ProviderPickerIntent) : PaymentIntent
+
     data class Service(val value: String) : PaymentIntent
 
     data class Provider(val value: String) : PaymentIntent
@@ -113,7 +121,14 @@ sealed interface PaymentIntent {
 
 /** Small presentation-only persistence port makes reducers testable without Android. */
 interface NavigationStore {
-    fun load(): NavigationState?
+    /** Loads an owner checkpoint without blocking the main thread. */
+    suspend fun load(): NavigationState?
 
+    /** Retains the latest immutable state immediately; disk adapters defer serialization. */
     fun save(state: NavigationState)
+
+    /**
+     * Flushes the latest checkpoint atomically; callers surface failures and retain their draft.
+     */
+    suspend fun persist() = Unit
 }

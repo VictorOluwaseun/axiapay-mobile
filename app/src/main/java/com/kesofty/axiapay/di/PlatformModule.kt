@@ -18,6 +18,19 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 internal object PlatformModule {
+    /**
+     * Owns only an application-safe content resolver; IO scheduling stays explicit and injectable.
+     */
+    @Provides
+    fun provideRecipientImportRepository(
+        @ApplicationContext context: Context,
+    ): com.kesofty.axiapay.domain.RecipientImportRepository =
+        com.kesofty.axiapay.data.imports.AndroidRecipientImportRepository(
+            context.contentResolver,
+            kotlinx.coroutines.Dispatchers.IO,
+            com.kesofty.axiapay.data.imports.RecipientDocumentParser(),
+        )
+
     /** Keeps the existing device-zone clock for all payment and recurrence calculations. */
     @Provides @Singleton fun provideClock(): Clock = Clock.systemDefaultZone()
 

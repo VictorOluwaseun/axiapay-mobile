@@ -13,11 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.components.*
@@ -27,8 +29,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Renders provider, destination and recurrence choices with visible edges and explicit selection
- * callbacks.
+ * Renders text choices for banks, payment terms, destinations and recurrence with explicit
+ * selection callbacks; service providers use the shared logo selector.
  */
 @Composable
 private fun ChoiceRow(
@@ -53,6 +55,10 @@ private fun ChoiceRow(
     }
 }
 
+/**
+ * Renders the existing single-payment form, with an explicit entry to a same-service recipient
+ * list.
+ */
 @Composable
 fun PaymentSheet(
     form: PaymentFormState,
@@ -60,6 +66,7 @@ fun PaymentSheet(
     onIntent: (PaymentIntent) -> Unit,
     confirm: () -> Unit,
     saveDraft: () -> Unit,
+    addRecipient: () -> Unit,
 ) {
     val icon =
         when {
@@ -81,7 +88,7 @@ fun PaymentSheet(
         when {
             form.reviewing && form.validation.valid ->
                 PaymentReview(form, state, onIntent, confirm, saveDraft)
-            else -> PaymentFields(form, state, onIntent)
+            else -> PaymentFields(form, state, onIntent, addRecipient)
         }
         if (state.offline)
             TextButton(saveDraft, Modifier.align(Alignment.CenterHorizontally)) {
@@ -157,6 +164,7 @@ private fun ColumnScope.PaymentFields(
     form: PaymentFormState,
     state: DemoSession,
     onIntent: (PaymentIntent) -> Unit,
+    addRecipient: () -> Unit,
 ) {
     ServiceChoices(form, onIntent)
     if (!form.isFunding) RecipientField(form, onIntent)
@@ -170,6 +178,18 @@ private fun ColumnScope.PaymentFields(
     if (form.service != "Data")
         ChoiceRow(listOf("1000", "2000", "5000", "10000"), form.input.amount) {
             onIntent(PaymentIntent.Amount(it))
+        }
+    if (form.supportsMoreRecipients)
+        OutlinedButton(
+            addRecipient,
+            enabled = form.validation.valid,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            border = controlBorder(),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            AxiaIcon(Glyph.Plus, Modifier.size(20.dp), Pine)
+            Spacer(Modifier.width(10.dp))
+            Text(stringResource(R.string.bulk_add_recipient))
         }
     if (!form.isFunding) ScheduleFields(form, onIntent)
     PrimaryButton(
@@ -186,6 +206,7 @@ private fun ColumnScope.PaymentFields(
     )
 }
 
+/** Uses a searchable electricity selector, compact service logos and textual bank choices. */
 @Composable
 private fun ServiceChoices(form: PaymentFormState, onIntent: (PaymentIntent) -> Unit) {
     if (form.route == "Schedule payment")
@@ -197,10 +218,26 @@ private fun ServiceChoices(form: PaymentFormState, onIntent: (PaymentIntent) -> 
             onIntent(PaymentIntent.Destination(it))
         }
     val showProviders = !form.isFunding && (!form.isSend || form.destination == "Bank account")
-    if (showProviders)
+    if (!showProviders) return
+    if (form.isSend) {
         ChoiceRow(form.providerOptions, form.input.provider) {
             onIntent(PaymentIntent.Provider(it))
         }
+        return
+    }
+    if (form.usesElectricityProviderPicker) {
+        ElectricityProviderSelector(
+            form.providerOptions,
+            form.input.provider,
+            form.providerPicker,
+            onPickerIntent = { onIntent(PaymentIntent.ProviderPicker(it)) },
+            onSelect = { onIntent(PaymentIntent.Provider(it)) },
+        )
+        return
+    }
+    ProviderChoices(form.providerOptions, form.input.provider) {
+        onIntent(PaymentIntent.Provider(it))
+    }
 }
 
 @Composable

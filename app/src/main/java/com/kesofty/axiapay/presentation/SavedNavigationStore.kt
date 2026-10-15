@@ -6,23 +6,37 @@ import com.kesofty.axiapay.domain.Recurrence
 import java.time.LocalDate
 import org.json.JSONObject
 
-/** Store only durable UI values. Restoring a receipt or a review never resubmits its command. */
+/** Legacy saved-state adapter retained for migration and small snapshot compatibility checks. */
 class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationStore {
     override fun save(state: NavigationState) {
-        handle[KEY] =
-            JSONObject()
-                .apply {
-                    put("tab", state.tab)
-                    put("query", state.serviceQuery)
-                    put("filter", state.activityFilter)
-                    put("sheet", encodeSheet(state.sheet))
-                    put("draft", state.draft?.let(::encodeForm))
-                }
-                .toString()
+        handle[KEY] = NavigationSnapshotCodec.encode(state)
     }
 
-    override fun load(): NavigationState? {
-        val value = handle.get<String>(KEY) ?: return null
+    override suspend fun load(): NavigationState? =
+        handle.get<String>(KEY)?.let(NavigationSnapshotCodec::decode)
+
+    private companion object {
+        const val KEY = "presentation.navigation.v1"
+    }
+}
+
+/** Private checkpoint encoding omits import effects and derived list/validation state. */
+internal object NavigationSnapshotCodec {
+    /** Serializes durable navigation input only; restored screens cannot replay commands. */
+    fun encode(state: NavigationState): String =
+        JSONObject()
+            .apply {
+                put("bulkFlow", BulkNavigationCodec.encode(state.bulk))
+                put("tab", state.tab)
+                put("query", state.serviceQuery)
+                put("filter", state.activityFilter)
+                put("sheet", encodeSheet(state.sheet))
+                put("draft", state.draft?.let(::encodeForm))
+            }
+            .toString()
+
+    /** Restores the retained input; the presenter subsequently revalidates all terms. */
+    fun decode(value: String): NavigationState {
         val json = JSONObject(value)
         return NavigationState(
             json.getInt("tab"),
@@ -30,6 +44,7 @@ class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationSto
             json.getString("query"),
             json.getString("filter"),
             json.optJSONObject("draft")?.let(::decodeForm),
+            BulkNavigationCodec.decode(json.optJSONObject("bulkFlow")),
         )
     }
 
@@ -38,7 +53,6 @@ class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationSto
             null -> JSONObject().put("type", "none")
             Sheet.Notifications -> JSONObject().put("type", "notifications")
             Sheet.Profile -> JSONObject().put("type", "profile")
-            Sheet.Bulk -> JSONObject().put("type", "bulk")
             Sheet.Offline -> JSONObject().put("type", "offline")
             is Sheet.Explore -> JSONObject().put("type", "explore").put("service", sheet.service)
             is Sheet.Sms -> JSONObject().put("type", "sms").put("id", sheet.requestId)
@@ -51,7 +65,7 @@ class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationSto
             "none" -> null
             "notifications" -> Sheet.Notifications
             "profile" -> Sheet.Profile
-            "bulk" -> Sheet.Bulk
+            "bulk" -> null // The retired sample sheet returns to the preserved Payments tab.
             "offline" -> Sheet.Offline
             "explore" -> Sheet.Explore(json.getString("service"))
             "sms" -> Sheet.Sms(json.getString("id"))
@@ -66,6 +80,7 @@ class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationSto
             put("id", form.requestId)
             put("route", form.route)
             put("reviewing", form.reviewing)
+            put("providerPicker", ProviderPickerSnapshotCodec.encode(form.providerPicker))
             put("sim", form.smsSim)
             put("service", input.type.name)
             put("provider", input.provider)
@@ -95,9 +110,7 @@ class SavedNavigationStore(private val handle: SavedStateHandle) : NavigationSto
             ),
             json.getBoolean("reviewing"),
             smsSim = json.optInt("sim", 1),
+            providerPicker =
+                ProviderPickerSnapshotCodec.decode(json.optJSONObject("providerPicker")),
         )
-
-    private companion object {
-        const val KEY = "presentation.navigation.v1"
-    }
 }

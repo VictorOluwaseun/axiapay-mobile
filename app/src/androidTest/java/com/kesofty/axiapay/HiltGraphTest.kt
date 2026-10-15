@@ -30,6 +30,11 @@ class HiltGraphTest {
             primary = provider[AxiaViewModel::class.java]
             independent = provider["independent-payment-preview", AxiaViewModel::class.java]
             auth = provider[AuthViewModel::class.java]
+        }
+        compose.waitUntil(10_000) {
+            !primary.uiState.value.isRestoring && !independent.uiState.value.isRestoring
+        }
+        compose.runOnIdle {
             primary.accept(AxiaIntent.SetConnectionMode(ConnectionMode.ForceOnline))
             primary.accept(AxiaIntent.OpenService("Add money"))
             primary.accept(AxiaIntent.EditPayment(PaymentIntent.Amount("5000")))
@@ -37,7 +42,7 @@ class HiltGraphTest {
             primary.accept(AxiaIntent.ConfirmPayment)
             auth.accept(AuthIntent.ExploreDemo)
         }
-        compose.waitForIdle()
+        compose.waitUntil(10_000) { primary.uiState.value.navigation.sheet is Sheet.Receipt }
         compose.runOnIdle {
             assertEquals(13_345_000, primary.uiState.value.session.balance)
             assertEquals(12_845_000, independent.uiState.value.session.balance)

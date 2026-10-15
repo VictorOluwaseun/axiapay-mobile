@@ -23,7 +23,7 @@ internal class MemorySessionStore(var snapshot: DemoSession? = null) : DemoSessi
 internal class MemoryNavigationStore : NavigationStore {
     private var state: NavigationState? = null
 
-    override fun load() = state
+    override suspend fun load() = state
 
     override fun save(state: NavigationState) {
         this.state = state
@@ -47,7 +47,6 @@ internal class DemoTestFixture(
     val prepare = PreparePayment(clock)
     val submit = SubmitDemoPayment(repository, prepare, clock)
     val complete = CompleteWaitingPayment(repository)
-    val batch = RetryDemoBatchPayment(repository, clock)
     val prepareBulk = PrepareBulkBatch(prepare, clock)
     val queueBulk = QueueDemoBulkBatch(repository, prepareBulk)
     val retryBulk = RetryDemoBulkBatch(repository)
@@ -78,12 +77,36 @@ internal class DemoTestFixture(
     fun viewModel(
         navigation: NavigationStore = MemoryNavigationStore(),
         submitAction: SubmitPayment = SubmitPayment { input, id -> submit(input, id) },
+        importRepository: RecipientImportRepository = RecipientImportRepository {
+            ImportDocumentResult.Failure(ImportFileIssue.Unreadable)
+        },
+        sampleRepository: RecipientSampleRepository =
+            object : RecipientSampleRepository {
+                override val availableFormats = emptyList<RecipientSampleFormat>()
+
+                /** Tests without the explicit capability must never write a sample document. */
+                override suspend fun save(
+                    sample: RecipientSample,
+                    destination: String,
+                ): SampleExportResult = error("Sample export is unavailable")
+            },
     ) =
         AxiaViewModel(
             ObserveSession(repository),
             submitAction,
             CompletePayment { complete(it) },
-            RetryBatchPayment { batch() },
+            QueueBulkBatch { queueBulk(it) },
+            RetryBulkBatch { retryBulk(it) },
+            RunBulkBatch { runBulk(it) },
+            BulkFormPresenter(prepareBulk) { java.util.UUID.randomUUID().toString() },
+            PrepareRecipientImport(
+                importRepository,
+                prepareBulk,
+                kotlinx.coroutines.Dispatchers.Main,
+            ) {
+                java.util.UUID.randomUUID().toString()
+            },
+            ExportRecipientSample(sampleRepository),
             UpdatePlan { id, enabled -> SetPlanEnabled(repository)(id, enabled) },
             SetBalanceVisibility(repository),
             SetPaymentReminders(repository),

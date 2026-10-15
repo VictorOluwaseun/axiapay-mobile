@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_sample_title">Try a sample list</string>
+    <string name="import_sample_copy">Download three demo recipients for this service. Save the file on your phone, then choose it above to try importing. Works offline.</string>
+    <string name="import_sample_csv">Download CSV sample</string>
+    <string name="import_sample_excel">Download Excel sample</string>
+    <string name="import_sample_saving">Saving your sample…</string>
+    <string name="import_sample_saved">Sample saved. Choose the saved file above to preview its recipients.</string>
+    <string name="import_sample_failed">Could not save the sample. Try again and choose a folder on your phone.</string>
+    <string name="bulk_import_action">Import Excel or CSV</string>
+    <string name="import_heading">Bring your list.</string>
+    <string name="import_copy">Add %1$s recipients from a file. Check each row, then continue with your list.</string>
+    <string name="import_formats">CSV · XLSX · XLS</string>
+    <string name="import_limits">Up to 2 MB and 1,000 recipient rows. Excel uses the first worksheet only. Files are read on your device.</string>
+    <string name="import_choose">Choose a file</string>
+    <string name="import_replace">Choose another file</string>
+    <string name="import_reading">Checking your recipients…</string>
+    <string name="import_sheet">First worksheet: %1$s</string>
+    <string name="import_counts">%1$s · %2$s</string>
+    <plurals name="import_ready_count">
+        <item quantity="one">%1$,d ready</item>
+        <item quantity="other">%1$,d ready</item>
+    </plurals>
+    <plurals name="import_attention_count">
+        <item quantity="one">%1$,d needs attention</item>
+        <item quantity="other">%1$,d need attention</item>
+    </plurals>
+    <plurals name="import_capacity">
+        <item quantity="one">Select up to %1$,d recipient. Demo lists hold 1,000 in total, including your unfinished entry.</item>
+        <item quantity="other">Select up to %1$,d recipients. Demo lists hold 1,000 in total, including your unfinished entry.</item>
+    </plurals>
+    <string name="import_skipped_hint">Only selected rows will be added. Fix other rows in your file and import again. Your existing entries stay here.</string>
+    <string name="import_row">Row %1$,d</string>
+    <string name="import_missing_recipient">Missing recipient</string>
+    <string name="import_guide_title">Set up your columns</string>
+    <string name="import_headers_airtime">recipient, provider, amount</string>
+    <string name="import_headers_package">recipient, provider, product</string>
+    <string name="import_headers_electricity">recipient, provider, product, amount</string>
+    <string name="import_guide_copy">Use these headings in the first row. Add an optional name column. Amounts are in naira, without currency symbols or commas. CSV files must use comma separators.</string>
+    <string name="import_provider_options">Providers: %1$s</string>
+    <string name="import_product_options">Products: %1$s</string>
+    <string name="import_text_hint">In Excel, enter phone, meter and smartcard numbers as Text to keep leading zeros. Use plain values instead of formulas. Password-protected files are unsupported.</string>
+    <plurals name="import_selected">
+        <item quantity="one">%1$,d selected · %2$s</item>
+        <item quantity="other">%1$,d selected · %2$s</item>
+    </plurals>
+    <string name="import_add">Add selected (%1$,d)</string>
+    <string name="import_unsupported">Choose a .csv, .xlsx or .xls file.</string>
+    <string name="import_unreadable">Could not read this file. Download it to your device or choose it again.</string>
+    <string name="import_invalid">This file could not be read as a spreadsheet. Save a new Excel or CSV copy and try again.</string>
+    <string name="import_too_large">Use a smaller file: up to 2 MB, 1,000 recipient rows, 16 columns and 256 characters per cell. Large embedded content is unsupported.</string>
+    <string name="import_encrypted">This workbook is password-protected. Import an unprotected copy.</string>
+    <string name="import_headers_error">Check the first row for the required column headings below. Each heading must appear only once.</string>
+    <string name="import_empty">No recipient rows were found. Add rows below your column headings.</string>
+    <string name="import_numeric_reference">This account number was stored as a number. Re-enter it as Text in Excel, including any leading zero.</string>
+    <string name="import_formula">Use plain text or an amount instead of a formula, error or other unsupported cell value.</string>
+    <string name="import_duplicate">Already in your list or an earlier valid row in this file.</string>
+    <string name="import_service_mismatch">This row belongs to another payment service. Import it in that service’s list.</string>
+    <string name="import_price_mismatch">The amount does not match this demo product’s price. Correct the amount or omit it for a fixed-price product.</string>
+    <string name="import_name_long">Keep recipient names to 40 characters or fewer.</string>
+    <string name="import_extra_cells">This row has extra values without column headings. Check commas and headings in your file.</string>
+</resources>

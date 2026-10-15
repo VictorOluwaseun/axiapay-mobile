@@ -15,6 +15,27 @@ import java.time.Clock
 @Module
 @InstallIn(ViewModelComponent::class)
 internal object PaymentUseCaseModule {
+    /** Selects the sample capability through flavor bindings, independently of payment actions. */
+    @Provides
+    fun provideExportRecipientSample(
+        repository: com.kesofty.axiapay.domain.RecipientSampleRepository,
+    ): ExportRecipientSample = ExportRecipientSample(repository)
+
+    /**
+     * Shares local import preparation across flavors; payment execution remains flavor-selected.
+     */
+    @Provides
+    fun providePrepareRecipientImport(
+        repository: com.kesofty.axiapay.domain.RecipientImportRepository,
+        prepare: PrepareBulkBatch,
+        newId: () -> String,
+    ): PrepareRecipientImport = PrepareRecipientImport(repository, prepare, newId = newId)
+
+    /** Reuses payment validation for mixed-service bulk reviews. */
+    @Provides
+    fun providePrepareBulkBatch(prepare: PreparePayment, clock: Clock): PrepareBulkBatch =
+        PrepareBulkBatch(prepare, clock)
+
     /** Observes the same scoped snapshot that mutation use cases commit. */
     @Provides
     fun provideObserveSession(repository: SessionRepository): ObserveSession =

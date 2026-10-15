@@ -16,7 +16,7 @@ class PrepareSmsPayment(
     private val prepare: PreparePayment,
     private val clock: Clock,
 ) {
-    operator fun invoke(input: PaymentInput, id: String, sim: Int): Outcome<SmsRequest> {
+    suspend operator fun invoke(input: PaymentInput, id: String, sim: Int): Outcome<SmsRequest> {
         if (!DemoSmsEligibility.supports(input)) return Outcome.Failure(DemoError.SmsUnsupported)
         if (sim !in 1..2) return Outcome.Failure(DemoError.SmsUnsupported)
         return when (val result = prepare(input, id)) {
@@ -39,14 +39,14 @@ class PrepareSmsPayment(
 
 /** Deterministic transport simulation only. No SMS API, permission, phone number or secret. */
 class SendDemoSms(private val repository: SessionRepository, private val clock: Clock) {
-    operator fun invoke(id: String, simulateFailure: Boolean): Outcome<SmsRequest> =
+    suspend operator fun invoke(id: String, simulateFailure: Boolean): Outcome<SmsRequest> =
         repository.transact {
             DemoSmsPolicy.send(it, id, clock.instant(), simulateFailure)
         }
 }
 
 class ReconcileDemoSms(private val repository: SessionRepository, private val clock: Clock) {
-    operator fun invoke(id: String): Outcome<Payment> = repository.transact {
+    suspend operator fun invoke(id: String): Outcome<Payment> = repository.transact {
         DemoSmsPolicy.confirm(it, id, LocalDate.now(clock))
     }
 }

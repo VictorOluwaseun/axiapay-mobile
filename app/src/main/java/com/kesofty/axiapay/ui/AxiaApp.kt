@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -31,8 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
+import com.kesofty.axiapay.ui.bulk.*
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
 import java.time.LocalDate
@@ -41,51 +44,71 @@ import java.time.format.DateTimeFormatter
 /** Renders immutable app state; every action returns to the ViewModel as an intent. */
 @Composable
 fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit, onPreviewAuth: () -> Unit = {}) {
+    if (uiState.isRestoring || uiState.restorationFailed) {
+        SessionRestoration(uiState, onIntent)
+        return
+    }
     val state = uiState.session
     val navigation = uiState.navigation
     val onTab: (Int) -> Unit = { onIntent(AxiaIntent.SelectTab(it)) }
     val open: (String) -> Unit = { onIntent(AxiaIntent.OpenService(it)) }
     val onReceipt: (String) -> Unit = { onIntent(AxiaIntent.OpenReceipt(it)) }
-    BackHandler(navigation.sheet == null && navigation.tab != 0) { onTab(0) }
-    Scaffold(containerColor = Canvas, bottomBar = { BottomNavigation(navigation.tab, onTab) }) {
-        padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (uiState.isProcessing) PaymentProgress()
-            if (state.offline || state.connectionMode != ConnectionMode.Automatic)
-                ConnectionBanner(state.connectionMode) { open("offline") }
-            Crossfade(
-                targetState = navigation.tab,
-                label = "Navigation",
-                modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
-            ) { page ->
-                when (page) {
-                    0 -> HomeScreen(state, open, onTab, onReceipt, onIntent)
-                    1 ->
-                        PaymentsScreen(
-                            navigation.serviceQuery,
-                            { onIntent(AxiaIntent.SearchServices(it)) },
-                            open,
-                        )
-                    2 ->
-                        ActivityScreen(
-                            state,
-                            navigation.activityFilter,
-                            { onIntent(AxiaIntent.FilterActivity(it)) },
-                            onReceipt,
-                            { onIntent(AxiaIntent.OpenSms(it)) },
-                        )
-                    else -> PlansScreen(state, open, onIntent)
+    BackHandler(navigation.bulk.screen == null && navigation.sheet == null && navigation.tab != 0) {
+        onTab(0)
+    }
+    when (navigation.bulk.screen) {
+        null -> {
+            Scaffold(
+                containerColor = Canvas,
+                bottomBar = { BottomNavigation(navigation.tab, onTab) },
+            ) { padding ->
+                Column(
+                    Modifier.fillMaxSize().padding(padding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (uiState.isProcessing) PaymentProgress()
+                    if (state.offline || state.connectionMode != ConnectionMode.Automatic)
+                        ConnectionBanner(state.connectionMode) { open("offline") }
+                    Crossfade(
+                        targetState = navigation.tab,
+                        label = "Navigation",
+                        modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
+                    ) { page ->
+                        when (page) {
+                            0 -> HomeScreen(state, open, onTab, onReceipt, onIntent)
+                            1 ->
+                                PaymentsScreen(
+                                    navigation.serviceQuery,
+                                    navigation.bulk.draft
+                                        ?.takeUnless { draft ->
+                                            state.batches.any { it.id == draft.id }
+                                        }
+                                        ?.recipients
+                                        ?.size,
+                                    { onIntent(AxiaIntent.SearchServices(it)) },
+                                    open,
+                                )
+                            2 ->
+                                ActivityScreen(
+                                    state,
+                                    navigation.activityFilter,
+                                    { onIntent(AxiaIntent.FilterActivity(it)) },
+                                    onReceipt,
+                                    { onIntent(AxiaIntent.OpenSms(it)) },
+                                    { onIntent(AxiaIntent.Bulk(BulkIntent.OpenBatch(it))) },
+                                )
+                            else -> PlansScreen(state, open, onIntent)
+                        }
+                    }
                 }
             }
         }
+        else -> BulkPaymentFlow(uiState, onIntent)
     }
     navigation.sheet?.let {
         AppSheet(it, state, navigation.draft, uiState.isProcessing, onIntent, onPreviewAuth)
     }
-    uiState.error?.let { message ->
+    (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
         AlertDialog(
             onDismissRequest = { onIntent(AxiaIntent.DismissError) },
             title = { Text("Couldn't complete that") },
@@ -144,7 +167,6 @@ private fun AppSheet(
                     Sheet.Notifications ->
                         NotificationsSheet(state, addMoney) { onIntent(AxiaIntent.SelectTab(3)) }
                     Sheet.Profile -> ProfileSheet(state, onIntent, onPreviewAuth)
-                    Sheet.Bulk -> BulkSheet(state) { onIntent(AxiaIntent.RetryBatch) }
                     Sheet.Offline -> OfflineSheet(state, draft, onIntent)
                     is Sheet.Sms ->
                         state.smsOutbox
@@ -163,6 +185,7 @@ private fun AppSheet(
                             { onIntent(AxiaIntent.EditPayment(it)) },
                             { onIntent(AxiaIntent.ConfirmPayment) },
                             { onIntent(AxiaIntent.SaveDraft) },
+                            { onIntent(AxiaIntent.Bulk(BulkIntent.FromPayment)) },
                         )
                 }
             }
@@ -518,12 +541,19 @@ private fun PageHeader(title: String, subtitle: String, icon: Glyph = Glyph.Bran
 
 /** Renders the searchable service catalog and forwards query edits and service selection. */
 @Composable
-private fun PaymentsScreen(query: String, onQuery: (String) -> Unit, open: (String) -> Unit) {
+private fun PaymentsScreen(
+    query: String,
+    bulkDraftCount: Int?,
+    onQuery: (String) -> Unit,
+    open: (String) -> Unit,
+) {
     LazyColumn(
         contentPadding = PaddingValues(22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { PageHeader("Life, uninterrupted.", "All your everyday payments, in one place.") }
+        if (query.isBlank() || "bulk payments".contains(query, true))
+            item { BulkEntryCard(bulkDraftCount) { open("bulk") } }
         item {
             OutlinedTextField(
                 query,
@@ -566,16 +596,6 @@ private fun PaymentsScreen(query: String, onQuery: (String) -> Unit, open: (Stri
             item { EmptyState("No services found", "Try airtime, data, electricity or TV.") }
         if (query.isBlank()) {
             item { SectionHeading("A little more power") }
-            item {
-                UtilityCard(
-                    "Pay many, in one go",
-                    "Bulk payments with a status for every recipient.",
-                    Glyph.Batch,
-                    Lavender,
-                ) {
-                    open("bulk")
-                }
-            }
             item {
                 UtilityCard(
                     "No internet? Stay connected.",
@@ -628,17 +648,28 @@ private fun ActivityScreen(
     onFilter: (String) -> Unit,
     onReceipt: (String) -> Unit,
     onSms: (String) -> Unit,
+    onBatch: (String) -> Unit,
 ) {
-    val filtered =
-        state.payments.filter {
-            when (filter) {
-                "Money in" -> it.amount > 0
-                "Money out" -> it.amount < 0
-                "Pending" ->
-                    it.status == PaymentStatus.Waiting || it.status == PaymentStatus.Scheduled
-                else -> true
-            }
+    val batchPaymentIds =
+        state.batches
+            .flatMap { batch -> batch.recipients.map { "${batch.id}:${it.details.id}" } }
+            .toSet()
+    val individualPayments = state.payments.filterNot { it.id in batchPaymentIds }
+    val visibleBatches =
+        when (filter) {
+            "Money in" -> emptyList()
+            "Pending" -> state.batches.filter { it.hasPending }
+            else -> state.batches
         }
+    val filtered = individualPayments.filter {
+        when (filter) {
+            "Batches" -> false
+            "Money in" -> it.amount > 0
+            "Money out" -> it.amount < 0
+            "Pending" -> it.status == PaymentStatus.Waiting || it.status == PaymentStatus.Scheduled
+            else -> true
+        }
+    }
     LazyColumn(
         contentPadding = PaddingValues(22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -674,11 +705,12 @@ private fun ActivityScreen(
                         if (state.hidden) "••••"
                         else
                             money(
-                                -state.payments
-                                    .filter {
-                                        it.amount < 0 && it.status == PaymentStatus.Successful
-                                    }
-                                    .sumOf { it.amount },
+                                state.batches.sumOf { it.paidMinorUnits } -
+                                    individualPayments
+                                        .filter {
+                                            it.amount < 0 && it.status == PaymentStatus.Successful
+                                        }
+                                        .sumOf { it.amount },
                             ),
                         style = MaterialTheme.typography.titleLarge,
                         color = Color.White,
@@ -691,20 +723,25 @@ private fun ActivityScreen(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("All", "Money in", "Money out", "Pending").forEach { name ->
+                listOf("All", "Batches", "Money in", "Money out", "Pending").forEach { name ->
                     FilterChip(
                         filter == name,
                         { onFilter(name) },
-                        { Text(name) },
+                        {
+                            Text(
+                                if (name == "Batches") stringResource(R.string.bulk_batches)
+                                else name,
+                            )
+                        },
                         shape = RoundedCornerShape(14.dp),
                         border = controlBorder(filter == name),
                     )
                 }
             }
         }
-        if (filtered.isEmpty())
+        if (filtered.isEmpty() && visibleBatches.isEmpty())
             item { EmptyState("Nothing here just yet", "Your matching payments will appear here.") }
-        if (filter != "Money in") {
+        if (filter !in listOf("Money in", "Batches")) {
             items(
                 state.smsOutbox.filter { sms -> state.payments.none { it.id == sms.id } },
                 key = { "sms-${it.id}" },
@@ -714,6 +751,11 @@ private fun ActivityScreen(
         }
         items(filtered, key = { it.id }) { payment ->
             PaymentRow(payment, state.hidden) { onReceipt(payment.id) }
+        }
+        if (visibleBatches.isNotEmpty())
+            item { SectionHeading(stringResource(R.string.bulk_history_heading)) }
+        items(visibleBatches, key = { "batch-${it.id}" }) { batch ->
+            BulkHistoryCard(batch, state.hidden, state.offline) { onBatch(batch.id) }
         }
         item {
             Text(

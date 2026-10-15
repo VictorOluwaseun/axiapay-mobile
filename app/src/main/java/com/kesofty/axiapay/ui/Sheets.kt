@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -279,60 +278,5 @@ fun ExploreSheet(service: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = Muted,
         )
-    }
-}
-
-@Composable
-fun BulkSheet(state: DemoSession, retry: () -> Unit) {
-    val retried =
-        state.payments.any { it.kind == PaymentKind.Bulk && it.status == PaymentStatus.Successful }
-    SheetContent {
-        IconTile(Glyph.Batch, tint = Lavender)
-        SheetHeading("Small tasks. One big tick.", "Team airtime • Sample batch of 3 payments")
-        Row(
-            Modifier.fillMaxWidth().background(Pine, RoundedCornerShape(20.dp)).padding(18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text("Batch total", color = Mint, style = MaterialTheme.typography.bodySmall)
-                Text("₦3,000", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    if (retried) "3 of 3" else "2 of 3",
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                Text("completed", color = Mint, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        LinearProgressIndicator(
-            progress = { if (retried) 1f else 2f / 3f },
-            modifier = Modifier.fillMaxWidth(),
-            color = Pine,
-            trackColor = Line,
-        )
-        listOf("Ada", "Tunde", "Chidi").forEachIndexed { index, name ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconTile(Glyph.Phone)
-                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(name, style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "MTN airtime • ₦1,000",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
-                }
-                StatusPill(
-                    if (index < 2 || retried) PaymentStatus.Successful else PaymentStatus.Failed,
-                )
-            }
-        }
-        Text(
-            "Sample batch. The first two rows illustrate completed payments. Retrying simulates only Chidi's payment and uses demo wallet funds.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Muted,
-        )
-        if (!retried) PrimaryButton("Retry failed demo payment", onClick = retry)
     }
 }

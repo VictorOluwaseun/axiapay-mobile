@@ -1,0 +1,31 @@
+<resources>
+    <string name="bulk_capacity_highlight">Up to 1,000 recipients in one go.</string>
+    <string name="bulk_search">Name, number or provider</string>
+    <string name="bulk_clear_search">Clear recipient search</string>
+    <plurals name="bulk_showing_count">
+        <item quantity="one">Showing %1$,d of %2$,d recipient</item>
+        <item quantity="other">Showing %1$,d of %2$,d recipients</item>
+    </plurals>
+    <string name="bulk_no_search_results">No matching recipients. Try a different name, number or provider.</string>
+    <string name="bulk_full_total">Full list total</string>
+    <string name="bulk_import_short">Import list</string>
+    <string name="bulk_add_short">Add</string>
+    <string name="bulk_select">Select</string>
+    <string name="bulk_selection_done">Done selecting</string>
+    <string name="bulk_select_visible">Select visible</string>
+    <string name="bulk_remove_selected">Remove selected (%1$,d)</string>
+    <string name="bulk_remove_selected_copy">Remove these recipients from this draft? No payments will be made.</string>
+    <string name="bulk_keep_recipients">Keep recipients</string>
+    <string name="import_ready_filter">Ready (%1$,d)</string>
+    <string name="import_attention_filter">Needs attention (%1$,d)</string>
+    <string name="import_selected_filter">Selected (%1$,d)</string>
+    <string name="import_select_available">Select %1$,d</string>
+    <string name="import_clear_selection">Clear selection</string>
+    <string name="import_sample_large">Download 1,000 recipients · CSV</string>
+    <string name="bulk_restoring">Opening your saved payments…</string>
+    <string name="bulk_restore_failed">Your saved payments could not be opened</string>
+    <string name="bulk_restore_recovery">Your saved files have been kept. Try again to restore your wallet, drafts and pending payments.</string>
+    <string name="bulk_restore_retry">Try again</string>
+    <string name="bulk_draft_save_failed">Your latest draft changes could not be saved. Keep the app open and try editing again.</string>
+    <string name="bulk_editor_done">Done</string>
+</resources>

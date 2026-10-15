@@ -19,15 +19,32 @@ import java.time.LocalDate
 @Module
 @InstallIn(ViewModelComponent::class)
 internal object FlavorPaymentModule {
+    /** Bundles import examples only with demo and uses application-owned storage handles. */
+    @Provides
+    fun provideRecipientSamples(
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
+    ): com.kesofty.axiapay.domain.RecipientSampleRepository =
+        com.kesofty.axiapay.data.imports.BundledRecipientSampleRepository(
+            context.assets,
+            context.contentResolver,
+            kotlinx.coroutines.Dispatchers.IO,
+        )
+
     /**
      * Shares one atomic demo snapshot among this ViewModel's queries/actions, never across owners.
      */
     @Provides
     @ViewModelScoped
-    fun provideSessionRepository(handle: SavedStateHandle, clock: Clock): SessionRepository =
-        DemoSessionRepository(
-            SavedStateSessionStore(handle),
+    fun provideSessionRepository(
+        handle: SavedStateHandle,
+        clock: Clock,
+        @SessionCheckpoint checkpoint: com.kesofty.axiapay.domain.TextCheckpoint,
+    ): SessionRepository =
+        CheckpointSessionRepository(
+            checkpoint,
             DemoSessionSeed.create(LocalDate.now(clock)),
+            kotlinx.coroutines.Dispatchers.IO,
+            handle.get<String>("demo.session.v1"),
         )
 
     /** Keeps account-entry simulation independent of wallet state and real credentials. */
@@ -53,11 +70,30 @@ internal object FlavorPaymentModule {
         return CompletePayment { paymentId -> action(paymentId) }
     }
 
-    /** Retries the same illustrative batch request without changing its established identity. */
+    /** Selects the demo queue policy while sharing the existing wallet repository. */
     @Provides
-    fun provideRetryBatchPayment(repository: SessionRepository, clock: Clock): RetryBatchPayment {
-        val action = RetryDemoBatchPayment(repository, clock)
-        return RetryBatchPayment { action() }
+    fun provideQueueBulkBatch(
+        repository: SessionRepository,
+        prepare: PrepareBulkBatch,
+    ): QueueBulkBatch {
+        val action = QueueDemoBulkBatch(repository, prepare)
+        return QueueBulkBatch { action(it) }
+    }
+
+    /**
+     * Retries only known failures after explicit review; successful recipients retain their IDs.
+     */
+    @Provides
+    fun provideRetryBulkBatch(repository: SessionRepository): RetryBulkBatch =
+        RetryBulkBatch { id ->
+            RetryDemoBulkBatch(repository)(id)
+        }
+
+    /** Keeps execution simulated and owned by the invoking ViewModel's cancellable scope. */
+    @Provides
+    fun provideRunBulkBatch(repository: SessionRepository): RunBulkBatch {
+        val action = RunDemoBulkBatch(repository)
+        return RunBulkBatch { action(it) }
     }
 
     /** Keeps plan enable/disable updates separate from payment execution. */

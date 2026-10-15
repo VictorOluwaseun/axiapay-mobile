@@ -27,7 +27,9 @@ class DemoSessionRepository(private val store: DemoSessionStore, seed: DemoSessi
     override val session = mutableSession.asStateFlow()
 
     /** Applies one domain transition under the local lock, following [SessionRepository]. */
-    override fun <T> transact(change: (DemoSession) -> Outcome<SessionChange<T>>): Outcome<T> =
+    override suspend fun <T> transact(
+        change: (DemoSession) -> Outcome<SessionChange<T>>,
+    ): Outcome<T> =
         synchronized(lock) {
             when (val result = change(mutableSession.value)) {
                 is Outcome.Failure -> result

@@ -18,12 +18,6 @@ fun interface CompletePayment {
     suspend operator fun invoke(paymentId: String): Outcome<Payment>
 }
 
-/** Retries the existing actionable batch request without resubmitting completed recipients. */
-fun interface RetryBatchPayment {
-    /** Returns the recorded attempt through main-safe, cancellable work. */
-    suspend operator fun invoke(): Outcome<Payment>
-}
-
 /** Changes an existing plan's enabled state without executing a scheduled payment. */
 fun interface UpdatePlan {
     /** Persists the requested value with main-safe work; propagates caller cancellation. */

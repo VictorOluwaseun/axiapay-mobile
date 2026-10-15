@@ -15,7 +15,7 @@ class ObserveInternetConnection(private val repository: InternetConnectionReposi
 /** Applies observed connectivity while respecting a saved demo override; never submits requests. */
 class UpdateConnectionState(private val repository: SessionRepository, private val clock: Clock) {
     /** [offline] describes the real network; the demo preference determines the effective mode. */
-    operator fun invoke(offline: Boolean): Outcome<Unit> = repository.transact { session ->
+    suspend operator fun invoke(offline: Boolean): Outcome<Unit> = repository.transact { session ->
         val updated =
             DemoConnectionPolicy.update(session, offline, session.connectionMode, clock.instant())
         Outcome.Success(SessionChange(updated, Unit))

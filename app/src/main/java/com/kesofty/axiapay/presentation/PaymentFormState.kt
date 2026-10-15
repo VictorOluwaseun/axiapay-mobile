@@ -14,7 +14,28 @@ data class PaymentFormState(
     val minimumDate: LocalDate = input.date,
     val validation: PaymentValidation =
         PaymentValidation(null, false, true, DemoError.InvalidAmount),
+    val providerPicker: ProviderPickerState = ProviderPickerState(),
 ) {
+    /** Keeps electricity-specific rendering independent of application-layer input types. */
+    val usesElectricityProviderPicker
+        get() = isElectricity
+
+    /** Exposes electricity-specific fields without UI imports from the application layer. */
+    val isElectricity
+        get() = input.type == PaymentType.Electricity
+
+    /** Only immediate service payments can expand into a same-service recipient list. */
+    val supportsMoreRecipients
+        get() =
+            !input.scheduled &&
+                input.type in
+                    listOf(
+                        PaymentType.Airtime,
+                        PaymentType.Data,
+                        PaymentType.Electricity,
+                        PaymentType.TV,
+                    )
+
     val offlineEligible
         get() = DemoSmsEligibility.supports(input)
 
@@ -114,12 +135,20 @@ class PaymentFormPresenter(private val prepare: PreparePayment, private val cloc
         form.copy(
             validation = prepare.validate(form.input),
             minimumDate = LocalDate.now(clock).plusDays(1),
+            providerPicker =
+                form.providerPicker.takeIf {
+                    form.usesElectricityProviderPicker && !form.reviewing
+                } ?: ProviderPickerState(),
         )
 
     fun reduce(form: PaymentFormState, intent: PaymentIntent): PaymentFormState {
         val input = form.input
         val updated =
             when (intent) {
+                is PaymentIntent.ProviderPicker ->
+                    form.copy(
+                        providerPicker = reduceProviderPicker(form.providerPicker, intent.intent),
+                    )
                 is PaymentIntent.Service -> changeService(form, PaymentType.valueOf(intent.value))
                 is PaymentIntent.Provider -> form.copy(input = input.copy(provider = intent.value))
                 is PaymentIntent.Destination -> changeDestination(form, intent.value)
@@ -149,6 +178,7 @@ class PaymentFormPresenter(private val prepare: PreparePayment, private val cloc
 
     private fun changeService(form: PaymentFormState, type: PaymentType) =
         form.copy(
+            providerPicker = ProviderPickerState(),
             input =
                 form.input.copy(
                     type = type,

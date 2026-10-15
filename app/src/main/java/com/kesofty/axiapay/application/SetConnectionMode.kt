@@ -10,9 +10,15 @@ class SetConnectionMode(
     private val clock: Clock,
 ) {
     /** Changes connection metadata only; storage failure leaves the previous snapshot intact. */
-    operator fun invoke(mode: ConnectionMode): Outcome<Unit> = repository.transact { session ->
-        val updated =
-            DemoConnectionPolicy.update(session, !internet.currentIsOnline(), mode, clock.instant())
-        Outcome.Success(SessionChange(updated, Unit))
-    }
+    suspend operator fun invoke(mode: ConnectionMode): Outcome<Unit> =
+        repository.transact { session ->
+            val updated =
+                DemoConnectionPolicy.update(
+                    session,
+                    !internet.currentIsOnline(),
+                    mode,
+                    clock.instant(),
+                )
+            Outcome.Success(SessionChange(updated, Unit))
+        }
 }
