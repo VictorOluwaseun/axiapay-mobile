@@ -46,6 +46,9 @@ android {
     }
 
     sourceSets {
+        // Identical synthetic import files exercise desktop unit tests and Android parsers.
+        getByName("test").resources.directories += "src/sharedTest/resources"
+        getByName("androidTest").assets.directories += "src/sharedTest/resources"
         // Demo has separate Hilt bindings. Backend migration is shared only by these three flavors.
         listOf("dev", "staging", "prod").forEach { environment ->
             getByName(environment).kotlin.directories += "src/nonDemo/java"
@@ -54,6 +57,7 @@ android {
 
     buildTypes {
         release {
+            proguardFiles("proguard-rules.pro")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
@@ -74,6 +78,8 @@ dependencies {
     // Reuse one BOM declaration to align the app and instrumentation-test Compose dependencies.
     val composeBom = platform(libs.androidx.compose.bom)
 
+    implementation(libs.apache.poi)
+    implementation(libs.apache.csv)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(composeBom)

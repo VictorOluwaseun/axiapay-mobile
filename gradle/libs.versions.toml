@@ -1,4 +1,6 @@
 [versions]
+poi = "5.5.1"
+commonsCsv = "1.14.1"
 agp = "9.4.1"
 hilt = "2.60.1"
 ksp = "2.3.12"
@@ -14,6 +16,8 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 
 [libraries]
+apache-poi = { module = "org.apache.poi:poi", version.ref = "poi" }
+apache-csv = { module = "org.apache.commons:commons-csv", version.ref = "commonsCsv" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
