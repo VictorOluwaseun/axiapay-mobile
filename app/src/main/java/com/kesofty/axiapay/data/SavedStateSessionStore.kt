@@ -27,6 +27,12 @@ internal object SessionSnapshotCodec {
     fun encode(session: DemoSession): String =
         JSONObject()
             .apply {
+                put(
+                    "batches",
+                    JSONArray().apply {
+                        session.batches.forEach { put(BulkSnapshotCodec.encode(it)) }
+                    },
+                )
                 put("balance", session.balance)
                 put("offline", session.offline)
                 put("connectionMode", session.connectionMode.name)
@@ -57,6 +63,10 @@ internal object SessionSnapshotCodec {
             json.getBoolean("read"),
             json.getBoolean("reminders"),
             Currency.valueOf(json.getString("currency")),
+            batches =
+                json.optJSONArray("batches")?.let { rows ->
+                    List(rows.length()) { BulkSnapshotCodec.decode(rows.getJSONObject(it)) }
+                } ?: emptyList(),
             offline = json.optBoolean("offline"),
             connectionMode =
                 ConnectionMode.valueOf(

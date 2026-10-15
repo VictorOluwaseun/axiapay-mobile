@@ -39,6 +39,7 @@ data class AxiaUiState(
     val navigation: NavigationState,
     val error: String? = null,
     val isProcessing: Boolean = false,
+    @androidx.annotation.StringRes val errorResource: Int? = null,
 )
 
 sealed interface AxiaIntent {

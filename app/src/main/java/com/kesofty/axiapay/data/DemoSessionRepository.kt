@@ -57,5 +57,13 @@ class DemoSessionRepository(private val store: DemoSessionStore, seed: DemoSessi
             payments = Collections.unmodifiableList(ArrayList(session.payments)),
             plans = Collections.unmodifiableList(ArrayList(session.plans)),
             smsOutbox = Collections.unmodifiableList(ArrayList(session.smsOutbox)),
+            batches =
+                Collections.unmodifiableList(
+                    session.batches.map { batch ->
+                        batch.copy(
+                            recipients = Collections.unmodifiableList(ArrayList(batch.recipients)),
+                        )
+                    },
+                ),
         )
 }

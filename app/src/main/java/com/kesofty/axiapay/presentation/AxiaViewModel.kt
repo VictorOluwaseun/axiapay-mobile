@@ -3,6 +3,7 @@ package com.kesofty.axiapay.presentation
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kesofty.axiapay.R
 import com.kesofty.axiapay.application.*
 import com.kesofty.axiapay.domain.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -266,6 +267,7 @@ constructor(
     private fun report(error: DemoError) {
         val message =
             when (error) {
+                DemoError.BulkPreviewLimit -> null
                 DemoError.OnlineRequired ->
                     "Reconnect to use this action. Your saved details and plans are still here."
                 DemoError.SmsUnsupported ->
@@ -294,6 +296,13 @@ constructor(
                 is DemoError.Storage ->
                     "The demo change could not be saved. Your balance has not changed. Try again."
             }
-        mutableState.update { it.copy(session = session.value, error = message) }
+        mutableState.update {
+            it.copy(
+                session = session.value,
+                error = message,
+                errorResource =
+                    if (error == DemoError.BulkPreviewLimit) R.string.bulk_history_limit else null,
+            )
+        }
     }
 }

@@ -62,6 +62,7 @@ data class DemoSession(
     val cachedAt: java.time.Instant? = null,
     val smsOutbox: List<SmsRequest> = emptyList(),
     val connectionMode: ConnectionMode = ConnectionMode.Automatic,
+    val batches: List<BulkBatch> = emptyList(),
 )
 
 data class PaymentRequest(
@@ -75,6 +76,8 @@ data class PaymentRequest(
 )
 
 sealed interface DemoError {
+    data object BulkPreviewLimit : DemoError
+
     data object OnlineRequired : DemoError
 
     data object SmsUnsupported : DemoError

@@ -48,6 +48,21 @@ internal class DemoTestFixture(
     val submit = SubmitDemoPayment(repository, prepare, clock)
     val complete = CompleteWaitingPayment(repository)
     val batch = RetryDemoBatchPayment(repository, clock)
+    val prepareBulk = PrepareBulkBatch(prepare, clock)
+    val queueBulk = QueueDemoBulkBatch(repository, prepareBulk)
+    val retryBulk = RetryDemoBulkBatch(repository)
+    val runBulk = RunDemoBulkBatch(repository)
+
+    /** Creates four airtime examples with distinct stable row identities. */
+    fun bulkDraft(id: String = "new-batch"): BulkDraft {
+        var row = 0
+        return BulkDraft(
+            id,
+            "Family essentials",
+            BulkServiceCatalog.sampleRecipients(BulkService.Airtime) { "row-${row++}" },
+        )
+    }
+
     val session
         get() = repository.session.value
 
