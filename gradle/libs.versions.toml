@@ -1,4 +1,6 @@
 [versions]
+okhttp = "5.3.0"
+json = "20250517"
 poi = "5.5.1"
 commonsCsv = "1.14.1"
 agp = "9.4.1"
@@ -16,6 +18,10 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 
 [libraries]
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-coroutines = { module = "com.squareup.okhttp3:okhttp-coroutines", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
+json-test = { module = "org.json:json", version.ref = "json" }
 apache-poi = { module = "org.apache.poi:poi", version.ref = "poi" }
 apache-csv = { module = "org.apache.commons:commons-csv", version.ref = "commonsCsv" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }

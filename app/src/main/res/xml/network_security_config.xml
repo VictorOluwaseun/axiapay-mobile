@@ -1,0 +1,4 @@
+<!-- Real authentication uses system-trusted TLS; local HTTP is enabled only in dev. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

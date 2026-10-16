@@ -29,19 +29,47 @@ android {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
+            buildConfigField(
+                "String",
+                "AUTH_API_BASE_URL",
+                providers
+                    .gradleProperty("axiapay.dev.apiBaseUrl")
+                    .orElse("http://10.0.2.2:4000/v1/")
+                    .get()
+                    .let { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" },
+            )
+            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "true")
         }
         create("demo") {
             dimension = "environment"
             applicationIdSuffix = ".demo"
             versionNameSuffix = "-demo"
+            buildConfigField("String", "AUTH_API_BASE_URL", "\"\"")
+            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
         }
         create("staging") {
             dimension = "environment"
             applicationIdSuffix = ".staging"
             versionNameSuffix = "-staging"
+            buildConfigField(
+                "String",
+                "AUTH_API_BASE_URL",
+                providers.gradleProperty("axiapay.staging.apiBaseUrl").orElse("").get().let {
+                    "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+                },
+            )
+            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
         }
         create("prod") {
             dimension = "environment"
+            buildConfigField(
+                "String",
+                "AUTH_API_BASE_URL",
+                providers.gradleProperty("axiapay.prod.apiBaseUrl").orElse("").get().let {
+                    "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+                },
+            )
+            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
         }
     }
 
@@ -78,6 +106,10 @@ dependencies {
     // Reuse one BOM declaration to align the app and instrumentation-test Compose dependencies.
     val composeBom = platform(libs.androidx.compose.bom)
 
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.coroutines)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.json.test)
     implementation(libs.apache.poi)
     implementation(libs.apache.csv)
     implementation(libs.hilt.android)
