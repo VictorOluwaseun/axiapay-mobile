@@ -219,7 +219,6 @@ constructor(
         ) {
             return
         }
-        ticker?.cancel()
         progress(refreshWallet = true) { workflow.submit(owner, reviewed) }
     }
 
@@ -314,6 +313,7 @@ constructor(
             is ActionResult.Observed -> {
                 val quote = result.progress.quote ?: retainedQuote(state, result.progress.request)
                 val progress = result.progress.copy(quote = quote)
+                ticker?.cancel()
                 val records =
                     state.context?.requests.orEmpty().filterNot {
                         it.requestKey == progress.request.requestKey

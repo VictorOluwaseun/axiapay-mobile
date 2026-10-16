@@ -13,7 +13,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
-/** Regression coverage for request-owned quote fallback across saved payments and reviews. */
+/** Regression coverage for request-owned quote fallback and expiry during failed confirmation. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TelecomRecoveryRegressionTest {
     private val owners = ViewModelStore()
@@ -115,6 +115,65 @@ class TelecomRecoveryRegressionTest {
         }
     }
 
+    /** A failed storage commit keeps the retained review's expiry live without sending a POST. */
+    @Test
+    fun storageFailureKeepsExpiryTrackingUntilConfirmationIsDisabled() = runTest {
+        try {
+            val f = TelecomFixture()
+            val vm = vm(f)
+            vm.accept(TelecomIntent.Bind(f.accountId, "visit"))
+            review(vm, f)
+            f.store.failure = true
+            vm.accept(TelecomIntent.Confirm)
+            assertEquals(TelecomIssue.Storage, vm.uiState.value.issue)
+            assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+            expire(f)
+            assertEquals(0L, vm.uiState.value.secondsRemaining)
+            f.store.failure = false
+            vm.accept(TelecomIntent.Confirm)
+            assertTrue(f.api.submissions.isEmpty())
+            assertTrue(f.store.records.isEmpty())
+        } finally {
+            owners.clear()
+        }
+    }
+
+    /**
+     * A review can expire during storage IO; returning failure must not restart an enabled timer.
+     */
+    @Test
+    fun expiryContinuesWhileConfirmationIsSuspendedAndAfterFailure() = runTest {
+        try {
+            val f = TelecomFixture()
+            val gate = CompletableDeferred<Unit>()
+            val store =
+                object : TelecomRequestStore by f.store {
+                    /**
+                     * Model a pending fsync that reports failure without permitting the purchase.
+                     */
+                    override suspend fun save(request: TelecomRequest) {
+                        gate.await()
+                        throw TelecomFailure(TelecomIssue.Storage)
+                    }
+                }
+            val workflow = workflow(f, f.api, store)
+            val vm = vm(f, workflow)
+            vm.accept(TelecomIntent.Bind(f.accountId, "visit"))
+            review(vm, f)
+            vm.accept(TelecomIntent.Confirm)
+            assertTrue(vm.uiState.value.isProcessing)
+            expire(f)
+            assertEquals(0L, vm.uiState.value.secondsRemaining)
+            gate.complete(Unit)
+            assertFalse(vm.uiState.value.isProcessing)
+            assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+            assertEquals(0L, vm.uiState.value.secondsRemaining)
+            assertTrue(f.api.submissions.isEmpty())
+        } finally {
+            owners.clear()
+        }
+    }
+
     /**
      * Build internally valid service fixtures without moving response validation into workflows.
      */
@@ -173,5 +232,12 @@ class TelecomRecoveryRegressionTest {
         vm.accept(TelecomIntent.EditAmount("100"))
         vm.accept(TelecomIntent.Review)
         assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+    }
+
+    /** Advance both wall time and the presentation scheduler past the quoted deadline. */
+    private fun TestScope.expire(f: TelecomFixture) {
+        f.clock.current = f.api.quoted.expiresAt
+        advanceTimeBy(1001)
+        runCurrent()
     }
 }
