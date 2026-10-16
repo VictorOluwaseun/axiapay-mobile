@@ -1,5 +1,7 @@
 package com.kesofty.axiapay.application.auth
 
+import com.kesofty.axiapay.application.canonicalPhoneNumber
+import com.kesofty.axiapay.application.hasE164Syntax
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.domain.auth.*
@@ -13,13 +15,7 @@ internal fun normalizedAccountContact(input: AccountAccessInput): AccountContact
     if (input.contactType == AuthContactType.Email) {
         return AccountContact(input.contactType, value.lowercase(Locale.ROOT))
     }
-    val compact = value.filterNot { it == ' ' || it == '-' || it == '(' || it == ')' }
-    val international =
-        when {
-            Regex("0[789][0-9]{9}").matches(compact) -> "+234" + compact.drop(1)
-            else -> compact
-        }
-    return AccountContact(input.contactType, international)
+    return AccountContact(input.contactType, canonicalPhoneNumber(value))
 }
 
 /** Lightweight feedback mirrors the HTTP boundary; the server still validates and authenticates. */
@@ -29,7 +25,7 @@ internal fun accountInputIssue(
 ): AccountAccessIssue? {
     val validContact =
         when (contact.kind) {
-            AuthContactType.Phone -> Regex("\\+[1-9][0-9]{7,14}").matches(contact.value)
+            AuthContactType.Phone -> hasE164Syntax(contact.value)
             AuthContactType.Email ->
                 contact.value.length <= 254 &&
                     Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+").matches(contact.value)
