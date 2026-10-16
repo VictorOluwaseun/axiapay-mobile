@@ -312,7 +312,7 @@ constructor(
                 startTicker()
             }
             is ActionResult.Observed -> {
-                val quote = result.progress.quote ?: state.progress?.quote ?: state.review?.quote
+                val quote = result.progress.quote ?: retainedQuote(state, result.progress.request)
                 val progress = result.progress.copy(quote = quote)
                 val records =
                     state.context?.requests.orEmpty().filterNot {
@@ -335,6 +335,17 @@ constructor(
                         visit,
                     ),
                 )
+        }
+    }
+
+    /**
+     * A quote can survive uncertainty only for the exact saved/reviewed request that supplied it.
+     */
+    private fun retainedQuote(state: TelecomUiState, request: TelecomRequest): TelecomQuote? {
+        val progressQuote = state.progress?.takeIf { it.request == request }?.quote
+        val reviewQuote = state.review?.takeIf { it.request == request }?.quote
+        return (progressQuote ?: reviewQuote)?.takeIf {
+            it.id == request.quoteId && it.service == request.service
         }
     }
 
