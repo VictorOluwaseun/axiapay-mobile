@@ -1,6 +1,6 @@
 # AxiaPay Android
 
-A native Jetpack Compose app with authenticated wallet display and everyday payment previews.
+A native Jetpack Compose app with authenticated wallets, API-backed single airtime purchases and separate everyday payment previews.
 
 ## Run
 
@@ -26,7 +26,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDemoDebugAndroidTest
 | `staging` | `com.kesofty.axiapay.staging` | AxiaPay Staging | Pre-production backend validation |
 | `prod` | `com.kesofty.axiapay` | AxiaPay | Production backend integrations |
 
-**Authentication and account/Home wallet balances use the API in dev/staging/prod; demo keeps simulated authentication and balances.** Payments, schedules and SMS remain labelled local previews. Staging/prod require an explicitly configured HTTPS API; no deployed address is assumed.
+**Authentication, account/Home wallet balances and immediate single airtime purchases use the API in dev/staging/prod; demo keeps simulated authentication, balances and purchases.** Other payments, schedules and SMS remain labelled local previews. Staging/prod require an explicitly configured HTTPS API; no deployed address is assumed.
 
 The four apps can be installed together, each with a separate Android sandbox, saved session, drafts and preferences. The unsuffixed ID is preserved for prod; existing installs using that ID belong to prod, and demo begins as a separate install. Kotlin packages and the resource namespace remain `com.kesofty.axiapay`.
 
@@ -46,7 +46,7 @@ Source-set and variant conventions follow the [Android build-variant guide](http
 - **Plans:** create a dated one-time, daily, weekly or monthly payment; preview the next three dates; pause/resume plans; and change the demo reminder preference.
 - **Notifications and profile:** sample renewal notices, waiting-payment prompts, and balance/reminder controls.
 
-Airtime, data, electricity, TV, wallet funding and wallet/bank transfers have interactive form → review → receipt flows. Fields are validated locally. Payment providers, recipients, prices and simulated payment balances are illustrative. Non-demo account and Home wallet balances come from the API; real bank and carrier purchases are not wired into these forms. `ACCESS_NETWORK_STATE` observes Android connectivity without a runtime permission prompt. Authentication and wallet lookup send API requests; SMS remains simulated.
+Airtime, data, electricity, TV, wallet funding and wallet/bank transfers have interactive form → review → receipt flows. Fields are validated locally. Payment providers, recipients, prices and simulated payment balances are illustrative. Non-demo account/Home balances and immediate single airtime purchases use the API. Other service, funding, transfer, scheduled and bulk forms remain previews. `ACCESS_NETWORK_STATE` observes Android connectivity without a runtime permission prompt. Authentication and wallet lookup send API requests; SMS remains simulated.
 
 Education, insurance, airtime conversion and merchant payments have service previews. Offline mode has an interactive SMS simulation; internet detection is real, while SMS transport and durable outbox storage are not implemented. Scheduled execution, push notifications and actual airtime/data monitoring are not implemented.
 
@@ -220,3 +220,18 @@ The real wallet is separate from the payment preview, which still uses its own d
 The non-demo Home dashboard now renders the authenticated account's NGN wallet available balance. It receives an immutable projection from `AuthViewModel`; the demo payment ledger never supplies or mutates that amount. The signed-in account page opens Home through **Open dashboard**. Home offers wallet refresh and account actions, preserves balance hiding and the offline greyscale palette, and reloads the verified wallet after restoration. Loading, sign-in, missing-wallet and network-failure states contain no sample or invented zero balance.
 
 The demo flavor keeps its original sample balance, funding/transfer controls and saved-state simulation. Other payment, plan and activity tools are still labelled previews while their integrations are pending. UI suites that assert simulated wallet amounts run only in the demo flavor; real Home coverage uses account-owned wallet fixtures and the opt-in dev API flow. A real wallet balance is display data, and all spending remains server-authoritative. `HomeWalletStateTest`, `AccountWalletTest`, `HomeWalletUiTest` and the opt-in real auth flow cover selection, isolation, refresh, logout/account changes, restoration, failure recovery, privacy and accessibility.
+
+
+### Single airtime purchases
+
+In dev/staging/prod, sign in, open Home and choose **Airtime** (also available in Payments). The app reads the caller's NGN wallet and the API's airtime catalogue. Choose the recipient's network explicitly, enter the phone number and amount, then **Review payment**. The server quote supplies the recipient, principal, fee, total and expiry. **Pay** submits that exact quote with one saved request key. An unavailable catalogue/adapter, missing wallet or expired quote stays explicit; sample prices and balances never replace API failures. The API deployment must publish airtime products and enable a fulfilment adapter for purchases to be available.
+
+All calls send the captured signed-in bearer. The flow uses `GET /wallets/me?currency=NGN`, `GET /service-catalog/products?serviceType=airtime&currency=NGN&limit=25`, `POST /payments/quotes`, and the explicit `POST /payments` with only `quoteId` and `requestKey` (paths relative to `/v1`). No mobile pricing or displayed balance authorizes spending. Server responses distinguish awaiting funds, reserved, pending, succeeded and failed. Wallet display refreshes after submission/recovery/status checks.
+
+A lost response stays **Payment status unconfirmed**. **Check status** reads `GET /payments/by-request-key`; **Recover this payment** explicitly calls the existing payment's reconcile endpoint. Retry/resume retains the original quote and key. No timer, reconnect, recreation or process restoration submits a payment. Reopen Airtime → **Saved airtime payments** to retrieve receipts or check unfinished requests, including during wallet/catalogue outages. Creating another purchase is an explicit action with an unfinished-request warning.
+
+Before submission, a small atomic journal under `noBackupFilesDir` stores only account/API scope, original quote/request IDs, creation time and acknowledgement. It stores no token, phone, amount or quote body. Corruption/storage failure blocks new submissions; unfinished entries are never pruned. The journal retains up to 200 references and may prune acknowledged receipts at capacity. Clearing app data/uninstalling removes these device references; there is no account-wide payment-history endpoint integrated yet. Transient entry/review details remain in memory. This journal is not an outbox and never schedules purchases.
+
+The demo flavor retains its original simulated airtime, funding, offline/SMS, scheduled and bulk flows. Non-demo immediate airtime requires internet and never uses the SMS simulation. Real activity is visible in the Airtime saved-payment flow; the general Activity screen still shows its labelled preview.
+
+Run `./gradlew verifyAllFlavors --max-workers=1` for all flavors. `AirtimePurchasesTest`, `PrepareAirtimeTest`, `HttpAirtimeRepositoryTest` and `AirtimeViewModelTest` cover exact input, bearer/wallet ownership, HTTP bodies, duplicate taps, expiry, storage and uncertain outcomes, cancellation, stale results and explicit recovery. On an explicitly selected API 36 emulator, run dev `AirtimeApiUiTest,AirtimeRequestStorageTest,HiltGraphTest`, and demo `AxiaUiTest,HiltGraphTest` through AndroidJUnitRunner. The airtime API UI tests use an isolated MockWebServer, real HTTP adapters and isolated atomic files, never a live funded wallet.
