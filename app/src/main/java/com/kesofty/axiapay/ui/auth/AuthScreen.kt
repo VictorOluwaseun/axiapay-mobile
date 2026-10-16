@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
@@ -32,7 +33,10 @@ import com.kesofty.axiapay.presentation.auth.*
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
 
-/** Renders the account-entry prototype; all inputs and actions are owned by AuthViewModel. */
+/**
+ * Renders caller-owned account state; token storage, server operations and navigation stay outside
+ * Views.
+ */
 @Composable
 fun AuthScreen(state: AuthUiState, offline: Boolean, onIntent: (AuthIntent) -> Unit) {
     BackHandler(state.screen != AuthScreen.Welcome) { onIntent(AuthIntent.Back) }
@@ -50,13 +54,20 @@ fun AuthScreen(state: AuthUiState, offline: Boolean, onIntent: (AuthIntent) -> U
                         .padding(top = 18.dp, bottom = 24.dp)
                         .testTag("auth-screen"),
                 ) {
-                    AuthTopBar(state.screen == AuthScreen.Welcome) { onIntent(AuthIntent.Back) }
+                    AuthTopBar(state.screen == AuthScreen.Welcome, state.isDemo) {
+                        onIntent(AuthIntent.Back)
+                    }
                     Spacer(Modifier.height(24.dp))
                     if (offline) {
-                        AuthNotice(R.string.auth_offline, Glyph.Offline)
+                        AuthNotice(
+                            if (state.isDemo) R.string.auth_offline else R.string.auth_live_offline,
+                            Glyph.Offline,
+                        )
                         Spacer(Modifier.height(20.dp))
                     }
                     when (state.screen) {
+                        AuthScreen.Restoring -> SessionRestoring()
+                        AuthScreen.SessionRecovery -> SessionRecovery(state, onIntent)
                         AuthScreen.Welcome ->
                             AuthWelcome(
                                 { onIntent(AuthIntent.CreateAccount) },
@@ -66,8 +77,10 @@ fun AuthScreen(state: AuthUiState, offline: Boolean, onIntent: (AuthIntent) -> U
                         AuthScreen.SignIn,
                         AuthScreen.CreateAccount -> AccountForm(state, onIntent)
                         AuthScreen.Verification -> VerificationForm(state, onIntent)
-                        AuthScreen.Complete ->
-                            CompletionContent { onIntent(AuthIntent.ExploreDemo) }
+                        AuthScreen.Complete -> {
+                            if (state.isDemo) CompletionContent { onIntent(AuthIntent.ExploreDemo) }
+                            else ServerAccountContent(state, onIntent)
+                        }
                         AuthScreen.Dashboard -> Unit
                     }
                 }
@@ -76,9 +89,9 @@ fun AuthScreen(state: AuthUiState, offline: Boolean, onIntent: (AuthIntent) -> U
     }
 }
 
-/** Keeps branding and a clear preview label visible without adding another navigation layer. */
+/** Keeps branding and account/demo context visible without adding another navigation layer. */
 @Composable
-private fun AuthTopBar(isWelcome: Boolean, onBack: () -> Unit) {
+private fun AuthTopBar(isWelcome: Boolean, isDemo: Boolean, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!isWelcome) {
             IconButton(onBack, Modifier.size(48.dp)) {
@@ -97,7 +110,7 @@ private fun AuthTopBar(isWelcome: Boolean, onBack: () -> Unit) {
             style = MaterialTheme.typography.titleLarge,
         )
         Text(
-            stringResource(R.string.auth_demo_label),
+            stringResource(if (isDemo) R.string.auth_demo_label else R.string.auth_account_label),
             Modifier.background(Mint.copy(alpha = .55f), CircleShape)
                 .padding(horizontal = 14.dp, vertical = 7.dp),
             color = Pine,
@@ -131,10 +144,14 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
     val usesPassword = state.method == AuthMethod.Password
     AccountHeading(
         if (state.isCreatingAccount) R.string.auth_create_title else R.string.auth_sign_in_title,
-        if (state.isCreatingAccount) R.string.auth_create_body else R.string.auth_sign_in_body,
+        when {
+            !state.isCreatingAccount -> R.string.auth_sign_in_body
+            state.isDemo -> R.string.auth_create_body
+            else -> R.string.auth_live_create_body
+        },
     )
     Spacer(Modifier.height(28.dp))
-    if (state.isCreatingAccount) {
+    if (state.isCreatingAccount && state.isDemo) {
         AuthTextField(
             state.name,
             R.string.auth_name,
@@ -192,7 +209,7 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         AuthTextField(
             state.password,
             R.string.auth_password,
-            R.string.auth_password_hint,
+            if (state.isDemo) R.string.auth_password_hint else R.string.auth_live_password_hint,
             state.isProcessing,
             state.error == AuthError.Password,
             KeyboardType.Password,
@@ -206,22 +223,31 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            stringResource(R.string.auth_password_demo_hint),
+            stringResource(
+                when {
+                    state.isDemo -> R.string.auth_password_demo_hint
+                    state.isCreatingAccount -> R.string.auth_live_signup_password_hint
+                    else -> R.string.auth_live_login_password_hint
+                },
+            ),
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    AuthErrorMessage(state.error)
+    AuthErrorMessage(state)
     Spacer(Modifier.height(24.dp))
     AuthSubmitButton(
         if (usesPassword && !state.isCreatingAccount) R.string.auth_sign_in
         else R.string.auth_continue,
         state.isProcessing,
         submit,
+        available = state.retryAfterSeconds == 0L,
     )
     Spacer(Modifier.height(18.dp))
     Text(
-        stringResource(R.string.auth_preview_notice),
+        stringResource(
+            if (state.isDemo) R.string.auth_preview_notice else R.string.auth_live_notice,
+        ),
         style = MaterialTheme.typography.bodyMedium,
         color = Muted,
     )
@@ -294,8 +320,11 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
     IconTile(Glyph.Shield, Modifier.padding(bottom = 24.dp), Lavender)
     AuthHeading(
         R.string.auth_verify_title,
-        if (state.isCreatingAccount) R.string.auth_verify_signup_body
-        else R.string.auth_verify_body,
+        when {
+            !state.isDemo -> R.string.auth_live_verify_body
+            state.isCreatingAccount -> R.string.auth_verify_signup_body
+            else -> R.string.auth_verify_body
+        },
     )
     Spacer(Modifier.height(22.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -328,24 +357,66 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
         isCode = true,
         testTag = "auth-code",
     )
-    AuthErrorMessage(state.error)
+    AuthErrorMessage(state)
     Spacer(Modifier.height(24.dp))
-    AuthSubmitButton(R.string.auth_verify, state.isProcessing, submit)
+    AuthSubmitButton(
+        if (state.isDemo) R.string.auth_verify else R.string.auth_live_verify,
+        state.isProcessing,
+        submit,
+        available =
+            state.retryAfterSeconds == 0L && (state.isDemo || state.codeSecondsRemaining > 0),
+    )
     Spacer(Modifier.height(18.dp))
-    AuthNotice(R.string.auth_code_demo_notice, Glyph.Help)
+    AuthNotice(
+        if (state.isDemo) R.string.auth_code_demo_notice else R.string.auth_live_code_notice,
+        Glyph.Help,
+    )
+    if (!state.isDemo) {
+        Text(
+            authCodeExpiryText(state.codeSecondsRemaining),
+            Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Muted,
+        )
+    }
     TextButton(
         {
             focus.clearFocus()
-            onIntent(AuthIntent.ResetCodePreview)
+            onIntent(AuthIntent.ResendCode)
         },
-        enabled = !state.isProcessing,
+        enabled =
+            !state.isProcessing &&
+                state.resendSecondsRemaining == 0L &&
+                state.retryAfterSeconds == 0L,
         contentPadding = PaddingValues(vertical = 16.dp),
     ) {
-        Text(stringResource(R.string.auth_reset_code), style = MaterialTheme.typography.labelLarge)
+        val label =
+            when {
+                state.isDemo -> stringResource(R.string.auth_reset_code)
+                state.resendSecondsRemaining > 0 ->
+                    pluralStringResource(
+                        R.plurals.auth_resend_in,
+                        state.resendSecondsRemaining.toInt(),
+                        state.resendSecondsRemaining,
+                    )
+                else -> stringResource(R.string.auth_live_resend)
+            }
+        Text(label, style = MaterialTheme.typography.labelLarge)
     }
-    if (state.previewReset) {
+    if (
+        !state.isDemo &&
+            state.isCreatingAccount &&
+            state.error in setOf(AuthError.Network, AuthError.CodeRejected, AuthError.SecureStorage)
+    ) {
+        TextButton({ onIntent(AuthIntent.SignIn) }) {
+            Text(stringResource(R.string.auth_verification_sign_in))
+        }
+    }
+    if (state.isCodeResent) {
         Text(
-            stringResource(R.string.auth_code_reset),
+            stringResource(
+                if (state.isDemo) R.string.auth_code_reset else R.string.auth_live_code_sent,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Pine,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -395,16 +466,32 @@ private fun PreviewFeature(icon: Glyph, @StringRes label: Int) {
 
 /** Places validation in the form and announces changes to accessibility services. */
 @Composable
-private fun AuthErrorMessage(error: AuthError?) {
-    if (error == null) return
+private fun AuthErrorMessage(state: AuthUiState) {
+    val error = state.error ?: return
     val message =
         when (error) {
             AuthError.Phone -> R.string.auth_phone_error
             AuthError.Email -> R.string.auth_email_error
-            AuthError.Password -> R.string.auth_password_error
+            AuthError.Password ->
+                when {
+                    state.isDemo -> R.string.auth_password_error
+                    state.isCreatingAccount -> R.string.auth_live_signup_password_error
+                    else -> R.string.auth_live_login_password_error
+                }
             AuthError.Name -> R.string.auth_name_error
             AuthError.Code -> R.string.auth_code_error
-            AuthError.Unavailable -> R.string.auth_unavailable_error
+            AuthError.Unavailable ->
+                if (state.isDemo) R.string.auth_unavailable_error
+                else R.string.auth_live_unavailable
+            AuthError.Credentials -> R.string.auth_credentials_error
+            AuthError.CodeRejected -> R.string.auth_code_rejected
+            AuthError.CodeExpired -> R.string.auth_code_expired
+            AuthError.RateLimited -> R.string.auth_rate_limited
+            AuthError.Network -> R.string.auth_network_error
+            AuthError.Configuration -> R.string.auth_configuration_error
+            AuthError.InvalidRequest -> R.string.auth_invalid_request
+            AuthError.SecureStorage -> R.string.auth_storage_error
+            AuthError.PasswordAgain -> R.string.auth_signup_password_again
         }
     Text(
         stringResource(message),
@@ -412,17 +499,34 @@ private fun AuthErrorMessage(error: AuthError?) {
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
     )
+    if (state.retryAfterSeconds > 0) {
+        Text(
+            pluralStringResource(
+                R.plurals.auth_retry_in,
+                state.retryAfterSeconds.toInt(),
+                state.retryAfterSeconds,
+            ),
+            Modifier.padding(top = 6.dp),
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
 }
 
 /**
  * Shows explicit progress in the button while keeping its layout stable and preventing repeat taps.
  */
 @Composable
-private fun AuthSubmitButton(@StringRes label: Int, isProcessing: Boolean, onClick: () -> Unit) {
+private fun AuthSubmitButton(
+    @StringRes label: Int,
+    isProcessing: Boolean,
+    onClick: () -> Unit,
+    available: Boolean = true,
+) {
     Button(
         onClick,
         Modifier.fillMaxWidth().heightIn(min = 58.dp).testTag("auth-submit"),
-        enabled = !isProcessing,
+        enabled = !isProcessing && available,
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(16.dp),
     ) {
@@ -450,3 +554,104 @@ private fun AuthNotice(@StringRes message: Int, icon: Glyph) {
         Text(stringResource(message), style = MaterialTheme.typography.bodyMedium, color = Muted)
     }
 }
+
+/** Explains protected session startup without exposing a token or replaying form submissions. */
+@Composable
+private fun SessionRestoring() {
+    IconTile(Glyph.Shield, Modifier.padding(bottom = 24.dp), Mint)
+    AuthHeading(R.string.auth_restoring_title, R.string.auth_restoring_body)
+    CircularProgressIndicator(Modifier.padding(top = 28.dp).size(32.dp), color = Pine)
+}
+
+/** Keeps failed /me checks recoverable, with explicit retry or server-confirmed sign-out. */
+@Composable
+private fun SessionRecovery(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
+    AuthHeading(R.string.auth_recovery_title, R.string.auth_recovery_body)
+    AuthErrorMessage(state)
+    Spacer(Modifier.height(24.dp))
+    AuthSubmitButton(
+        R.string.auth_retry_session,
+        state.isProcessing,
+        { onIntent(AuthIntent.RetrySession) },
+        available = state.retryAfterSeconds == 0L,
+    )
+    TextButton({ onIntent(AuthIntent.SignOut) }, enabled = !state.isProcessing) {
+        Text(stringResource(R.string.auth_sign_out))
+    }
+    TextButton({ onIntent(AuthIntent.ExploreDemo) }, enabled = !state.isProcessing) {
+        Text(stringResource(R.string.auth_open_payment_preview))
+    }
+}
+
+/**
+ * Shows verified identity and the real wallet while keeping payment previews explicitly separate.
+ */
+@Composable
+private fun ServerAccountContent(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
+    IconTile(Glyph.Shield, Modifier.padding(bottom = 28.dp), Mint)
+    AuthHeading(R.string.auth_signed_in_title, R.string.auth_signed_in_body)
+    Spacer(Modifier.height(28.dp))
+    Surface(shape = RoundedCornerShape(24.dp), color = Color.White, border = controlBorder()) {
+        Column(
+            Modifier.fillMaxWidth().padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.auth_verified_contact),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Muted,
+            )
+            Text(
+                state.account?.contact?.value.orEmpty(),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.testTag("auth-account-contact"),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AxiaIcon(Glyph.Check, Modifier.size(18.dp), Pine)
+                Text(
+                    stringResource(R.string.auth_contact_verified),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Pine,
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
+    AccountWalletCard(state) { onIntent(AuthIntent.RetryWallet) }
+    Spacer(Modifier.height(24.dp))
+    AuthNotice(R.string.auth_payment_preview_notice, Glyph.Help)
+    AuthErrorMessage(state)
+    Spacer(Modifier.height(28.dp))
+    PrimaryButton(
+        stringResource(R.string.home_open_dashboard),
+        enabled = !state.isProcessing,
+        onClick = { onIntent(AuthIntent.OpenDashboard) },
+    )
+    TextButton(
+        { onIntent(AuthIntent.SignOut) },
+        Modifier.fillMaxWidth().heightIn(min = 52.dp),
+        enabled = !state.isProcessing && state.retryAfterSeconds == 0L,
+    ) {
+        Text(
+            stringResource(
+                if (state.isProcessing) R.string.auth_working else R.string.auth_sign_out,
+            ),
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+/**
+ * Formats advisory expiry using locale-aware quantity resources without making payment/auth
+ * decisions.
+ */
+@Composable
+private fun authCodeExpiryText(seconds: Long): String =
+    when {
+        seconds > 0 ->
+            pluralStringResource(R.plurals.auth_code_expires_in, seconds.toInt(), seconds)
+        else -> stringResource(R.string.auth_code_expired)
+    }

@@ -2,7 +2,6 @@ package com.kesofty.axiapay.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.Canvas as DrawCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -44,7 +41,14 @@ import java.time.format.DateTimeFormatter
 
 /** Renders immutable app state; every action returns to the ViewModel as an intent. */
 @Composable
-fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit, onPreviewAuth: () -> Unit = {}) {
+fun AxiaApp(
+    uiState: AxiaUiState,
+    onIntent: (AxiaIntent) -> Unit,
+    authShortcutLabel: String? = null,
+    homeWallet: HomeWalletState = HomeWalletState.Demo,
+    onRefreshWallet: () -> Unit = {},
+    onOpenAccount: () -> Unit = {},
+) {
     if (uiState.isRestoring || uiState.restorationFailed) {
         SessionRestoration(uiState, onIntent)
         return
@@ -76,7 +80,17 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit, onPreviewAuth:
                         modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
                     ) { page ->
                         when (page) {
-                            0 -> HomeScreen(state, open, onTab, onReceipt, onIntent)
+                            0 ->
+                                HomeScreen(
+                                    state,
+                                    open,
+                                    onTab,
+                                    onReceipt,
+                                    onIntent,
+                                    homeWallet,
+                                    onRefreshWallet,
+                                    onOpenAccount,
+                                )
                             1 ->
                                 PaymentsScreen(
                                     navigation.serviceQuery,
@@ -107,7 +121,15 @@ fun AxiaApp(uiState: AxiaUiState, onIntent: (AxiaIntent) -> Unit, onPreviewAuth:
         else -> BulkPaymentFlow(uiState, onIntent)
     }
     navigation.sheet?.let {
-        AppSheet(it, state, navigation.draft, uiState.isProcessing, onIntent, onPreviewAuth)
+        AppSheet(
+            it,
+            state,
+            navigation.draft,
+            uiState.isProcessing,
+            onIntent,
+            onOpenAccount,
+            authShortcutLabel,
+        )
     }
     (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
         AlertDialog(
@@ -141,7 +163,8 @@ private fun AppSheet(
     draft: PaymentFormState?,
     isProcessing: Boolean,
     onIntent: (AxiaIntent) -> Unit,
-    onPreviewAuth: () -> Unit,
+    onOpenAccount: () -> Unit,
+    authShortcutLabel: String?,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -167,7 +190,7 @@ private fun AppSheet(
                             }
                     Sheet.Notifications ->
                         NotificationsSheet(state, addMoney) { onIntent(AxiaIntent.SelectTab(3)) }
-                    Sheet.Profile -> ProfileSheet(state, onIntent, onPreviewAuth)
+                    Sheet.Profile -> ProfileSheet(state, onIntent, onOpenAccount, authShortcutLabel)
                     Sheet.Offline -> OfflineSheet(state, draft, onIntent)
                     is Sheet.Sms ->
                         state.smsOutbox
@@ -241,6 +264,7 @@ private fun BottomNavigation(selectedTab: Int, onSelect: (Int) -> Unit) {
     }
 }
 
+/** Render the current wallet source above the independently owned payment previews. */
 @Composable
 private fun HomeScreen(
     state: DemoSession,
@@ -248,8 +272,12 @@ private fun HomeScreen(
     onTab: (Int) -> Unit,
     onReceipt: (String) -> Unit,
     onIntent: (AxiaIntent) -> Unit,
+    homeWallet: HomeWalletState,
+    onRefreshWallet: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     LazyColumn(
+        modifier = Modifier.testTag("home-dashboard"),
         contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
@@ -271,7 +299,11 @@ private fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
-                    Text("Hello, Alex", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (homeWallet == HomeWalletState.Demo) "Hello, Alex"
+                        else stringResource(R.string.home_account_greeting),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                 }
                 Box {
                     RoundIconButton(Glyph.Bell, "Notifications", { open("notifications") })
@@ -286,7 +318,29 @@ private fun HomeScreen(
                 }
             }
         }
-        item { WalletCard(state, open, onIntent) }
+        item {
+            when (homeWallet) {
+                HomeWalletState.Demo -> WalletCard(state, open, onIntent)
+                else ->
+                    HomeWalletCard(
+                        homeWallet,
+                        state.hidden,
+                        state.offline,
+                        { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
+                        onRefreshWallet,
+                        onOpenAccount,
+                    )
+            }
+        }
+        if (homeWallet != HomeWalletState.Demo) {
+            item {
+                Text(
+                    stringResource(R.string.home_payment_preview_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+        }
         item {
             Column {
                 SectionHeading("Your everyday, sorted", "See all") { onTab(1) }
@@ -327,100 +381,86 @@ private fun HomeScreen(
     }
 }
 
+/** Render the isolated demo ledger and its simulated funding/transfer actions. */
 @Composable
 private fun WalletCard(state: DemoSession, open: (String) -> Unit, onIntent: (AxiaIntent) -> Unit) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(DeepPine)) {
-        val ringColor = Mint
-        DrawCanvas(Modifier.matchParentSize()) {
-            val center = Offset(size.width * 1.02f, size.height * .24f)
-            repeat(4) { index ->
-                val radius = size.width * (.19f + index * .1f)
-                drawCircle(
-                    ringColor.copy(alpha = .06f + index * .013f),
-                    radius,
-                    center,
-                    style = Stroke(17.dp.toPx()),
-                )
-            }
-        }
-        Column(Modifier.padding(22.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (state.offline) "Cached balance" else "Available balance",
-                    color = Color(0xFFBDD7CF).modeColor(),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                IconButton(
-                    { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
-                    Modifier.size(48.dp).padding(start = 2.dp),
-                ) {
-                    AxiaIcon(
-                        if (state.hidden) Glyph.EyeOff else Glyph.Eye,
-                        Modifier.size(17.dp),
-                        Color(0xFFBDD7CF).modeColor(),
-                        if (state.hidden) "Show balance" else "Hide balance",
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "Demo",
-                    color = Mint,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier =
-                        Modifier.background(
-                                Color.White.copy(alpha = .08f),
-                                RoundedCornerShape(20.dp),
-                            )
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                )
-            }
-            MoneyAmount(
-                if (state.hidden) "₦ ••••••" else money(state.balance, true),
-                color = Color.White,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 5.dp),
+    WalletCardSurface {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (state.offline) "Cached balance" else "Available balance",
+                color = Color(0xFFBDD7CF).modeColor(),
+                style = MaterialTheme.typography.bodyMedium,
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(5.dp).background(Mint, CircleShape))
-                Text(
-                    if (state.offline) "  Last seen ${state.cachedTime} • Not live"
-                    else "  Your everyday possibilities.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFBDD7CF).modeColor(),
+            IconButton(
+                { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
+                Modifier.size(48.dp).padding(start = 2.dp),
+            ) {
+                AxiaIcon(
+                    if (state.hidden) Glyph.EyeOff else Glyph.Eye,
+                    Modifier.size(17.dp),
+                    Color(0xFFBDD7CF).modeColor(),
+                    if (state.hidden) "Show balance" else "Hide balance",
                 )
             }
-            Spacer(Modifier.height(22.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    { open("Add money") },
-                    Modifier.weight(1f).heightIn(min = 48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors =
-                        ButtonDefaults.buttonColors(containerColor = Mint, contentColor = DeepPine),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                ) {
-                    AxiaIcon(Glyph.Plus, Modifier.size(18.dp), DeepPine)
-                    Spacer(Modifier.width(7.dp))
-                    Text("Add money", style = MaterialTheme.typography.labelMedium)
-                }
-                Button(
-                    { open("Send money") },
-                    Modifier.weight(1f).heightIn(min = 48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor = Color.White.copy(alpha = .10f),
-                            contentColor = Color.White,
-                        ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                ) {
-                    AxiaIcon(Glyph.ArrowUp, Modifier.size(17.dp), Color.White)
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        "Send money",
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Demo",
+                color = Mint,
+                style = MaterialTheme.typography.labelSmall,
+                modifier =
+                    Modifier.background(
+                            Color.White.copy(alpha = .08f),
+                            RoundedCornerShape(20.dp),
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+        MoneyAmount(
+            if (state.hidden) "₦ ••••••" else money(state.balance, true),
+            color = Color.White,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 5.dp),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(5.dp).background(Mint, CircleShape))
+            Text(
+                if (state.offline) "  Last seen ${state.cachedTime} • Not live"
+                else "  Your everyday possibilities.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFBDD7CF).modeColor(),
+            )
+        }
+        Spacer(Modifier.height(22.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                { open("Add money") },
+                Modifier.weight(1f).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors =
+                    ButtonDefaults.buttonColors(containerColor = Mint, contentColor = DeepPine),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            ) {
+                AxiaIcon(Glyph.Plus, Modifier.size(18.dp), DeepPine)
+                Spacer(Modifier.width(7.dp))
+                Text("Add money", style = MaterialTheme.typography.labelMedium)
+            }
+            Button(
+                { open("Send money") },
+                Modifier.weight(1f).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = .10f),
+                        contentColor = Color.White,
+                    ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            ) {
+                AxiaIcon(Glyph.ArrowUp, Modifier.size(17.dp), Color.White)
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    "Send money",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

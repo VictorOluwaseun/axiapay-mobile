@@ -2,6 +2,7 @@ package com.kesofty.axiapay
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -9,9 +10,13 @@ import org.junit.Test
 class AxiaUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    /** Enters the unchanged demo dashboard through the public welcome action. */
+    /** Runs simulated wallet assertions in demo through the public welcome action. */
     @Before
     fun enterDemo() {
+        Assume.assumeTrue(
+            "Simulated wallet flows require the demo flavor",
+            BuildConfig.FLAVOR == "demo",
+        )
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
     }
 

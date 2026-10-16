@@ -48,7 +48,7 @@ class HiltGraphTest {
             assertEquals(12_845_000, independent.uiState.value.session.balance)
             assertTrue(primary.uiState.value.navigation.sheet is Sheet.Receipt)
             assertNull(independent.uiState.value.navigation.sheet)
-            auth.accept(AuthIntent.PreviewAuth)
+            auth.accept(AuthIntent.OpenAccount)
             auth.accept(AuthIntent.ExploreDemo)
         }
         compose.onNodeWithText("All taken care of.").assertIsDisplayed()

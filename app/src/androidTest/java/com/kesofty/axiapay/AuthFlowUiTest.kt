@@ -5,14 +5,16 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.AuthMethod
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
 /**
- * Exercises each contact/method/signup combination through the installed flavor's actual UI and
- * Hilt graph.
+ * Exercises each contact/method/signup preview through the installed demo flavor's UI and Hilt
+ * graph.
  */
 @RunWith(Parameterized::class)
 class AuthFlowUiTest(
@@ -21,6 +23,14 @@ class AuthFlowUiTest(
     private val isCreatingAccount: Boolean,
 ) {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Runs simulation assertions only in demo; ServerAuthFlowUiTest checks the real API contract.
+     */
+    @Before
+    fun requireDemoAuthentication() {
+        Assume.assumeTrue(BuildConfig.FLAVOR == "demo")
+    }
 
     /**
      * Enumerates all eight supported previews without changing a flavor or injecting test bindings.

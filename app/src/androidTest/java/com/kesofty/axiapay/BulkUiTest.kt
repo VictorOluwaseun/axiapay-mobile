@@ -6,6 +6,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.matcher.ViewMatchers.isRoot
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -16,9 +17,13 @@ import org.junit.Test
 class BulkUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    /** Enters the public demo without bypassing authentication presentation. */
+    /** Runs simulated wallet recovery in demo through the public welcome action. */
     @Before
     fun enterDemo() {
+        Assume.assumeTrue(
+            "Simulated wallet flows require the demo flavor",
+            BuildConfig.FLAVOR == "demo",
+        )
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
     }
 

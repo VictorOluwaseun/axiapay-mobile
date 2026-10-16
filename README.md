@@ -1,6 +1,6 @@
 # AxiaPay Android
 
-A native Jetpack Compose UI preview for everyday payments.
+A native Jetpack Compose app with authenticated wallet display and everyday payment previews.
 
 ## Run
 
@@ -11,7 +11,7 @@ Open this folder in Android Studio, select `devDebug` or `demoDebug` in **Build 
 ./gradlew :app:verifyDev
 # Verify formatting, unit tests, lint and debug/release/test APKs for every flavor:
 ./gradlew verifyAllFlavors
-ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDemoDebugAndroidTest
 
 # Build the four debug APKs together.
 ./gradlew :app:assembleDebug
@@ -26,7 +26,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDevDebugAndroidTest
 | `staging` | `com.kesofty.axiapay.staging` | AxiaPay Staging | Pre-production backend validation |
 | `prod` | `com.kesofty.axiapay` | AxiaPay | Production backend integrations |
 
-**Today all four use the current UI, sample data and local payment/SMS simulations.** Choosing `prod` does not connect real financial services. Backend replacements will arrive feature by feature for dev/staging/prod, while demo retains sample repositories and simulated operations. Existing demo labels stay until the corresponding feature actually uses real data.
+**Authentication and account/Home wallet balances use the API in dev/staging/prod; demo keeps simulated authentication and balances.** Payments, schedules and SMS remain labelled local previews. Staging/prod require an explicitly configured HTTPS API; no deployed address is assumed.
 
 The four apps can be installed together, each with a separate Android sandbox, saved session, drafts and preferences. The unsuffixed ID is preserved for prod; existing installs using that ID belong to prod, and demo begins as a separate install. Kotlin packages and the resource namespace remain `com.kesofty.axiapay`.
 
@@ -34,7 +34,7 @@ Each flavor has `Debug` and `Release` variants, such as `demoDebug` and `prodRel
 
 Debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Replace `Dev` in the commands above with `Demo`, `Staging` or `Prod` for other flavors. Use explicit flavor task names for unit tests, lint and device tests.
 
-Hilt modules in `app/src/demo/java/` select the demo repositories and payment/SMS actions. Separate modules in `app/src/nonDemo/java/` are compiled into dev/staging/prod only and currently select the same simulations. Shared modules provide platform adapters, presentation collaborators and framework-independent use cases. This keeps one UI and sample implementation while giving future backend integrations a separate binding boundary. Environment choices stay out of Views and domain code; no backend URLs or credentials have been invented.
+Hilt modules in `app/src/demo/java/` select the demo repositories and payment/SMS actions. Separate modules in `app/src/nonDemo/java/` are compiled into dev/staging/prod only. `FlavorAuthenticationModule` selects real account access, while `FlavorPaymentModule` retains payment simulations. Shared modules provide platform adapters, presentation collaborators and framework-independent use cases. This keeps one UI and sample implementation while giving future backend integrations a separate binding boundary. Environment selection stays at composition; the confirmed local dev URL is configured separately from undeclared staging/prod URLs. Credentials never belong in Gradle properties or source.
 
 Source-set and variant conventions follow the [Android build-variant guide](https://developer.android.com/build/build-variants).
 
@@ -46,7 +46,7 @@ Source-set and variant conventions follow the [Android build-variant guide](http
 - **Plans:** create a dated one-time, daily, weekly or monthly payment; preview the next three dates; pause/resume plans; and change the demo reminder preference.
 - **Notifications and profile:** sample renewal notices, waiting-payment prompts, and balance/reminder controls.
 
-Airtime, data, electricity, TV, wallet funding and wallet/bank transfers have interactive form → review → receipt flows. Fields are validated locally. All providers, balances, recipients and prices are illustrative. No actual bank or carrier integration is present. `ACCESS_NETWORK_STATE` observes Android connectivity without a runtime permission prompt; the app still sends no network requests or SMS.
+Airtime, data, electricity, TV, wallet funding and wallet/bank transfers have interactive form → review → receipt flows. Fields are validated locally. Payment providers, recipients, prices and simulated payment balances are illustrative. Non-demo account and Home wallet balances come from the API; real bank and carrier purchases are not wired into these forms. `ACCESS_NETWORK_STATE` observes Android connectivity without a runtime permission prompt. Authentication and wallet lookup send API requests; SMS remains simulated.
 
 Education, insurance, airtime conversion and merchant payments have service previews. Offline mode has an interactive SMS simulation; internet detection is real, while SMS transport and durable outbox storage are not implemented. Scheduled execution, push notifications and actual airtime/data monitoring are not implemented.
 
@@ -100,15 +100,59 @@ Offline: palette tokens and inline accents resolve to their greyscale luminance,
 
 `ui/AxiaApp.kt` contains the four main screens, `ui/PaymentSheet.kt` renders payment forms/reviews, `ui/OfflineSheets.kt` renders connection/outbox/SMS states, `ui/Sheets.kt` contains the other sheets, `ui/components` contains the shared controls and vector icons, and `ui/theme` defines the palette and typography. `AxiaHomePreview` provides an Android Studio Compose preview.
 
-## Account-entry design preview
+## Account access
 
-Fresh launches open the welcome screen. Choose **Get started** for signup, **I already have an account** for sign-in, or **Explore demo** for the original dashboard. Both forms offer **Phone / Email** and **Password / One-time code**. Signup keeps the existing name field and verifies the selected contact with a code, with or without a password. Code sign-in also verifies; password sign-in opens the completion preview directly. Any six ASCII digits complete code entry. All four flavors use the same simulation: no account is created, no SMS/email is delivered, no stored password is checked, and no identity or session is verified.
+The existing phone/email and password/code selectors now drive all four real auth flows in **dev, staging and prod**:
 
-Phone + code remains the default. Use a valid Nigerian number (080… or +234…) or a typical email address. Password previews require a nonblank sample password of at least eight characters, with whitespace/case preserved; this is a demo validation rule, not a confirmed backend password policy. The password field starts masked and has explicit Show/Hide controls.
+- Signup with a password requests a signup challenge, then verifies it to create the account/session.
+- Signup without a password requests and verifies the same contact-bound signup proof.
+- Password sign-in exchanges the registered contact and exact password for a bearer session.
+- Code sign-in requests a login-purpose challenge and verifies its ID/code without registering unknown contacts.
 
-Use **Profile → Preview welcome & sign-in** to revisit the design. Wallet funds, drafts, SMS requests, plans and dashboard navigation remain in their existing independent owner. The auth screens use the same automatic offline greyscale palette. Live account access, code delivery and recovery still require backend integration.
+Local Nigerian numbers such as `080…` are sent as `+234…`; international E.164 numbers are accepted. Emails are trimmed/lowercased while preserving dots and plus aliases. New passwords use the API's 15–128 Unicode-code-point rule. Existing-password sign-in accepts 1–128 code points. Whitespace and case are never modified. The API accepts no signup name, so that field remains demo-only. Client checks improve feedback; server checks remain authoritative.
 
-Only a demo-entry navigation flag is stored in Android saved state. Form values stay in memory across configuration changes; a process-restored unfinished form starts at Welcome. Passwords are cleared on method/contact changes, navigation away from the form, entry into verification, and completion. Resend uses a separate use case and does not retain a signup password. Codes are cleared on resend, when leaving verification, and on completion. Input/state descriptions redact personal and credential values. The flag never authorizes a financial operation.
+`AuthViewModel` calls the framework-independent `AccountAccess` application operations. The backend workflow uses `AuthenticationRepository` and `AuthenticationSessionStore`. The HTTP adapter sends only the published DTO fields, keeps challenge purpose/identity and leading code zeros, observes server expiry/resend timing and `Retry-After`, rejects malformed responses, and disables automatic retries, redirects and caching. Network failures never become demo success. A lost successful redemption response needs a fresh sign-in; the app does not replay it automatically.
+
+Resending replaces the challenge ID. For password signup, the current API requires the password on each signup request; the app returns to the populated form and asks for the password again instead of retaining it after entering verification. Code-only signup and code login resend without a password. No code is auto-submitted.
+
+Successful real auth displays the verified account and its wallet. **Open dashboard** shows the same account-owned wallet balance on Home; **Profile → Account & sign out** returns to account details. Other payment tools retain their independent, labelled previews. Tokens never enter UI state or `SavedStateHandle`. The token, expiry and normalized API identity are atomically encrypted with AES-GCM using Android Keystore and stored under `noBackupFilesDir`. API identity changes, expiry, unreadable ciphertext or lost keys require fresh access; no plaintext fallback is used. Startup/foreground checks call `/auth/me` before showing real identity. A connectivity failure preserves the protected record and presents explicit recovery, with the existing payment preview still available. Sign-out removes local access after server revocation; failure remains retryable. Cleanup compares the original protected record so a late logout or invalid-session response cannot delete a newer login. Temporary Keystore/IO failures retain ciphertext for explicit retry. There is no refresh-token endpoint or client refresh loop.
+
+Only the preview-entry navigation Boolean is saved. Form contacts, names, passwords, challenges and codes stay in memory across configuration changes, and unfinished forms restart at Welcome after process restoration. Auth state and the payment owner's drafts/pending requests remain independent. The offline greyscale palette and temporary connection overrides are preserved. Real code delivery, password reset and biometric/device enrollment are separate backend capabilities; this change integrates the four existing entry flows and bearer-session lifecycle, not fingerprint or recovery screens.
+
+### Local development
+
+Start the existing local API and its development services from the backend repository. The dev flavor defaults to `http://10.0.2.2:4000/v1/` for the Android emulator. Its network policy permits HTTP only for emulator/loopback hosts; public HTTP, user-supplied credentials in URLs, query strings, fragments and redirecting auth endpoints are rejected. Staging/prod require HTTPS with normal platform trust.
+
+Local email and phone codes are captured in **Mailpit at http://127.0.0.1:58025**. Phone delivery appears as mail to `sms+<international digits>@sms.axiapay.test`; no SMS is sent to a handset. Use the latest code for the corresponding challenge.
+
+Override a base URL, including the `/v1/` prefix and trailing slash, through untracked user Gradle properties or `-P`:
+
+```sh
+./gradlew :app:assembleDevDebug -Paxiapay.dev.apiBaseUrl=http://10.0.2.2:4000/v1/
+./gradlew :app:assembleStagingDebug -Paxiapay.staging.apiBaseUrl=https://your-staging-host/v1/
+./gradlew :app:assembleProdRelease -Paxiapay.prod.apiBaseUrl=https://your-production-host/v1/
+```
+
+The HTTPS host names above are examples, not configured deployments. For an explicitly selected USB device, use `adb -s <serial> reverse tcp:4000 tcp:4000` and a dev override of `http://127.0.0.1:4000/v1/`. The application IDs remain distinct; credentials cannot cross installed flavors.
+
+The demo flavor retains its original name field, eight-character sample-password policy, any-six-digits verification and simulated completion. **Explore demo** never establishes a real identity. No backend outage is hidden by switching to that simulation.
+
+### Auth verification
+
+`verifyAllFlavors` checks all debug/release/test APKs, generated Hilt graphs, lint, formatting and unit suites. The new unit tests exercise all contacts/methods, HTTP shapes, Unicode/exact passwords, leading zeros, purpose-bound proof, cooldowns, storage/revocation failure, cancellation, stale results, API isolation and session recovery. Android storage tests use isolated real Keystore records, test tampering/recreation and verify network policy.
+
+Run the real local API UI check only on an explicitly selected dev emulator without an existing auth session:
+
+```sh
+adb -s emulator-5554 shell am instrument -w -r \
+  -e runLocalAuth true \
+  -e class com.kesofty.axiapay.ServerAuthFlowUiTest,com.kesofty.axiapay.AuthenticationSessionStorageTest,com.kesofty.axiapay.HiltGraphTest \
+  com.kesofty.axiapay.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+This opt-in test creates synthetic local accounts through the real API, reads only matching Mailpit messages, checks phone/email signup with/without passwords, both sign-in methods, Activity recreation, and server-confirmed logout. It honors the real resend cooldown and never logs credentials/codes. Ordinary demo UI checks remain on the demo APK; non-demo instrumented APK compilation does not imply real-server test execution.
+
+HTTP dependencies are pinned to OkHttp/OkHttp Coroutines **5.3.0**, whose published sources use coroutines 1.10.2 and Kotlin 2.2.x, compatible with this app's existing Kotlin/coroutines toolchain. JSON uses the Android platform implementation, with the pinned reference JSON library only in JVM tests. No additional DI or serialization plugin is required. References: [OkHttp 5.3.0 sources](https://github.com/lysine-dev/okhttp/tree/parent-5.3.0), [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [Android no-backup storage](https://developer.android.com/reference/android/content/Context#getNoBackupFilesDir()).
 
 ## Hilt wiring
 
@@ -156,3 +200,23 @@ Recipient entry has a pinned search field, compact lazy rows with stable IDs, mu
 `BulkScaleTest` covers all four services at 1,000 rows, overflow, exact totals, last-row editing and interrupted/resumed execution. `RecipientDocumentParserTest` exercises 1,000 and 1,001 rows in CSV, XLSX and XLS. `BulkScaleDeviceTest` covers the full Hilt/UI/import/offline/retry path and asserts the lazy viewport does not compose the whole list. `BulkCheckpointTest` exercises large draft/reservation restoration, small saved-state payloads, write failure, corrupt-read recovery and cancellation during commit.
 
 The JVM preparation probe measured 1,000 rows at approximately 458 ms before linear duplicate checks and 10 ms afterward on this development host. These are diagnostic CPU measurements, not phone frame-rate guarantees. Device checks use an explicitly selected emulator; production throughput still depends on future backend and provider integrations.
+
+
+### Signed-in wallet lookup
+
+For reproducible verification with the current toolchain, use `./gradlew verifyAllFlavors --max-workers=1`; this avoids the observed Kotlin lint analyzer crash during concurrent flavor analysis. Device checks passed on the API 36 emulator. The installed Espresso version failed before app interaction on the API 37 image, so use API 36 for these checks.
+
+Non-demo authentication now fetches `GET /v1/wallets/me?currency=NGN` with the newly issued bearer after protected session persistence, for password login, code login and successful signup verification. Stored-session restoration also reloads the wallet. The account screen displays its server wallet ID, status and exact available/reserved/total balances. HTTP transport is shared with authentication; it remains bounded, cancellable, uncached on-device and configured to disable redirects and automatic retries.
+
+A missing wallet (404), network outage or malformed response produces an explicit wallet state while keeping the verified account signed in. **Retry wallet** rechecks the stored session and repeats the GET; it never replays signup, login or code redemption and never calls create-wallet. A wallet 401 removes only the captured invalid session. API-scope checks, credential-store comparisons, cancellation and ViewModel visit ownership prevent old results crossing a newer session or navigation. Wallet values and bearer credentials are excluded from saved UI state.
+
+The real wallet is separate from the payment preview, which still uses its own demo ledger. The demo flavor remains fully simulated and receives no wallet HTTP repository. The API's Redis caching policy stays server-side; the mobile wallet is display data and never authorizes spending.
+
+`HttpWalletRepositoryTest` and `AccountWalletTest` cover the GET/header contract, exact large amounts, failed lookup, no create fallback, login/verification ordering, protected persistence failure, API/session isolation, retries and late cancellation. The opt-in `ServerAuthFlowUiTest` now asserts the real NGN wallet after every supported login/signup flow and Activity recreation.
+
+
+### Home wallet source
+
+The non-demo Home dashboard now renders the authenticated account's NGN wallet available balance. It receives an immutable projection from `AuthViewModel`; the demo payment ledger never supplies or mutates that amount. The signed-in account page opens Home through **Open dashboard**. Home offers wallet refresh and account actions, preserves balance hiding and the offline greyscale palette, and reloads the verified wallet after restoration. Loading, sign-in, missing-wallet and network-failure states contain no sample or invented zero balance.
+
+The demo flavor keeps its original sample balance, funding/transfer controls and saved-state simulation. Other payment, plan and activity tools are still labelled previews while their integrations are pending. UI suites that assert simulated wallet amounts run only in the demo flavor; real Home coverage uses account-owned wallet fixtures and the opt-in dev API flow. A real wallet balance is display data, and all spending remains server-authoritative. `HomeWalletStateTest`, `AccountWalletTest`, `HomeWalletUiTest` and the opt-in real auth flow cover selection, isolation, refresh, logout/account changes, restoration, failure recovery, privacy and accessibility.

@@ -3,6 +3,7 @@ package com.kesofty.axiapay
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.kesofty.axiapay.application.*
+import com.kesofty.axiapay.application.auth.DemoAccountAccess
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.auth.*
 import kotlinx.coroutines.CompletableDeferred
@@ -39,9 +40,12 @@ class AuthViewModelTest {
     ): AuthViewModel =
         AuthViewModel(
                 handle,
-                PrepareDemoAccess(repository),
-                CompleteDemoAccess(repository),
-                ResendDemoAccessCode(repository),
+                DemoAccountAccess(
+                    PrepareDemoAccess(repository),
+                    CompleteDemoAccess(repository),
+                    ResendDemoAccessCode(repository),
+                ),
+                java.time.Clock.systemUTC(),
             )
             .also {
                 owner.put("auth", it)
@@ -75,9 +79,9 @@ class AuthViewModelTest {
         vm.accept(AuthIntent.Continue)
         vm.accept(AuthIntent.EditCode("001234"))
         assertNull(repository.lastCode)
-        vm.accept(AuthIntent.ResetCodePreview)
+        vm.accept(AuthIntent.ResendCode)
         assertEquals("", vm.uiState.value.code)
-        assertTrue(vm.uiState.value.previewReset)
+        assertTrue(vm.uiState.value.isCodeResent)
         vm.accept(AuthIntent.EditCode("001234"))
         vm.accept(AuthIntent.Back)
         assertEquals("", vm.uiState.value.code)
@@ -124,7 +128,7 @@ class AuthViewModelTest {
         val restored = viewModel(repository, SavedStateHandle(snapshot))
         assertEquals(AuthScreen.Dashboard, restored.uiState.value.screen)
         assertEquals(0, repository.preparations)
-        restored.accept(AuthIntent.PreviewAuth)
+        restored.accept(AuthIntent.OpenAccount)
         assertEquals(AuthScreen.Welcome, restored.uiState.value.screen)
     }
 
@@ -194,7 +198,7 @@ class AuthViewModelTest {
         assertEquals(" sample password ", repository.lastInput?.password)
         assertEquals("", vm.uiState.value.password)
         vm.accept(AuthIntent.EditCode("001234"))
-        vm.accept(AuthIntent.ResetCodePreview)
+        vm.accept(AuthIntent.ResendCode)
         assertEquals(1, repository.resends)
         assertEquals("Ada@example.com", repository.lastResendContact)
         assertEquals(1, repository.preparations)
@@ -273,14 +277,14 @@ class AuthViewModelTest {
         vm.accept(AuthIntent.EditCode("001234"))
         val failure = IllegalStateException("Synthetic resend failure")
         repository.exception = failure
-        vm.accept(AuthIntent.ResetCodePreview)
+        vm.accept(AuthIntent.ResendCode)
         assertEquals(AuthScreen.Verification, vm.uiState.value.screen)
         assertEquals("", vm.uiState.value.code)
         assertEquals("08012345678", vm.uiState.value.contact)
         assertSame(failure, vm.uiState.value.failureCause)
         repository.exception = null
-        vm.accept(AuthIntent.ResetCodePreview)
-        assertTrue(vm.uiState.value.previewReset)
+        vm.accept(AuthIntent.ResendCode)
+        assertTrue(vm.uiState.value.isCodeResent)
         assertNull(vm.uiState.value.failureCause)
         assertEquals(2, repository.resends)
     }

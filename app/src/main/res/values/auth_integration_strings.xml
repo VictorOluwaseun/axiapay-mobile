@@ -1,0 +1,52 @@
+<resources>
+    <string name="auth_account_label">Account</string>
+    <string name="auth_live_create_body">Start with your phone number or email.</string>
+    <string name="auth_live_password_hint">Enter your password</string>
+    <string name="auth_live_signup_password_hint">15–128 characters. A memorable passphrase works well.</string>
+    <string name="auth_live_login_password_hint">Use the password registered with this contact.</string>
+    <string name="auth_live_signup_password_error">Use between 15 and 128 characters for your password.</string>
+    <string name="auth_live_login_password_error">Enter your password using 1–128 characters.</string>
+    <string name="auth_live_notice">Your account is verified through your phone number or email.</string>
+    <string name="auth_live_verify_body">Enter the code sent to your phone number or email.</string>
+    <string name="auth_live_verify">Verify and continue</string>
+    <string name="auth_live_code_notice">Use the latest code sent to your contact. Codes expire and can only be used once.</string>
+    <plurals name="auth_code_expires_in">
+        <item quantity="one">Code expires in %1$d second.</item>
+        <item quantity="other">Code expires in %1$d seconds.</item>
+    </plurals>
+    <string name="auth_code_expired">This code has expired. Request a new code to continue.</string>
+    <plurals name="auth_resend_in">
+        <item quantity="one">Send a new code in %1$d second</item>
+        <item quantity="other">Send a new code in %1$d seconds</item>
+    </plurals>
+    <string name="auth_live_resend">Send a new code</string>
+    <string name="auth_live_code_sent">A new code was requested. Use the latest code for this contact.</string>
+    <string name="auth_live_unavailable">Account access is temporarily unavailable. Please try again.</string>
+    <string name="auth_credentials_error">We could not sign you in with those details. Check your contact and password.</string>
+    <string name="auth_code_rejected">We could not verify that code. Check it or request a new one.</string>
+    <string name="auth_rate_limited">Too many attempts. Please wait before trying again.</string>
+    <string name="auth_network_error">We could not connect. Check your internet connection and try again.</string>
+    <string name="auth_configuration_error">Sign-in is not configured for this environment yet.</string>
+    <string name="auth_invalid_request">Check your details and try again.</string>
+    <string name="auth_storage_error">We could not access your protected session. Please try again.</string>
+    <string name="auth_signup_password_again">To send a new signup code, enter your password again.</string>
+    <string name="auth_live_offline">You are offline. Sign-in and verification need an internet connection.</string>
+    <string name="auth_restoring_title">Welcome back.</string>
+    <string name="auth_restoring_body">Checking your saved session…</string>
+    <string name="auth_recovery_title">Let’s reconnect.</string>
+    <string name="auth_recovery_body">We could not check your session. Your saved session is still protected. Retry when you are connected.</string>
+    <string name="auth_retry_session">Retry connection</string>
+    <string name="auth_sign_out">Sign out</string>
+    <string name="auth_signed_in_title">You’re signed in.</string>
+    <string name="auth_signed_in_body">Your verified account is ready.</string>
+    <string name="auth_verified_contact">Your account</string>
+    <string name="auth_contact_verified">Contact verified</string>
+    <string name="auth_payment_preview_notice">The payment preview uses separate demo balances and simulated payments.</string>
+    <string name="auth_open_payment_preview">Explore payment preview</string>
+    <string name="auth_account_shortcut">Account &amp; sign out</string>
+    <string name="auth_verification_sign_in">Already verified? Sign in</string>
+    <plurals name="auth_retry_in">
+        <item quantity="one">Try again in %1$d second.</item>
+        <item quantity="other">Try again in %1$d seconds.</item>
+    </plurals>
+</resources>

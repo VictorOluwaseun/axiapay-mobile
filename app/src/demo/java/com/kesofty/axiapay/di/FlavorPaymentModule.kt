@@ -3,7 +3,6 @@ package com.kesofty.axiapay.di
 import androidx.lifecycle.SavedStateHandle
 import com.kesofty.axiapay.application.*
 import com.kesofty.axiapay.data.*
-import com.kesofty.axiapay.domain.DemoAccessRepository
 import com.kesofty.axiapay.domain.SessionRepository
 import dagger.Module
 import dagger.Provides
@@ -46,11 +45,6 @@ internal object FlavorPaymentModule {
             kotlinx.coroutines.Dispatchers.IO,
             handle.get<String>("demo.session.v1"),
         )
-
-    /** Keeps account-entry simulation independent of wallet state and real credentials. */
-    @Provides
-    @ViewModelScoped
-    fun provideDemoAccessRepository(): DemoAccessRepository = SimulatedAccessRepository()
 
     /** Selects the preserved demo submission policy behind the suspending action contract. */
     @Provides

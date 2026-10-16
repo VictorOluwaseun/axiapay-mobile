@@ -7,6 +7,7 @@ import androidx.test.espresso.Espresso
 import kotlin.math.abs
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -16,8 +17,13 @@ class OfflineUiTest {
 
     private val internet = DeviceInternet()
 
+    /** Runs simulated wallet/network assertions only in the isolated demo flavor. */
     @Before
     fun prepareNetwork() {
+        Assume.assumeTrue(
+            "Simulated wallet flows require the demo flavor",
+            BuildConfig.FLAVOR == "demo",
+        )
         internet.capture()
         reconnect()
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()

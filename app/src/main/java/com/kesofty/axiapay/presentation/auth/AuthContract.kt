@@ -2,9 +2,16 @@ package com.kesofty.axiapay.presentation.auth
 
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.AuthMethod
+import com.kesofty.axiapay.domain.auth.AccountAccessMode
+import com.kesofty.axiapay.domain.auth.AccountIdentity
+import com.kesofty.axiapay.domain.auth.AuthenticationChallenge
+import com.kesofty.axiapay.domain.wallet.WalletLookupResult
+import com.kesofty.axiapay.presentation.HomeWalletState
 
-/** Routes for the account-entry prototype; Dashboard denotes demo access, not authentication. */
+/** Account routes; Dashboard selects its wallet source from the injected account workflow. */
 enum class AuthScreen {
+    Restoring,
+    SessionRecovery,
     Welcome,
     SignIn,
     CreateAccount,
@@ -21,15 +28,33 @@ enum class AuthError {
     Password,
     Code,
     Unavailable,
+    Credentials,
+    CodeRejected,
+    CodeExpired,
+    RateLimited,
+    Network,
+    Configuration,
+    InvalidRequest,
+    SecureStorage,
+    PasswordAgain,
 }
 
 /**
  * One immutable presentation snapshot. Contact, name, password and code live only in ViewModel
  * memory, never SavedStateHandle. Passwords leave state at verification and completion. Never log
- * this snapshot; its inputs are sensitive even though all operations are currently simulated.
+ * this snapshot; its inputs are sensitive even though demo completion stays distinct from server
+ * authentication.
  */
 data class AuthUiState(
     val screen: AuthScreen = AuthScreen.Welcome,
+    val mode: AccountAccessMode = AccountAccessMode.Demo,
+    val account: AccountIdentity? = null,
+    val wallet: WalletLookupResult? = null,
+    val challenge: AuthenticationChallenge? = null,
+    val codeSecondsRemaining: Long = 0,
+    val resendSecondsRemaining: Long = 0,
+    val retryAfterSeconds: Long = 0,
+    val requestReference: String? = null,
     val isCreatingAccount: Boolean = false,
     val contactType: AuthContactType = AuthContactType.Phone,
     val contact: String = "",
@@ -39,10 +64,29 @@ data class AuthUiState(
     val name: String = "",
     val code: String = "",
     val isProcessing: Boolean = false,
+    val isWalletRefreshing: Boolean = false,
     val error: AuthError? = null,
     val failureCause: Exception? = null,
-    val previewReset: Boolean = false,
+    val isCodeResent: Boolean = false,
 ) {
+    /** Copy and controls follow the injected workflow, never a flavor check inside a View. */
+    val isDemo: Boolean
+        get() = mode == AccountAccessMode.Demo
+
+    /**
+     * Project account-owned wallet state without ever consulting the demo ledger in server mode.
+     */
+    val homeWallet: HomeWalletState
+        get() =
+            when {
+                isDemo -> HomeWalletState.Demo
+                account == null -> HomeWalletState.SignedOut
+                isWalletRefreshing -> HomeWalletState.Loading
+                wallet is WalletLookupResult.Loaded -> HomeWalletState.Loaded(wallet.wallet)
+                wallet is WalletLookupResult.Failed -> HomeWalletState.Failed(wallet.issue)
+                else -> HomeWalletState.Loading
+            }
+
     /**
      * Keeps diagnostic interpolation from printing transient contact, name, password or code input.
      */
@@ -51,13 +95,28 @@ data class AuthUiState(
 }
 
 /**
- * Explicit user actions drive navigation and demo operations; rendering never submits a request.
+ * Explicit user actions drive navigation and account operations; rendering never submits a request.
  */
 sealed interface AuthIntent {
+    /** Rechecks a stored session after foregrounding without replaying pending form operations. */
+    data object RefreshSession : AuthIntent
+
+    /** Explicitly retries a failed startup/foreground session check. */
+    data object RetrySession : AuthIntent
+
+    /**
+     * Revalidates the stored session and retries only a wallet read, never login or code
+     * redemption.
+     */
+    data object RetryWallet : AuthIntent
+
+    /** Revokes the real bearer session before removing protected local credentials. */
+    data object SignOut : AuthIntent
+
     /** Opens the form for an existing account. */
     data object SignIn : AuthIntent
 
-    /** Opens signup with its existing name field and the default phone/code method. */
+    /** Opens signup with the default phone/code method; only demo collects a preview name. */
     data object CreateAccount : AuthIntent
 
     /** Selects phone or email and clears the previous contact and credentials. */
@@ -81,18 +140,24 @@ sealed interface AuthIntent {
     /** Changes the single accessible code field without auto-submitting it. */
     data class EditCode(val value: String) : AuthIntent
 
-    /** Explicitly prepares or completes the current demo form. */
+    /** Explicitly prepares the current account form or verifies its captured challenge/code. */
     data object Continue : AuthIntent
 
-    /** Repeats the simulated challenge request and clears the old code. */
-    data object ResetCodePreview : AuthIntent
+    /** Requests a replacement purpose-bound challenge and clears the old code. */
+    data object ResendCode : AuthIntent
 
-    /** Returns to the preceding screen and cancels any in-flight preview operation. */
+    /** Returns to the preceding screen and cancels its owned account operation. */
     data object Back : AuthIntent
 
     /** Enters the original dashboard without changing its session or navigation. */
     data object ExploreDemo : AuthIntent
 
-    /** Reopens account-entry design from the demo profile without clearing payment data. */
-    data object PreviewAuth : AuthIntent
+    /**
+     * Enter Home with the current verified wallet while retaining the independent demo payment
+     * owner.
+     */
+    data object OpenDashboard : AuthIntent
+
+    /** Opens the current real account or demo entry screen without clearing payment data. */
+    data object OpenAccount : AuthIntent
 }

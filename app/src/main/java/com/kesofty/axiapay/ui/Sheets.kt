@@ -185,13 +185,18 @@ private fun NotificationCard(
 
 /** Renders demo profile preferences and emits changes through typed intents. */
 @Composable
-fun ProfileSheet(state: DemoSession, onIntent: (AxiaIntent) -> Unit, onPreviewAuth: () -> Unit) {
+fun ProfileSheet(
+    state: DemoSession,
+    onIntent: (AxiaIntent) -> Unit,
+    onOpenAccount: () -> Unit,
+    authShortcutLabel: String? = null,
+) {
     SheetContent {
         IconTile(Glyph.Person, tint = Peach)
         SheetHeading("A space for you.", "Alex Morgan • @alex • Demo profile")
-        TextButton(onPreviewAuth, modifier = Modifier.fillMaxWidth()) {
+        TextButton(onOpenAccount, modifier = Modifier.fillMaxWidth()) {
             Text(
-                stringResource(R.string.auth_preview_shortcut),
+                authShortcutLabel ?: stringResource(R.string.auth_preview_shortcut),
                 style = MaterialTheme.typography.labelLarge,
             )
         }

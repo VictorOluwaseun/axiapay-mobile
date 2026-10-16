@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.espresso.Espresso
 import kotlin.math.abs
 import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -14,6 +16,14 @@ import org.junit.Test
  */
 class AuthUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Runs simulation assertions only in demo; ServerAuthFlowUiTest checks the real API contract.
+     */
+    @Before
+    fun requireDemoAuthentication() {
+        Assume.assumeTrue(BuildConfig.FLAVOR == "demo")
+    }
 
     /**
      * Waits for the deliberately asynchronous preview adapter to finish before asserting

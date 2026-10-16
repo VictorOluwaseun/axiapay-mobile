@@ -1,0 +1,25 @@
+<resources>
+    <string name="wallet_title">Your NGN wallet</string>
+    <string name="wallet_available">Available balance</string>
+    <string name="wallet_reserved">Reserved: %1$s</string>
+    <string name="wallet_total">Total: %1$s</string>
+    <string name="wallet_active">Active</string>
+    <string name="wallet_frozen">Frozen</string>
+    <string name="wallet_closed">Closed</string>
+    <string name="wallet_id">Wallet ID: %1$s</string>
+    <string name="wallet_loading">Refreshing your wallet…</string>
+    <string name="wallet_missing">There is no NGN wallet for this account yet. Try again later.</string>
+    <string name="wallet_network_error">We could not load your wallet. Check your connection and try again.</string>
+    <string name="wallet_unavailable">Your wallet is temporarily unavailable. You are still signed in.</string>
+    <string name="wallet_retry">Retry wallet</string>
+    <string name="wallet_refresh">Refresh wallet</string>
+    <string name="home_open_dashboard">Open dashboard</string>
+    <string name="home_account_greeting">Welcome back</string>
+    <string name="home_wallet_sign_in">Sign in to view your wallet balance.</string>
+    <string name="home_wallet_loading">Loading your wallet…</string>
+    <string name="home_wallet_last_received">Last received balance</string>
+    <string name="home_wallet_show">Show balance</string>
+    <string name="home_wallet_hide">Hide balance</string>
+    <string name="home_wallet_hidden">₦ ••••••</string>
+    <string name="home_payment_preview_notice">Payment tools, plans and activity below are previews.</string>
+</resources>
