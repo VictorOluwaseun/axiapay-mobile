@@ -27,6 +27,7 @@ class ApiRequestFailure(
     val status: Int? = null,
     val retryAfterSeconds: Long = 0,
     val requestReference: String? = null,
+    val code: String? = null,
 ) : Exception("API request failed: $kind")
 
 /**
@@ -145,6 +146,22 @@ class ApiHttpClient(
             )
         }
 
+    /**
+     * Read only a bounded machine code from an error response; never return upstream messages or
+     * bodies.
+     */
+    private fun errorCode(response: Response): String? {
+        try {
+            val json = boundedJson(response)
+            val code = json.opt("code") as? String ?: return null
+            return code.takeIf { value ->
+                value.length in 1..80 && value.all { it in 'A'..'Z' || it in '0'..'9' || it == '_' }
+            }
+        } catch (_: Exception) {
+            return null
+        }
+    }
+
     /** Validate HTTP metadata and read at most 64 KiB; never expose response bodies in errors. */
     private fun readJson(response: Response, expected: Int): JSONObject? {
         if (response.code != expected) {
@@ -156,11 +173,22 @@ class ApiHttpClient(
                 response.header("X-Request-Id")?.takeIf {
                     Regex("[A-Za-z0-9_-]{1,80}").matches(it)
                 }
-            throw ApiRequestFailure(ApiFailureKind.Http, response.code, retry, reference)
+            throw ApiRequestFailure(
+                ApiFailureKind.Http,
+                response.code,
+                retry,
+                reference,
+                errorCode(response),
+            )
         }
         if (expected == 204) {
             return null
         }
+        return boundedJson(response)
+    }
+
+    /** Consume a JSON body under the same cancellation registration and fixed size limit. */
+    private fun boundedJson(response: Response): JSONObject {
         val body = response.body
         if (body.contentType()?.subtype != "json") {
             throw ApiRequestFailure(ApiFailureKind.InvalidResponse)
