@@ -82,7 +82,10 @@ class ProviderLogoUiTest {
     /** Provider and Postpaid choices remain independent and survive recreation and review edits. */
     @Test
     fun electricityProviderAndMeterSurviveRecreation() {
-        compose.onNodeWithText("Electricity", useUnmergedTree = true).performClick()
+        compose
+            .onNode(hasTextExactly("Electricity") and hasClickAction())
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithTag("meter-type-Prepaid").assertIsSelected()
         compose.onNodeWithTag("meter-type-Postpaid").performClick().assertIsSelected()
         chooseElectricityProvider("YEDC", "Yola Electric")
@@ -105,7 +108,10 @@ class ProviderLogoUiTest {
     /** Filtering, clearing and dismissal preserve the existing draft without selecting a result. */
     @Test
     fun searchAndDismissalPreserveDraftAndRestoreTheOpenPicker() {
-        compose.onNodeWithText("Electricity", useUnmergedTree = true).performClick()
+        compose
+            .onNode(hasTextExactly("Electricity") and hasClickAction())
+            .performScrollTo()
+            .performClick()
         compose.onNodeWithText("Meter number").performScrollTo().performTextInput("01234567890")
         compose.onNodeWithText("Amount (₦)").performScrollTo().performTextInput("4500")
         dismissKeyboard()
