@@ -1,14 +1,14 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.application.airtime.PrepareAirtime
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.application.telecom.PrepareTelecom
+import com.kesofty.axiapay.domain.telecom.*
 import org.junit.Assert.*
 import org.junit.Test
 
 /** Exact boundary preparation uses published product constraints without local pricing. */
-class PrepareAirtimeTest {
-    private val prepare = PrepareAirtime()
-    private val product = AirtimeFixture().api.product
+class PrepareTelecomTest {
+    private val prepare = PrepareTelecom()
+    private val product = TelecomFixture().api.product
 
     /** Canonical phone input and exact decimal conversion retain explicit network selection. */
     @Test
@@ -44,14 +44,14 @@ class PrepareAirtimeTest {
             )) {
             assertEquals(
                 amount,
-                AirtimeIssue.InvalidAmount,
+                TelecomIssue.InvalidAmount,
                 prepare(product, "08012345678", amount).issue,
             )
         }
-        assertEquals(AirtimeIssue.InvalidRecipient, prepare(product, "invalid", "100").issue)
-        assertEquals(AirtimeIssue.SelectProduct, prepare(null, "08012345678", "100").issue)
+        assertEquals(TelecomIssue.InvalidRecipient, prepare(product, "invalid", "100").issue)
+        assertEquals(TelecomIssue.SelectProduct, prepare(null, "08012345678", "100").issue)
         assertEquals(
-            AirtimeIssue.ProductUnavailable,
+            TelecomIssue.ProductUnavailable,
             prepare(product.copy(isSubmissionAvailable = false), "08012345678", "100").issue,
         )
     }

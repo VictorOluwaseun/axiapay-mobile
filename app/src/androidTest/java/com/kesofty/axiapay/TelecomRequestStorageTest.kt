@@ -1,8 +1,8 @@
 package com.kesofty.axiapay
 
 import androidx.test.platform.app.InstrumentationRegistry
-import com.kesofty.axiapay.data.airtime.AtomicAirtimeRequestStore
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.data.telecom.AtomicTelecomRequestStore
+import com.kesofty.axiapay.domain.telecom.*
 import java.io.File
 import java.time.Instant
 import java.util.UUID
@@ -13,7 +13,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /** Exercises actual Android AtomicFile persistence across independent journal instances. */
-class AirtimeRequestStorageTest {
+class TelecomRequestStorageTest {
     /** Cold reads remain account/API-scoped, immutable, idempotent and free of financial bodies. */
     @Test
     fun durableReferencesRemainIsolatedAcrossOwnersAndColdInstances() = runBlocking {
@@ -23,18 +23,18 @@ class AirtimeRequestStorageTest {
                 "test-journal-${UUID.randomUUID()}.json",
             )
         try {
-            val owner = AirtimeOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val request =
-                AirtimeRequest(
+                TelecomRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
                     Instant.now(),
                 )
-            val store = AtomicAirtimeRequestStore(file, Dispatchers.IO)
+            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
             store.save(request)
             store.save(request)
-            val cold = AtomicAirtimeRequestStore(file, Dispatchers.IO)
+            val cold = AtomicTelecomRequestStore(file, Dispatchers.IO)
             assertEquals(listOf(request), cold.read(owner))
             assertTrue(cold.read(owner.copy(accountId = UUID.randomUUID().toString())).isEmpty())
             assertTrue(
@@ -51,8 +51,8 @@ class AirtimeRequestStorageTest {
             try {
                 cold.save(request.copy(quoteId = UUID.randomUUID().toString()))
                 fail()
-            } catch (failure: AirtimeFailure) {
-                assertEquals(AirtimeIssue.Storage, failure.issue)
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.Storage, failure.issue)
             }
             assertEquals(earlier, file.readText())
         } finally {
@@ -70,10 +70,10 @@ class AirtimeRequestStorageTest {
                 "test-journal-${UUID.randomUUID()}.json",
             )
         try {
-            val owner = AirtimeOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val records =
                 (0 until 200).map {
-                    AirtimeRequest(
+                    TelecomRequest(
                         owner,
                         UUID.randomUUID().toString(),
                         UUID.randomUUID().toString(),
@@ -93,9 +93,9 @@ class AirtimeRequestStorageTest {
                 )
             }
             file.writeText(JSONObject().put("version", 1).put("requests", rows).toString())
-            val store = AtomicAirtimeRequestStore(file, Dispatchers.IO)
+            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
             val next =
-                AirtimeRequest(
+                TelecomRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
@@ -104,8 +104,8 @@ class AirtimeRequestStorageTest {
             try {
                 store.save(next)
                 fail()
-            } catch (failure: AirtimeFailure) {
-                assertEquals(AirtimeIssue.Storage, failure.issue)
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.Storage, failure.issue)
             }
             assertEquals(records, store.read(owner))
             store.acknowledge(records.first())
@@ -127,17 +127,17 @@ class AirtimeRequestStorageTest {
             )
         try {
             file.writeText("damaged recovery journal")
-            val store = AtomicAirtimeRequestStore(file, Dispatchers.IO)
-            val owner = AirtimeOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             try {
                 store.read(owner)
                 fail()
-            } catch (failure: AirtimeFailure) {
-                assertEquals(AirtimeIssue.Storage, failure.issue)
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.Storage, failure.issue)
             }
             try {
                 store.save(
-                    AirtimeRequest(
+                    TelecomRequest(
                         owner,
                         UUID.randomUUID().toString(),
                         UUID.randomUUID().toString(),
@@ -145,12 +145,70 @@ class AirtimeRequestStorageTest {
                     ),
                 )
                 fail()
-            } catch (failure: AirtimeFailure) {
-                assertEquals(AirtimeIssue.Storage, failure.issue)
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.Storage, failure.issue)
             }
             assertEquals("damaged recovery journal", file.readText())
         } finally {
             file.delete()
+        }
+    }
+
+    /**
+     * Version-one airtime references migrate atomically beside data, retaining every original ID.
+     */
+    @Test
+    fun legacyAirtimeJournalRetainsIdentitiesWhenDataIsAdded() = runBlocking {
+        val file =
+            File(
+                InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir,
+                "test-migration-${UUID.randomUUID()}.json",
+            )
+        try {
+            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val old =
+                TelecomRequest(
+                    owner,
+                    UUID.randomUUID().toString(),
+                    UUID.randomUUID().toString(),
+                    Instant.now(),
+                )
+            val row =
+                JSONObject()
+                    .put("accountId", owner.accountId)
+                    .put("apiIdentity", owner.apiIdentity)
+                    .put("requestKey", old.requestKey)
+                    .put("quoteId", old.quoteId)
+                    .put("createdAt", old.createdAt.toString())
+                    .put("acknowledged", false)
+            file.writeText(
+                JSONObject().put("version", 1).put("requests", JSONArray().put(row)).toString(),
+            )
+            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            assertEquals(listOf(old), store.read(owner))
+            try {
+                store.save(old.copy(service = TelecomService.Data))
+                fail()
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.Storage, failure.issue)
+            }
+            val data =
+                old.copy(
+                    requestKey = UUID.randomUUID().toString(),
+                    quoteId = UUID.randomUUID().toString(),
+                    service = TelecomService.Data,
+                )
+            store.save(data)
+            assertEquals(2, JSONObject(file.readText()).getInt("version"))
+            assertEquals(
+                listOf(old, data),
+                AtomicTelecomRequestStore(file, Dispatchers.IO).read(owner),
+            )
+            store.acknowledge(old)
+            assertEquals(listOf(old.copy(acknowledged = true), data), store.read(owner))
+        } finally {
+            file.delete()
+            File(file.path + ".bak").delete()
         }
     }
 }

@@ -2,6 +2,10 @@ package com.kesofty.axiapay
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
+import com.kesofty.axiapay.domain.ConnectionMode
+import com.kesofty.axiapay.presentation.AxiaIntent
+import com.kesofty.axiapay.presentation.AxiaViewModel
 import org.junit.Assume
 import org.junit.Before
 import org.junit.Rule
@@ -18,6 +22,27 @@ class AxiaUiTest {
             BuildConfig.FLAVOR == "demo",
         )
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+    }
+
+    /** Demo data keeps its sample plans, local receipt and simulated wallet debit. */
+    @Test
+    fun dataPurchaseKeepsTheDemoWalletAndSamplePlans() {
+        compose.runOnIdle {
+            ViewModelProvider(compose.activity)[AxiaViewModel::class.java].accept(
+                AxiaIntent.SetConnectionMode(ConnectionMode.ForceOnline),
+            )
+        }
+        compose.onNode(hasTextExactly("Data") and hasClickAction()).performScrollTo().performClick()
+        compose.onNodeWithText("Sample monthly plans").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2 GB").performScrollTo().performClick()
+        compose.onNodeWithText("Phone number").performScrollTo().performTextInput("08000000000")
+        compose.onNodeWithText("Review payment").performScrollTo().performClick()
+        compose.onNodeWithText("Confirm demo payment").performScrollTo().performClick()
+        compose.onNodeWithText("All taken care of.").assertIsDisplayed()
+        compose.onNodeWithText("Done").performScrollTo().performClick()
+        compose.onNodeWithText("₦127,450.00").assertIsDisplayed()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithText("₦127,450.00").assertIsDisplayed()
     }
 
     @Test

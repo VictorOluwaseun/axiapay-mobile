@@ -33,10 +33,10 @@ import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
-import com.kesofty.axiapay.presentation.airtime.*
-import com.kesofty.axiapay.ui.airtime.AirtimeSheet
+import com.kesofty.axiapay.presentation.telecom.*
 import com.kesofty.axiapay.ui.bulk.*
 import com.kesofty.axiapay.ui.components.*
+import com.kesofty.axiapay.ui.telecom.TelecomSheet
 import com.kesofty.axiapay.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -49,8 +49,8 @@ fun AxiaApp(
     authShortcutLabel: String? = null,
     homeWallet: HomeWalletState = HomeWalletState.Demo,
     onRefreshWallet: () -> Unit = {},
-    airtime: AirtimeUiState? = null,
-    onAirtimeIntent: (AirtimeIntent) -> Unit = {},
+    telecom: TelecomUiState? = null,
+    onTelecomIntent: (TelecomIntent) -> Unit = {},
     onOpenAccount: () -> Unit = {},
 ) {
     if (uiState.isRestoring || uiState.restorationFailed) {
@@ -133,8 +133,8 @@ fun AxiaApp(
             onIntent,
             onOpenAccount,
             authShortcutLabel,
-            airtime,
-            onAirtimeIntent,
+            telecom,
+            onTelecomIntent,
         )
     }
     (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
@@ -171,8 +171,8 @@ private fun AppSheet(
     onIntent: (AxiaIntent) -> Unit,
     onOpenAccount: () -> Unit,
     authShortcutLabel: String?,
-    airtime: AirtimeUiState?,
-    onAirtimeIntent: (AirtimeIntent) -> Unit,
+    telecom: TelecomUiState?,
+    onTelecomIntent: (TelecomIntent) -> Unit,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -211,12 +211,12 @@ private fun AppSheet(
                             }
                     is Sheet.Explore -> ExploreSheet(sheet.service)
                     is Sheet.Payment -> {
-                        if (airtime != null && sheet.form.isAirtimePurchaseEntry) {
-                            AirtimeSheet(
-                                airtime,
+                        if (telecom != null && sheet.form.isTelecomPurchaseEntry) {
+                            TelecomSheet(
+                                telecom,
                                 state.offline,
                                 state.hidden,
-                                onAirtimeIntent,
+                                onTelecomIntent,
                                 onOpenAccount,
                             )
                         } else {

@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.data.airtime
+package com.kesofty.axiapay.data.telecom
 
 import com.kesofty.axiapay.data.http.*
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.domain.telecom.*
 import java.math.BigInteger
 import java.time.Instant
 import java.util.Collections
@@ -11,63 +11,67 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 /**
- * First-party airtime DTO adapter; bearer headers and bounded uncached IO use the shared transport.
+ * First-party airtime/data DTO adapter; bearer headers and bounded uncached IO use the shared
+ * transport.
  */
-class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository {
+class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository {
     override val apiIdentity: String
         get() =
             try {
                 http.apiIdentity
             } catch (failure: ApiRequestFailure) {
-                throw AirtimeFailure(AirtimeIssue.Configuration, failure)
+                throw TelecomFailure(TelecomIssue.Configuration, failure)
             }
 
     /** Follow bounded pages with unchanged filters; never substitute a local product catalogue. */
-    override suspend fun products(accessToken: String, currency: String): List<AirtimeProduct> =
-        mapped {
-            val products = mutableListOf<AirtimeProduct>()
-            val seenCursors = mutableSetOf<String>()
-            val seenProducts = mutableSetOf<String>()
-            var cursor: String? = null
-            for (page in 0 until 40) {
-                val query =
-                    mutableMapOf(
-                        "serviceType" to "airtime",
-                        "currency" to currency,
-                        "limit" to "25",
-                    )
-                cursor?.let { query["afterId"] = it }
-                val json =
-                    requireNotNull(
-                        http.request(
-                            "service-catalog/products",
-                            200,
-                            bearer = accessToken,
-                            query = query,
-                        ),
-                    )
-                val rows = json.getJSONArray("products")
-                require(rows.length() <= 25)
-                for (index in 0 until rows.length()) {
-                    val product = product(rows.getJSONObject(index), currency)
-                    require(seenProducts.add(product.id))
-                    products += product
-                }
-                cursor = nullableString(json, "nextCursor")
-                if (cursor == null) {
-                    return@mapped Collections.unmodifiableList(products.toList())
-                }
-                require(validId(cursor) && seenCursors.add(cursor))
+    override suspend fun products(
+        accessToken: String,
+        currency: String,
+        service: TelecomService,
+    ): List<TelecomProduct> = mapped {
+        val products = mutableListOf<TelecomProduct>()
+        val seenCursors = mutableSetOf<String>()
+        val seenProducts = mutableSetOf<String>()
+        var cursor: String? = null
+        for (page in 0 until 40) {
+            val query =
+                mutableMapOf(
+                    "serviceType" to service.name.lowercase(Locale.ROOT),
+                    "currency" to currency,
+                    "limit" to "25",
+                )
+            cursor?.let { query["afterId"] = it }
+            val json =
+                requireNotNull(
+                    http.request(
+                        "service-catalog/products",
+                        200,
+                        bearer = accessToken,
+                        query = query,
+                    ),
+                )
+            val rows = json.getJSONArray("products")
+            require(rows.length() <= 25)
+            for (index in 0 until rows.length()) {
+                val product = product(rows.getJSONObject(index), currency, service)
+                require(seenProducts.add(product.id))
+                products += product
             }
-            throw AirtimeFailure(AirtimeIssue.InvalidResponse)
+            cursor = nullableString(json, "nextCursor")
+            if (cursor == null) {
+                return@mapped Collections.unmodifiableList(products.toList())
+            }
+            require(validId(cursor) && seenCursors.add(cursor))
         }
+        throw TelecomFailure(TelecomIssue.InvalidResponse)
+    }
 
     /** Serialize prepared values directly; quote creation never submits or uses demo funds. */
     override suspend fun quote(
         accessToken: String,
         walletId: String,
-        input: AirtimeQuoteInput,
-    ): AirtimeQuote = mapped {
+        input: TelecomQuoteInput,
+    ): TelecomQuote = mapped {
         val body =
             JSONObject()
                 .put("walletId", walletId)
@@ -78,7 +82,7 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
     }
 
     /** Retrieve the exact original quote, including capability and expiry, without requoting. */
-    override suspend fun getQuote(accessToken: String, quoteId: String): AirtimeQuote = mapped {
+    override suspend fun getQuote(accessToken: String, quoteId: String): TelecomQuote = mapped {
         val quote =
             quote(
                 requireNotNull(http.request("payments/quotes/$quoteId", 200, bearer = accessToken)),
@@ -89,7 +93,7 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
     }
 
     /** A single consent POST contains only the original quote and request key. */
-    override suspend fun submit(accessToken: String, request: AirtimeRequest): AirtimePayment =
+    override suspend fun submit(accessToken: String, request: TelecomRequest): TelecomPayment =
         mapped {
             val body =
                 JSONObject().put("quoteId", request.quoteId).put("requestKey", request.requestKey)
@@ -102,7 +106,7 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
     override suspend fun findByRequestKey(
         accessToken: String,
         requestKey: String,
-    ): AirtimePayment? {
+    ): TelecomPayment? {
         try {
             return mapped {
                 payment(
@@ -116,8 +120,8 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
                     ),
                 )
             }
-        } catch (failure: AirtimeFailure) {
-            if (failure.issue == AirtimeIssue.NotFound) {
+        } catch (failure: TelecomFailure) {
+            if (failure.issue == TelecomIssue.NotFound) {
                 return null
             }
             throw failure
@@ -127,7 +131,7 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
     /**
      * Explicit accepted-payment recovery keeps the same server identity and sends no new quote/key.
      */
-    override suspend fun reconcile(accessToken: String, paymentId: String): AirtimePayment =
+    override suspend fun reconcile(accessToken: String, paymentId: String): TelecomPayment =
         mapped {
             payment(
                 requireNotNull(
@@ -136,16 +140,28 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
             )
         }
 
-    /** Map public product terms only, rejecting malformed or non-airtime catalogue entries. */
-    private fun product(json: JSONObject, currency: String): AirtimeProduct {
-        require(string(json, "serviceType") == "airtime" && string(json, "currency") == currency)
+    /**
+     * Map public terms, requiring fixed data pricing and plan metadata within the requested scope.
+     */
+    private fun product(
+        json: JSONObject,
+        currency: String,
+        service: TelecomService,
+    ): TelecomProduct {
+        require(service(json) == service && string(json, "currency") == currency)
         val minimum = amount(json, "minimumAmountMinorUnits")
         val maximum = amount(json, "maximumAmountMinorUnits")
         val step = amount(json, "amountStepMinorUnits")
         val fixed = nullableString(json, "fixedPriceMinorUnits")?.let(::minorUnits)
         require(minimum > BigInteger.ZERO && maximum >= minimum && step > BigInteger.ZERO)
         require(fixed == null || fixed in minimum..maximum)
-        return AirtimeProduct(
+        val allowance = nullableLabel(json, "allowanceLabel")
+        val validity = validitySeconds(json)
+        if (service == TelecomService.Data) {
+            require(fixed != null && fixed == minimum && fixed == maximum)
+            require(allowance != null && validity != null)
+        }
+        return TelecomProduct(
             id(json, "id"),
             label(json, "displayName"),
             label(json, "networkCode"),
@@ -156,6 +172,9 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
             step,
             amount(json, "feeMinorUnits"),
             boolean(json, "isSubmissionAvailable"),
+            service,
+            allowance,
+            validity,
         )
     }
 
@@ -163,8 +182,9 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
      * Read exact immutable review terms; progress quotes deliberately have no current-submission
      * capability.
      */
-    private fun quote(json: JSONObject, withCapability: Boolean): AirtimeQuote {
-        require(string(json, "serviceType") == "airtime" && string(json, "currency") == "NGN")
+    private fun quote(json: JSONObject, withCapability: Boolean): TelecomQuote {
+        val service = service(json)
+        require(string(json, "currency") == "NGN")
         val principal = amount(json, "principalMinorUnits")
         val fee = amount(json, "feeMinorUnits")
         val total = amount(json, "totalDebitMinorUnits")
@@ -173,7 +193,12 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
         val recipient = string(json, "recipientPhoneNumber")
         require(principal > BigInteger.ZERO && total == principal + fee && expires > created)
         require(Regex("\\+[1-9][0-9]{7,14}").matches(recipient))
-        return AirtimeQuote(
+        val allowance = nullableLabel(json, "allowanceLabel")
+        val validity = validitySeconds(json)
+        if (service == TelecomService.Data) {
+            require(allowance != null && validity != null)
+        }
+        return TelecomQuote(
             id(json, "id"),
             id(json, "walletId"),
             id(json, "productId"),
@@ -187,21 +212,24 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
             created,
             expires,
             withCapability && boolean(json, "isSubmissionAvailable"),
+            service,
+            allowance,
+            validity,
         )
     }
 
     /** Only documented committed status values may become progress or a final receipt. */
-    private fun payment(json: JSONObject): AirtimePayment {
+    private fun payment(json: JSONObject): TelecomPayment {
         val status =
             when (string(json, "paymentStatus")) {
-                "awaiting_funds" -> AirtimePaymentStatus.AwaitingFunds
-                "reserved" -> AirtimePaymentStatus.Reserved
-                "pending" -> AirtimePaymentStatus.Pending
-                "succeeded" -> AirtimePaymentStatus.Succeeded
-                "failed" -> AirtimePaymentStatus.Failed
+                "awaiting_funds" -> TelecomPaymentStatus.AwaitingFunds
+                "reserved" -> TelecomPaymentStatus.Reserved
+                "pending" -> TelecomPaymentStatus.Pending
+                "succeeded" -> TelecomPaymentStatus.Succeeded
+                "failed" -> TelecomPaymentStatus.Failed
                 else -> error("Unknown payment status")
             }
-        return AirtimePayment(
+        return TelecomPayment(
             id(json, "id"),
             label(json, "requestKey"),
             status,
@@ -209,6 +237,32 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
             Instant.parse(string(json, "createdAt")),
             nullableString(json, "submissionStartedAt")?.let(Instant::parse),
         )
+    }
+
+    /** Accept only the phone-based services supported by this adapter. */
+    private fun service(json: JSONObject): TelecomService =
+        when (string(json, "serviceType")) {
+            "airtime" -> TelecomService.Airtime
+            "data" -> TelecomService.Data
+            else -> error("Unsupported service")
+        }
+
+    /**
+     * Nullable airtime fields and required data descriptions remain bounded public display text.
+     */
+    private fun nullableLabel(json: JSONObject, key: String): String? =
+        nullableString(json, key)?.also {
+            require(it.isNotBlank() && it.length <= 200 && it.none(Char::isISOControl))
+        }
+
+    /** Preserve the documented integral duration without truncating JSON fractions or strings. */
+    private fun validitySeconds(json: JSONObject): Long? {
+        val value = json.get("validitySeconds")
+        if (value == JSONObject.NULL) {
+            return null
+        }
+        require(value is Int || value is Long)
+        return (value as Number).toLong().also { require(it > 0) }
     }
 
     /** Reject implicit primitive conversion at this transport boundary. */
@@ -252,28 +306,28 @@ class HttpAirtimeRepository(private val http: ApiHttpClient) : AirtimeRepository
             return operation()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: AirtimeFailure) {
+        } catch (failure: TelecomFailure) {
             throw failure
         } catch (failure: ApiRequestFailure) {
             val issue =
                 when {
-                    failure.kind == ApiFailureKind.Configuration -> AirtimeIssue.Configuration
-                    failure.kind == ApiFailureKind.Network -> AirtimeIssue.Network
-                    failure.kind == ApiFailureKind.InvalidResponse -> AirtimeIssue.InvalidResponse
-                    failure.status == 401 -> AirtimeIssue.SignInRequired
-                    failure.code == "QUOTE_EXPIRED" -> AirtimeIssue.QuoteExpired
-                    failure.code == "INSUFFICIENT_FUNDS" -> AirtimeIssue.InsufficientFunds
-                    failure.code == "WALLET_RESTRICTED" -> AirtimeIssue.WalletRestricted
+                    failure.kind == ApiFailureKind.Configuration -> TelecomIssue.Configuration
+                    failure.kind == ApiFailureKind.Network -> TelecomIssue.Network
+                    failure.kind == ApiFailureKind.InvalidResponse -> TelecomIssue.InvalidResponse
+                    failure.status == 401 -> TelecomIssue.SignInRequired
+                    failure.code == "QUOTE_EXPIRED" -> TelecomIssue.QuoteExpired
+                    failure.code == "INSUFFICIENT_FUNDS" -> TelecomIssue.InsufficientFunds
+                    failure.code == "WALLET_RESTRICTED" -> TelecomIssue.WalletRestricted
                     failure.code in setOf("PAYMENT_CONFLICT", "IDEMPOTENCY_CONFLICT") ->
-                        AirtimeIssue.PaymentConflict
-                    failure.code == "PRODUCT_UNAVAILABLE" -> AirtimeIssue.ProductUnavailable
-                    failure.code == "INVALID_PAYMENT" -> AirtimeIssue.InvalidAmount
-                    failure.status == 404 -> AirtimeIssue.NotFound
-                    else -> AirtimeIssue.Unavailable
+                        TelecomIssue.PaymentConflict
+                    failure.code == "PRODUCT_UNAVAILABLE" -> TelecomIssue.ProductUnavailable
+                    failure.code == "INVALID_PAYMENT" -> TelecomIssue.InvalidAmount
+                    failure.status == 404 -> TelecomIssue.NotFound
+                    else -> TelecomIssue.Unavailable
                 }
-            throw AirtimeFailure(issue, failure)
+            throw TelecomFailure(issue, failure)
         } catch (failure: Exception) {
-            throw AirtimeFailure(AirtimeIssue.InvalidResponse, failure)
+            throw TelecomFailure(TelecomIssue.InvalidResponse, failure)
         }
     }
 }

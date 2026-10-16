@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.application.airtime
+package com.kesofty.axiapay.application.telecom
 
-import com.kesofty.axiapay.domain.airtime.*
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.telecom.*
 import com.kesofty.axiapay.domain.wallet.*
 import java.time.Clock
 import java.util.Collections
@@ -14,31 +14,38 @@ import kotlinx.coroutines.ensureActive
  * durable recovery journal. The server owns pricing, spending, dispatch and settlement. No
  * lifecycle event submits, resumes or reconciles a payment automatically.
  */
-class AirtimePurchases(
+class TelecomPurchases(
     private val authentication: AuthenticationRepository,
     private val sessions: AuthenticationSessionStore,
     private val wallets: WalletRepository,
-    private val airtime: AirtimeRepository,
-    private val requestStore: AirtimeRequestStore,
+    private val telecom: TelecomRepository,
+    private val requestStore: TelecomRequestStore,
     private val clock: Clock,
     private val newRequestId: () -> String,
 ) {
     /** Keep the captured credential inside the application workflow, never in UI or saved state. */
-    private data class Access(val owner: AirtimeOwner, val session: StoredAuthenticationSession) {
+    private data class Access(val owner: TelecomOwner, val session: StoredAuthenticationSession) {
         /** Prevent accidental diagnostic interpolation of a bearer. */
-        override fun toString() = "AirtimeAccess(redacted)"
+        override fun toString() = "TelecomAccess(redacted)"
     }
 
     /**
      * Load an authenticated wallet, current catalogue and this account's saved request references.
      */
-    suspend fun load(accountId: String): AirtimeContext =
+    suspend fun load(
+        accountId: String,
+        service: TelecomService = TelecomService.Airtime,
+    ): TelecomContext =
         withAccess(accountId) { access ->
-            val requests = Collections.unmodifiableList(requestStore.read(access.owner).toList())
+            val requests =
+                Collections.unmodifiableList(
+                    requestStore.read(access.owner).filter { it.service == service },
+                )
             try {
                 val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
-                val products = airtime.products(access.session.accessToken, wallet.currency)
-                AirtimeContext(
+                val products =
+                    telecom.products(access.session.accessToken, wallet.currency, service)
+                TelecomContext(
                     access.owner,
                     wallet,
                     Collections.unmodifiableList(products.toList()),
@@ -48,22 +55,22 @@ class AirtimePurchases(
                 if (requests.isEmpty() || failure.issue == WalletIssue.InvalidSession) {
                     throw failure
                 }
-                AirtimeContext(
+                TelecomContext(
                     access.owner,
                     null,
                     emptyList(),
                     requests,
-                    AirtimeIssue.WalletUnavailable,
+                    TelecomIssue.WalletUnavailable,
                 )
-            } catch (failure: AirtimeFailure) {
+            } catch (failure: TelecomFailure) {
                 if (
                     requests.isEmpty() ||
                         failure.issue in
-                            setOf(AirtimeIssue.SignInRequired, AirtimeIssue.SessionChanged)
+                            setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)
                 ) {
                     throw failure
                 }
-                AirtimeContext(access.owner, null, emptyList(), requests, failure.issue)
+                TelecomContext(access.owner, null, emptyList(), requests, failure.issue)
             }
         }
 
@@ -71,22 +78,29 @@ class AirtimePurchases(
      * Request server pricing for an already prepared input; bind the result to the verified wallet
      * and recipient.
      */
-    suspend fun review(accountId: String, input: AirtimeQuoteInput): AirtimeReview =
+    suspend fun review(accountId: String, input: TelecomQuoteInput): TelecomReview =
         withAccess(accountId) { access ->
             val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
-            val quote = airtime.quote(access.session.accessToken, wallet.id, input)
+            val quote = telecom.quote(access.session.accessToken, wallet.id, input)
             val matches =
-                quote.walletId == wallet.id &&
+                quote.service == input.service &&
+                    quote.walletId == wallet.id &&
                     quote.productId == input.productId &&
                     quote.recipientPhoneNumber == input.recipientPhoneNumber &&
                     quote.currency == wallet.currency &&
                     (input.amountMinorUnits == null ||
                         input.amountMinorUnits == quote.principalMinorUnits)
             if (!matches) {
-                throw AirtimeFailure(AirtimeIssue.InvalidResponse)
+                throw TelecomFailure(TelecomIssue.InvalidResponse)
             }
-            AirtimeReview(
-                AirtimeRequest(access.owner, newRequestId(), quote.id, clock.instant()),
+            TelecomReview(
+                TelecomRequest(
+                    access.owner,
+                    newRequestId(),
+                    quote.id,
+                    clock.instant(),
+                    service = input.service,
+                ),
                 quote,
             )
         }
@@ -95,14 +109,20 @@ class AirtimePurchases(
      * Persist the original identity before the sole explicitly confirmed POST; storage failure
      * sends nothing.
      */
-    suspend fun submit(accountId: String, review: AirtimeReview): AirtimeProgress =
+    suspend fun submit(accountId: String, review: TelecomReview): TelecomProgress =
         withAccess(accountId) { access ->
             requireOwner(access, review.request)
+            if (
+                review.request.quoteId != review.quote.id ||
+                    review.request.service != review.quote.service
+            ) {
+                throw TelecomFailure(TelecomIssue.InvalidResponse)
+            }
             if (!review.quote.isSubmissionAvailable) {
-                throw AirtimeFailure(AirtimeIssue.ProductUnavailable)
+                throw TelecomFailure(TelecomIssue.ProductUnavailable)
             }
             if (review.quote.expiresAt <= clock.instant()) {
-                throw AirtimeFailure(AirtimeIssue.QuoteExpired)
+                throw TelecomFailure(TelecomIssue.QuoteExpired)
             }
             requestStore.save(review.request)
             assertCurrentSession(access)
@@ -113,22 +133,22 @@ class AirtimePurchases(
      * Read only on restoration or status checks. A missing record is unconfirmed and retains its
      * key.
      */
-    suspend fun recover(accountId: String, request: AirtimeRequest): AirtimeProgress =
+    suspend fun recover(accountId: String, request: TelecomRequest): TelecomProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
-            val payment = airtime.findByRequestKey(access.session.accessToken, request.requestKey)
+            val payment = telecom.findByRequestKey(access.session.accessToken, request.requestKey)
             if (payment != null) {
                 return@withAccess observed(request, payment)
             }
             val quote = recoverQuote(access, request)
-            AirtimeProgress(request, null, quote, AirtimeIssue.NotFound)
+            TelecomProgress(request, null, quote, TelecomIssue.NotFound)
         }
 
     /**
      * Explicitly retry only the original saved quote/key; never requote or manufacture a new
      * payment after uncertainty.
      */
-    suspend fun retrySubmission(accountId: String, request: AirtimeRequest): AirtimeProgress =
+    suspend fun retrySubmission(accountId: String, request: TelecomRequest): TelecomProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
             assertCurrentSession(access)
@@ -139,33 +159,33 @@ class AirtimePurchases(
      * Explicitly recover accepted held progress. Awaiting funds must use the distinct resume
      * action.
      */
-    suspend fun reconcile(accountId: String, request: AirtimeRequest): AirtimeProgress =
+    suspend fun reconcile(accountId: String, request: TelecomRequest): TelecomProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
             val payment =
-                airtime.findByRequestKey(access.session.accessToken, request.requestKey)
-                    ?: return@withAccess AirtimeProgress(
+                telecom.findByRequestKey(access.session.accessToken, request.requestKey)
+                    ?: return@withAccess TelecomProgress(
                         request,
                         null,
                         recoverQuote(access, request),
-                        AirtimeIssue.NotFound,
+                        TelecomIssue.NotFound,
                     )
             val current = observed(request, payment)
-            if (payment.isFinal || payment.status == AirtimePaymentStatus.AwaitingFunds) {
+            if (payment.isFinal || payment.status == TelecomPaymentStatus.AwaitingFunds) {
                 return@withAccess current
             }
             assertCurrentSession(access)
-            observed(request, airtime.reconcile(access.session.accessToken, payment.id))
+            observed(request, telecom.reconcile(access.session.accessToken, payment.id))
         }
 
     /**
      * Acknowledge only observed final progress; closing an unfinished sheet never forgets a
      * request.
      */
-    suspend fun acknowledge(progress: AirtimeProgress) {
-        val payment = progress.payment ?: throw AirtimeFailure(AirtimeIssue.Unavailable)
+    suspend fun acknowledge(progress: TelecomProgress) {
+        val payment = progress.payment ?: throw TelecomFailure(TelecomIssue.Unavailable)
         if (!payment.isFinal) {
-            throw AirtimeFailure(AirtimeIssue.Unavailable)
+            throw TelecomFailure(TelecomIssue.Unavailable)
         }
         observed(progress.request, payment)
         requestStore.acknowledge(progress.request)
@@ -177,34 +197,38 @@ class AirtimePurchases(
      */
     private suspend fun transmit(
         access: Access,
-        request: AirtimeRequest,
-        reviewed: AirtimeQuote?,
-    ): AirtimeProgress {
+        request: TelecomRequest,
+        reviewed: TelecomQuote?,
+    ): TelecomProgress {
         try {
-            val payment = airtime.submit(access.session.accessToken, request)
+            val payment = telecom.submit(access.session.accessToken, request)
             val result = observed(request, payment)
             if (reviewed != null && !reviewed.hasSameTerms(payment.quote)) {
-                throw AirtimeFailure(AirtimeIssue.InvalidResponse)
+                throw TelecomFailure(TelecomIssue.InvalidResponse)
             }
             return result
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: AirtimeFailure) {
-            if (failure.issue in setOf(AirtimeIssue.SignInRequired, AirtimeIssue.SessionChanged)) {
+        } catch (failure: TelecomFailure) {
+            if (failure.issue in setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)) {
                 throw failure
             }
-            return AirtimeProgress(request, null, reviewed, failure.issue)
+            return TelecomProgress(request, null, reviewed, failure.issue)
         }
     }
 
     /**
      * A recovered quote helps explain uncertainty but is never substituted for an observed payment.
      */
-    private suspend fun recoverQuote(access: Access, request: AirtimeRequest): AirtimeQuote? {
+    private suspend fun recoverQuote(access: Access, request: TelecomRequest): TelecomQuote? {
         try {
-            return airtime.getQuote(access.session.accessToken, request.quoteId)
-        } catch (failure: AirtimeFailure) {
-            if (failure.issue == AirtimeIssue.NotFound) {
+            val quote = telecom.getQuote(access.session.accessToken, request.quoteId)
+            if (quote.id != request.quoteId || quote.service != request.service) {
+                throw TelecomFailure(TelecomIssue.InvalidResponse)
+            }
+            return quote
+        } catch (failure: TelecomFailure) {
+            if (failure.issue == TelecomIssue.NotFound) {
                 return null
             }
             throw failure
@@ -212,25 +236,29 @@ class AirtimePurchases(
     }
 
     /** Correlate every submission/recovery response to the persisted logical identity. */
-    private fun observed(request: AirtimeRequest, payment: AirtimePayment): AirtimeProgress {
-        if (payment.requestKey != request.requestKey || payment.quote.id != request.quoteId) {
-            throw AirtimeFailure(AirtimeIssue.InvalidResponse)
+    private fun observed(request: TelecomRequest, payment: TelecomPayment): TelecomProgress {
+        if (
+            payment.requestKey != request.requestKey ||
+                payment.quote.id != request.quoteId ||
+                payment.quote.service != request.service
+        ) {
+            throw TelecomFailure(TelecomIssue.InvalidResponse)
         }
-        return AirtimeProgress(request, payment, payment.quote)
+        return TelecomProgress(request, payment, payment.quote)
     }
 
     /** Check record scope without interpreting a cached wallet as authorization. */
-    private fun requireOwner(access: Access, request: AirtimeRequest) {
+    private fun requireOwner(access: Access, request: TelecomRequest) {
         if (request.owner != access.owner) {
-            throw AirtimeFailure(AirtimeIssue.SessionChanged)
+            throw TelecomFailure(TelecomIssue.SessionChanged)
         }
     }
 
     /** Resumes require the durable original instruction; no caller may swap its quote/key. */
-    private suspend fun requireSaved(access: Access, request: AirtimeRequest) {
+    private suspend fun requireSaved(access: Access, request: TelecomRequest) {
         requireOwner(access, request)
         if (requestStore.read(access.owner).none { it == request }) {
-            throw AirtimeFailure(AirtimeIssue.NotFound)
+            throw TelecomFailure(TelecomIssue.NotFound)
         }
     }
 
@@ -241,22 +269,22 @@ class AirtimePurchases(
     private suspend fun <T> withAccess(accountId: String, operation: suspend (Access) -> T): T {
         var captured: StoredAuthenticationSession? = null
         try {
-            val session = sessions.read() ?: throw AirtimeFailure(AirtimeIssue.SignInRequired)
+            val session = sessions.read() ?: throw TelecomFailure(TelecomIssue.SignInRequired)
             captured = session
-            val identity = airtime.apiIdentity
+            val identity = telecom.apiIdentity
             val sameApi = identity == authentication.apiIdentity && identity == wallets.apiIdentity
             if (!sameApi) {
-                throw AirtimeFailure(AirtimeIssue.Configuration)
+                throw TelecomFailure(TelecomIssue.Configuration)
             }
             if (session.apiIdentity != identity || session.expiresAt <= clock.instant()) {
                 sessions.clear(session)
-                throw AirtimeFailure(AirtimeIssue.SignInRequired)
+                throw TelecomFailure(TelecomIssue.SignInRequired)
             }
             val account = authentication.currentAccount(session.accessToken)
             if (account.id != accountId) {
-                throw AirtimeFailure(AirtimeIssue.SessionChanged)
+                throw TelecomFailure(TelecomIssue.SessionChanged)
             }
-            val access = Access(AirtimeOwner(accountId, identity), session)
+            val access = Access(TelecomOwner(accountId, identity), session)
             assertCurrentSession(access)
             val result = operation(access)
             assertCurrentSession(access)
@@ -266,37 +294,37 @@ class AirtimePurchases(
         } catch (failure: AuthenticationFailure) {
             val issue =
                 when (failure.issue) {
-                    AccountAccessIssue.Network -> AirtimeIssue.Network
-                    AccountAccessIssue.Configuration -> AirtimeIssue.Configuration
-                    AccountAccessIssue.SecureStorage -> AirtimeIssue.Storage
-                    AccountAccessIssue.InvalidCredentials -> AirtimeIssue.SignInRequired
-                    else -> AirtimeIssue.Unavailable
+                    AccountAccessIssue.Network -> TelecomIssue.Network
+                    AccountAccessIssue.Configuration -> TelecomIssue.Configuration
+                    AccountAccessIssue.SecureStorage -> TelecomIssue.Storage
+                    AccountAccessIssue.InvalidCredentials -> TelecomIssue.SignInRequired
+                    else -> TelecomIssue.Unavailable
                 }
-            if (issue == AirtimeIssue.SignInRequired && captured != null) {
+            if (issue == TelecomIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
-            throw AirtimeFailure(issue, failure)
+            throw TelecomFailure(issue, failure)
         } catch (failure: WalletFailure) {
             val issue =
                 when (failure.issue) {
-                    WalletIssue.Missing -> AirtimeIssue.WalletMissing
-                    WalletIssue.InvalidSession -> AirtimeIssue.SignInRequired
-                    WalletIssue.Network -> AirtimeIssue.Network
-                    WalletIssue.Configuration -> AirtimeIssue.Configuration
-                    WalletIssue.InvalidResponse -> AirtimeIssue.InvalidResponse
-                    WalletIssue.Unavailable -> AirtimeIssue.WalletUnavailable
+                    WalletIssue.Missing -> TelecomIssue.WalletMissing
+                    WalletIssue.InvalidSession -> TelecomIssue.SignInRequired
+                    WalletIssue.Network -> TelecomIssue.Network
+                    WalletIssue.Configuration -> TelecomIssue.Configuration
+                    WalletIssue.InvalidResponse -> TelecomIssue.InvalidResponse
+                    WalletIssue.Unavailable -> TelecomIssue.WalletUnavailable
                 }
-            if (issue == AirtimeIssue.SignInRequired && captured != null) {
+            if (issue == TelecomIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
-            throw AirtimeFailure(issue, failure)
-        } catch (failure: AirtimeFailure) {
-            if (failure.issue == AirtimeIssue.SignInRequired && captured != null) {
+            throw TelecomFailure(issue, failure)
+        } catch (failure: TelecomFailure) {
+            if (failure.issue == TelecomIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
             throw failure
         } catch (failure: Exception) {
-            throw AirtimeFailure(AirtimeIssue.Unavailable, failure)
+            throw TelecomFailure(TelecomIssue.Unavailable, failure)
         }
     }
 
@@ -306,7 +334,7 @@ class AirtimePurchases(
         val current = sessions.read()
         currentCoroutineContext().ensureActive()
         if (current != access.session || access.session.expiresAt <= clock.instant()) {
-            throw AirtimeFailure(AirtimeIssue.SessionChanged)
+            throw TelecomFailure(TelecomIssue.SessionChanged)
         }
     }
 }

@@ -18,11 +18,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.kesofty.axiapay.data.DemoSessionSeed
+import com.kesofty.axiapay.domain.telecom.TelecomService
 import com.kesofty.axiapay.presentation.*
-import com.kesofty.axiapay.presentation.airtime.*
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthScreen
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
+import com.kesofty.axiapay.presentation.telecom.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.auth.AuthScreen
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
@@ -45,7 +46,7 @@ class MainActivity : ComponentActivity() {
         )
         val viewModel = ViewModelProvider(this)[AxiaViewModel::class.java]
         val authViewModel = ViewModelProvider(this)[AuthViewModel::class.java]
-        val airtimeViewModel = ViewModelProvider(this)[AirtimeViewModel::class.java]
+        val telecomViewModel = ViewModelProvider(this)[TelecomViewModel::class.java]
         setContent {
             DisposableEffect(lifecycle, authViewModel) {
                 val observer = LifecycleEventObserver { _, event ->
@@ -58,31 +59,34 @@ class MainActivity : ComponentActivity() {
             }
             val authState by authViewModel.uiState.collectAsStateWithLifecycle()
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val airtimeState by airtimeViewModel.uiState.collectAsStateWithLifecycle()
-            val airtimeForm =
+            val telecomState by telecomViewModel.uiState.collectAsStateWithLifecycle()
+            val telecomForm =
                 (state.navigation.sheet as? Sheet.Payment)?.form?.takeIf {
-                    it.isAirtimePurchaseEntry
+                    it.isTelecomPurchaseEntry
                 }
-            val airtimeRouteId =
-                airtimeForm?.requestId.takeIf {
+            val telecomService = telecomForm?.telecomService ?: TelecomService.Airtime
+            val telecomRouteId =
+                telecomForm?.requestId.takeIf {
                     authState.screen == AuthScreen.Dashboard &&
                         !state.isRestoring &&
                         !state.restorationFailed
                 }
-            val airtimeAccountId =
+            val telecomAccountId =
                 authState.account?.id.takeIf { authState.screen == AuthScreen.Dashboard }
-            LaunchedEffect(authState.screen, airtimeAccountId, airtimeRouteId) {
+            LaunchedEffect(authState.screen, telecomAccountId, telecomRouteId, telecomService) {
                 // Foreground verification hides the dashboard but retains its in-memory visit.
                 if (authState.screen in setOf(AuthScreen.Restoring, AuthScreen.SessionRecovery)) {
                     return@LaunchedEffect
                 }
-                airtimeViewModel.accept(AirtimeIntent.Bind(airtimeAccountId, airtimeRouteId))
+                telecomViewModel.accept(
+                    TelecomIntent.Bind(telecomAccountId, telecomRouteId, telecomService),
+                )
             }
-            LaunchedEffect(lifecycle, airtimeViewModel) {
+            LaunchedEffect(lifecycle, telecomViewModel) {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    airtimeViewModel.effects.collect { effect ->
+                    telecomViewModel.effects.collect { effect ->
                         when (effect) {
-                            is AirtimeEffect.RefreshWallet -> {
+                            is TelecomEffect.RefreshWallet -> {
                                 val ready =
                                     authViewModel.uiState.first {
                                         it.screen != AuthScreen.Restoring &&
@@ -92,7 +96,7 @@ class MainActivity : ComponentActivity() {
                                     authViewModel.accept(AuthIntent.RetryWallet)
                                 }
                             }
-                            is AirtimeEffect.Close -> {
+                            is TelecomEffect.Close -> {
                                 val route =
                                     (viewModel.uiState.value.navigation.sheet as? Sheet.Payment)
                                         ?.form
@@ -100,7 +104,7 @@ class MainActivity : ComponentActivity() {
                                 if (
                                     authViewModel.uiState.value.account?.id == effect.accountId &&
                                         route == effect.routeId &&
-                                        airtimeViewModel.isCurrentClose(effect)
+                                        telecomViewModel.isCurrentClose(effect)
                                 ) {
                                     viewModel.accept(AxiaIntent.CloseSheet)
                                 }
@@ -117,11 +121,13 @@ class MainActivity : ComponentActivity() {
                             viewModel::accept,
                             homeWallet = authState.homeWallet,
                             onRefreshWallet = { authViewModel.accept(AuthIntent.RetryWallet) },
-                            airtime =
-                                airtimeState.forScope(airtimeAccountId, airtimeRouteId).takeIf {
-                                    it.enabled
-                                },
-                            onAirtimeIntent = airtimeViewModel::accept,
+                            telecom =
+                                telecomState
+                                    .forScope(telecomAccountId, telecomRouteId, telecomService)
+                                    .takeIf {
+                                        it.enabled
+                                    },
+                            onTelecomIntent = telecomViewModel::accept,
                             authShortcutLabel =
                                 if (authState.isDemo) null
                                 else

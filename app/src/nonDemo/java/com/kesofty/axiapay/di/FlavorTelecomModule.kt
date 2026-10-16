@@ -1,12 +1,12 @@
 package com.kesofty.axiapay.di
 
 import android.content.Context
-import com.kesofty.axiapay.application.airtime.AirtimePurchases
-import com.kesofty.axiapay.data.airtime.AtomicAirtimeRequestStore
-import com.kesofty.axiapay.data.airtime.HttpAirtimeRepository
+import com.kesofty.axiapay.application.telecom.TelecomPurchases
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.data.telecom.AtomicTelecomRequestStore
+import com.kesofty.axiapay.data.telecom.HttpTelecomRepository
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.telecom.*
 import com.kesofty.axiapay.domain.wallet.WalletRepository
 import dagger.Module
 import dagger.Provides
@@ -21,32 +21,32 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 
 /**
- * Select real single-airtime purchases at composition while other payment tools remain labelled
- * previews.
+ * Select real immediate airtime/data purchases at composition while other payment tools remain
+ * labelled previews.
  */
 @Module
 @InstallIn(ViewModelComponent::class)
-internal object FlavorAirtimeModule {
+internal object FlavorTelecomModule {
     /**
      * Bind one plain workflow per UI owner; the durable journal and HTTP pool are shared
      * infrastructure.
      */
     @Provides
     @ViewModelScoped
-    fun provideAirtimePurchases(
+    fun provideTelecomPurchases(
         authentication: AuthenticationRepository,
         sessions: AuthenticationSessionStore,
         wallets: WalletRepository,
-        airtime: AirtimeRepository,
-        requestStore: AirtimeRequestStore,
+        telecom: TelecomRepository,
+        requestStore: TelecomRequestStore,
         clock: Clock,
         newRequestId: () -> String,
-    ): AirtimePurchases =
-        AirtimePurchases(
+    ): TelecomPurchases =
+        TelecomPurchases(
             authentication,
             sessions,
             wallets,
-            airtime,
+            telecom,
             requestStore,
             clock,
             newRequestId,
@@ -59,21 +59,21 @@ internal object FlavorAirtimeModule {
  */
 @Module
 @InstallIn(SingletonComponent::class)
-internal object AirtimeInfrastructureModule {
+internal object TelecomInfrastructureModule {
     /** Reuse the existing bounded auth/wallet transport and credential scope. */
     @Provides
     @Singleton
-    fun provideAirtimeRepository(http: ApiHttpClient): AirtimeRepository =
-        HttpAirtimeRepository(http)
+    fun provideTelecomRepository(http: ApiHttpClient): TelecomRepository =
+        HttpTelecomRepository(http)
 
     /**
      * A singleton journal serializes independent ViewModels; no tokens, recipients or balances
-     * enter this file.
+     * enter this file. Retain its legacy filename to preserve existing airtime requests.
      */
     @Provides
     @Singleton
-    fun provideAirtimeRequestStore(@ApplicationContext context: Context): AirtimeRequestStore =
-        AtomicAirtimeRequestStore(
+    fun provideTelecomRequestStore(@ApplicationContext context: Context): TelecomRequestStore =
+        AtomicTelecomRequestStore(
             File(context.noBackupFilesDir, "airtime-requests-v1.json"),
             Dispatchers.IO,
         )

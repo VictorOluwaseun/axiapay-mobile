@@ -3,13 +3,15 @@ package com.kesofty.axiapay
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
+import androidx.test.espresso.Espresso
 import com.kesofty.axiapay.domain.ConnectionMode
+import com.kesofty.axiapay.domain.telecom.TelecomService
 import com.kesofty.axiapay.presentation.*
-import com.kesofty.axiapay.presentation.airtime.AirtimeIntent
-import com.kesofty.axiapay.presentation.airtime.AirtimeScreen
-import com.kesofty.axiapay.presentation.airtime.AirtimeViewModel
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
+import com.kesofty.axiapay.presentation.telecom.TelecomIntent
+import com.kesofty.axiapay.presentation.telecom.TelecomScreen
+import com.kesofty.axiapay.presentation.telecom.TelecomViewModel
 import org.junit.Assert.*
 import org.junit.Assume
 import org.junit.Rule
@@ -19,15 +21,15 @@ import org.junit.Test
 class HiltGraphTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    /** Production flavor composition enables live airtime only outside the demo flavor. */
+    /** Production flavor composition enables live airtime/data only outside the demo flavor. */
     @Test
-    fun airtimeCapabilityIsSelectedAtTheFlavorCompositionBoundary() {
+    fun telecomCapabilityIsSelectedAtTheFlavorCompositionBoundary() {
         compose.runOnIdle {
-            val vm = ViewModelProvider(compose.activity)[AirtimeViewModel::class.java]
+            val vm = ViewModelProvider(compose.activity)[TelecomViewModel::class.java]
             assertEquals(BuildConfig.FLAVOR != "demo", vm.uiState.value.enabled)
-            vm.accept(AirtimeIntent.Bind(null, "isolated-test-visit"))
+            vm.accept(TelecomIntent.Bind(null, "isolated-test-visit", TelecomService.Data))
             assertEquals(
-                if (BuildConfig.FLAVOR == "demo") AirtimeScreen.Hidden else AirtimeScreen.SignIn,
+                if (BuildConfig.FLAVOR == "demo") TelecomScreen.Hidden else TelecomScreen.SignIn,
                 vm.uiState.value.screen,
             )
         }
@@ -37,12 +39,18 @@ class HiltGraphTest {
      * Signed-out non-demo entry must render the live sign-in boundary instead of a demo purchase.
      */
     @Test
-    fun realAirtimeEntryCannotUseTheDemoLedgerWithoutSignIn() {
+    fun realTelecomEntriesCannotUseTheDemoLedgerWithoutSignIn() {
         Assume.assumeTrue(BuildConfig.FLAVOR != "demo")
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
-        compose.onNodeWithText("Airtime", useUnmergedTree = true).performClick()
-        compose.onNodeWithTag("airtime-sign-in").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Confirm demo payment").assertDoesNotExist()
+        for (service in listOf("Airtime", "Data")) {
+            compose
+                .onNode(hasTextExactly(service) and hasClickAction())
+                .performScrollTo()
+                .performClick()
+            compose.onNodeWithTag("telecom-sign-in").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Confirm demo payment").assertDoesNotExist()
+            Espresso.pressBack()
+        }
     }
 
     /**

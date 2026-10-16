@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.data.airtime
+package com.kesofty.axiapay.data.telecom
 
 import android.util.AtomicFile
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.domain.telecom.*
 import java.io.File
 import java.time.Instant
 import java.util.Collections
@@ -21,19 +21,19 @@ import org.json.JSONObject
  * binding. Atomic replacement preserves earlier requests; corruption/IO failure blocks new POSTs.
  * This is not a payment outbox: nothing here schedules or replays a purchase.
  */
-class AtomicAirtimeRequestStore(private val file: File, private val io: CoroutineDispatcher) :
-    AirtimeRequestStore {
+class AtomicTelecomRequestStore(private val file: File, private val io: CoroutineDispatcher) :
+    TelecomRequestStore {
     private val mutex = Mutex()
 
     /** Read only this verified account/API scope and never expose a mutable backing collection. */
-    override suspend fun read(owner: AirtimeOwner): List<AirtimeRequest> = storage {
+    override suspend fun read(owner: TelecomOwner): List<TelecomRequest> = storage {
         Collections.unmodifiableList(readAll().filter { it.owner == owner })
     }
 
     /**
      * Keep the original quote/key immutable and commit it durably before its network submission.
      */
-    override suspend fun save(request: AirtimeRequest) = storage {
+    override suspend fun save(request: TelecomRequest) = storage {
         val records = readAll()
         val existing = records.find {
             it.owner == request.owner && it.requestKey == request.requestKey
@@ -56,7 +56,7 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
      * Retain receipt references after acknowledgement; only acknowledged entries may be pruned at
      * capacity.
      */
-    override suspend fun acknowledge(request: AirtimeRequest) = storage {
+    override suspend fun acknowledge(request: TelecomRequest) = storage {
         val records = readAll()
         val existing =
             records.find {
@@ -75,10 +75,10 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
             withContext(io) { operation() }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: AirtimeFailure) {
+        } catch (failure: TelecomFailure) {
             throw failure
         } catch (failure: Exception) {
-            throw AirtimeFailure(AirtimeIssue.Storage, failure)
+            throw TelecomFailure(TelecomIssue.Storage, failure)
         }
     }
 
@@ -86,7 +86,7 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
      * Bound actual bytes before parsing; unsupported versions or damaged records never silently
      * reset recovery.
      */
-    private fun readAll(): List<AirtimeRequest> {
+    private fun readAll(): List<TelecomRequest> {
         if (!file.exists() && !File(file.path + ".bak").exists()) {
             return emptyList()
         }
@@ -105,7 +105,8 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
             }
         require(size <= 262144)
         val json = JSONObject(String(bytes, 0, size, Charsets.UTF_8))
-        require(json.get("version") == 1)
+        val version = json.get("version")
+        require(version == 1 || version == 2)
         val array = json.getJSONArray("requests")
         require(array.length() <= 200)
         val records =
@@ -113,12 +114,13 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
                 val row = array.getJSONObject(index)
                 val api = text(row, "apiIdentity")
                 require(api.length in 1..4096)
-                AirtimeRequest(
-                    AirtimeOwner(id(row, "accountId"), api),
+                TelecomRequest(
+                    TelecomOwner(id(row, "accountId"), api),
                     id(row, "requestKey"),
                     id(row, "quoteId"),
                     Instant.parse(text(row, "createdAt")),
                     row.get("acknowledged") as? Boolean ?: error("Expected boolean"),
+                    storedService(row, version == 1),
                 )
             }
         require(records.distinctBy { it.owner to it.requestKey }.size == records.size)
@@ -129,7 +131,7 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
      * Finish a small atomic commit despite cancellation; only IDs, scope and creation time enter
      * storage.
      */
-    private suspend fun writeAll(records: List<AirtimeRequest>) =
+    private suspend fun writeAll(records: List<TelecomRequest>) =
         withContext(NonCancellable + io) {
             val rows = JSONArray()
             records.forEach { request ->
@@ -140,12 +142,13 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
                         .put("requestKey", request.requestKey)
                         .put("quoteId", request.quoteId)
                         .put("createdAt", request.createdAt.toString())
-                        .put("acknowledged", request.acknowledged),
+                        .put("acknowledged", request.acknowledged)
+                        .put("serviceType", request.service.name.lowercase(Locale.ROOT)),
                 )
             }
             val bytes =
                 JSONObject()
-                    .put("version", 1)
+                    .put("version", 2)
                     .put("requests", rows)
                     .toString()
                     .toByteArray(Charsets.UTF_8)
@@ -161,6 +164,18 @@ class AtomicAirtimeRequestStore(private val file: File, private val io: Coroutin
                 throw failure
             }
         }
+
+    /** Legacy version-one rows are airtime; migration never changes accepted quote/request IDs. */
+    private fun storedService(row: JSONObject, legacy: Boolean): TelecomService {
+        if (legacy) {
+            return TelecomService.Airtime
+        }
+        return when (text(row, "serviceType")) {
+            "airtime" -> TelecomService.Airtime
+            "data" -> TelecomService.Data
+            else -> error("Unsupported saved service")
+        }
+    }
 
     /** Reject implicit credential/reference conversion in restored local records. */
     private fun text(json: JSONObject, name: String): String =

@@ -1,8 +1,8 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.data.airtime.HttpAirtimeRepository
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.data.telecom.HttpTelecomRepository
+import com.kesofty.axiapay.domain.telecom.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -16,7 +16,7 @@ import org.junit.Before
 import org.junit.Test
 
 /** Validates the documented purchase contract over real HTTP with synthetic credentials only. */
-class HttpAirtimeRepositoryTest {
+class HttpTelecomRepositoryTest {
     private val server = MockWebServer()
     private val client =
         OkHttpClient.Builder()
@@ -24,15 +24,15 @@ class HttpAirtimeRepositoryTest {
             .followRedirects(false)
             .callTimeout(3, TimeUnit.SECONDS)
             .build()
-    private lateinit var api: HttpAirtimeRepository
-    private val f = AirtimeFixture()
+    private lateinit var api: HttpTelecomRepository
+    private val f = TelecomFixture()
 
     /** Use the same uncached bounded transport as production against a loopback test server. */
     @Before
     fun start() {
         server.start()
         api =
-            HttpAirtimeRepository(
+            HttpTelecomRepository(
                 ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
             )
     }
@@ -59,6 +59,8 @@ class HttpAirtimeRepositoryTest {
         JSONObject()
             .put("id", id)
             .put("serviceType", "airtime")
+            .put("allowanceLabel", JSONObject.NULL)
+            .put("validitySeconds", JSONObject.NULL)
             .put("networkCode", "mtn")
             .put("displayName", "MTN airtime")
             .put("currency", "NGN")
@@ -78,6 +80,8 @@ class HttpAirtimeRepositoryTest {
                 .put("walletId", q.walletId)
                 .put("productId", q.productId)
                 .put("serviceType", "airtime")
+                .put("allowanceLabel", JSONObject.NULL)
+                .put("validitySeconds", JSONObject.NULL)
                 .put("networkCode", q.networkCode)
                 .put("displayName", q.displayName)
                 .put("recipientPhoneNumber", q.recipientPhoneNumber)
@@ -94,7 +98,7 @@ class HttpAirtimeRepositoryTest {
     }
 
     /** Correlate status responses to the original stable key. */
-    private fun payment(request: AirtimeRequest, status: String = "pending") =
+    private fun payment(request: TelecomRequest, status: String = "pending") =
         JSONObject()
             .put("id", "123e4567-e89b-42d3-a456-426614174004")
             .put("requestKey", request.requestKey)
@@ -159,14 +163,14 @@ class HttpAirtimeRepositoryTest {
         assertEquals(f.wallets.wallet.id, body.getString("walletId"))
         assertEquals("10000", body.get("amountMinorUnits"))
         val saved =
-            AirtimeRequest(
-                AirtimeOwner(f.accountId, api.apiIdentity),
+            TelecomRequest(
+                TelecomOwner(f.accountId, api.apiIdentity),
                 "123e4567-e89b-42d3-a456-426614174005",
                 quote.id,
                 f.now,
             )
         server.enqueue(response(200, payment(saved).toString()))
-        assertEquals(AirtimePaymentStatus.Pending, api.submit("synthetic-token", saved).status)
+        assertEquals(TelecomPaymentStatus.Pending, api.submit("synthetic-token", saved).status)
         val post = server.takeRequest()
         assertEquals("/v1/payments", post.target)
         val command = JSONObject(post.body!!.utf8())
@@ -180,8 +184,8 @@ class HttpAirtimeRepositoryTest {
     @Test
     fun statusReadsAndExplicitReconciliationNeverUseANewSubmission() = runTest {
         val saved =
-            AirtimeRequest(
-                AirtimeOwner(f.accountId, api.apiIdentity),
+            TelecomRequest(
+                TelecomOwner(f.accountId, api.apiIdentity),
                 "123e4567-e89b-42d3-a456-426614174005",
                 f.api.quoted.id,
                 f.now,
@@ -190,7 +194,7 @@ class HttpAirtimeRepositoryTest {
         for ((index, status) in statuses.withIndex()) {
             server.enqueue(response(200, payment(saved, status).toString()))
             val observed = requireNotNull(api.findByRequestKey("token", saved.requestKey))
-            assertEquals(AirtimePaymentStatus.entries[index], observed.status)
+            assertEquals(TelecomPaymentStatus.entries[index], observed.status)
             val request = server.takeRequest()
             assertEquals("GET", request.method)
             assertEquals(
@@ -214,10 +218,10 @@ class HttpAirtimeRepositoryTest {
     fun safeErrorsAndMalformedMoneyNeverBecomeSuccess() = runTest {
         for ((status, code, issue) in
             listOf(
-                Triple(409, "QUOTE_EXPIRED", AirtimeIssue.QuoteExpired),
-                Triple(409, "INSUFFICIENT_FUNDS", AirtimeIssue.InsufficientFunds),
-                Triple(401, "UNAUTHORIZED", AirtimeIssue.SignInRequired),
-                Triple(503, "PAYMENT_UNAVAILABLE", AirtimeIssue.Unavailable),
+                Triple(409, "QUOTE_EXPIRED", TelecomIssue.QuoteExpired),
+                Triple(409, "INSUFFICIENT_FUNDS", TelecomIssue.InsufficientFunds),
+                Triple(401, "UNAUTHORIZED", TelecomIssue.SignInRequired),
+                Triple(503, "PAYMENT_UNAVAILABLE", TelecomIssue.Unavailable),
             )) {
             server.enqueue(
                 response(
@@ -231,7 +235,7 @@ class HttpAirtimeRepositoryTest {
             try {
                 api.quote("secret", f.wallets.wallet.id, f.input)
                 fail()
-            } catch (failure: AirtimeFailure) {
+            } catch (failure: TelecomFailure) {
                 assertEquals(issue, failure.issue)
                 assertFalse(failure.toString().contains("private"))
             }
@@ -246,12 +250,142 @@ class HttpAirtimeRepositoryTest {
             try {
                 api.quote("token", f.wallets.wallet.id, f.input)
                 fail()
-            } catch (failure: AirtimeFailure) {
-                assertEquals(AirtimeIssue.InvalidResponse, failure.issue)
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
             }
         }
         server.enqueue(response(404, "{}"))
         assertNull(api.findByRequestKey("token", "saved-key"))
         assertEquals(8, server.requestCount)
+    }
+
+    /** Data products require a fixed price matching both bounds and complete public plan terms. */
+    private fun dataProduct() =
+        product()
+            .put("serviceType", "data")
+            .put("fixedPriceMinorUnits", "125050")
+            .put("minimumAmountMinorUnits", "125050")
+            .put("maximumAmountMinorUnits", "125050")
+            .put("allowanceLabel", "1 GB")
+            .put("validitySeconds", 2592000)
+
+    /** Data quote snapshots retain the complete required plan description and exact total. */
+    private fun dataQuote() =
+        quote()
+            .put("serviceType", "data")
+            .put("principalMinorUnits", "125050")
+            .put("totalDebitMinorUnits", "125150")
+            .put("allowanceLabel", "1 GB")
+            .put("validitySeconds", 2592000)
+
+    /** Data filters persist across pages and fixed-plan quote requests never override a price. */
+    @Test
+    fun dataPlanCatalogueAndQuoteUseExactApiContracts() = runTest {
+        val plan = dataProduct()
+        server.enqueue(
+            response(
+                200,
+                JSONObject()
+                    .put("products", JSONArray().put(plan))
+                    .put("nextCursor", JSONObject.NULL)
+                    .toString(),
+            ),
+        )
+        val selected = api.products("synthetic-token", "NGN", TelecomService.Data).single()
+        assertEquals("125050", selected.fixedMinorUnits.toString())
+        assertEquals("1 GB", selected.allowanceLabel)
+        assertEquals(2592000L, selected.validitySeconds)
+        assertEquals(
+            "/v1/service-catalog/products?serviceType=data&currency=NGN&limit=25",
+            server.takeRequest().target,
+        )
+        val review = dataQuote()
+        server.enqueue(response(201, review.toString()))
+        val prepared =
+            requireNotNull(
+                com.kesofty.axiapay.application.telecom.PrepareTelecom()(
+                        selected,
+                        "08012345678",
+                        "ignored",
+                    )
+                    .input,
+            )
+        val result = api.quote("synthetic-token", f.wallets.wallet.id, prepared)
+        assertEquals(TelecomService.Data, result.service)
+        assertEquals(2592000L, result.validitySeconds)
+        val post = server.takeRequest()
+        val body = JSONObject(post.body!!.utf8())
+        assertFalse(body.has("amountMinorUnits"))
+        assertFalse(body.has("serviceType"))
+        assertEquals(3, body.length())
+        assertEquals(f.wallets.wallet.id, body.getString("walletId"))
+        assertEquals("Bearer synthetic-token", post.headers["Authorization"])
+    }
+
+    /**
+     * Wrong service pages, variable data prices and incomplete terms cannot become purchasable
+     * plans.
+     */
+    @Test
+    fun dataCatalogueRejectsOtherServicesAndMalformedTerms() = runTest {
+        for (row in
+            listOf(
+                product(),
+                dataProduct().put("validitySeconds", 1.5),
+                dataProduct().put("validitySeconds", "2592000"),
+                dataProduct().put("allowanceLabel", ""),
+                dataProduct().put("fixedPriceMinorUnits", JSONObject.NULL),
+                dataProduct().put("minimumAmountMinorUnits", "5000"),
+                dataProduct().put("maximumAmountMinorUnits", "1000000"),
+                dataProduct().put("allowanceLabel", JSONObject.NULL),
+                dataProduct().put("validitySeconds", JSONObject.NULL),
+            )) {
+            server.enqueue(
+                response(
+                    200,
+                    JSONObject()
+                        .put("products", JSONArray().put(row))
+                        .put("nextCursor", JSONObject.NULL)
+                        .toString(),
+                ),
+            )
+            try {
+                api.products("token", "NGN", TelecomService.Data)
+                fail()
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            }
+        }
+        assertEquals(9, server.requestCount)
+    }
+
+    /** Missing required data terms cannot become a review or a successful payment receipt. */
+    @Test
+    fun dataQuotesAndReceiptsRejectMissingPlanTerms() = runTest {
+        val saved = f.workflow.review(f.accountId, f.input).request
+        for (invalid in
+            listOf(
+                dataQuote().put("allowanceLabel", JSONObject.NULL),
+                dataQuote().put("validitySeconds", JSONObject.NULL),
+            )) {
+            server.enqueue(response(201, invalid.toString()))
+            try {
+                api.quote("token", f.wallets.wallet.id, f.input.copy(service = TelecomService.Data))
+                fail()
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            }
+            invalid.remove("isSubmissionAvailable")
+            server.enqueue(
+                response(200, payment(saved, "succeeded").put("quote", invalid).toString()),
+            )
+            try {
+                api.findByRequestKey("token", saved.requestKey)
+                fail()
+            } catch (failure: TelecomFailure) {
+                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            }
+        }
+        assertEquals(4, server.requestCount)
     }
 }

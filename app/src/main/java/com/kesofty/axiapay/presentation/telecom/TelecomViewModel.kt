@@ -1,11 +1,11 @@
-package com.kesofty.axiapay.presentation.airtime
+package com.kesofty.axiapay.presentation.telecom
 
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kesofty.axiapay.application.airtime.AirtimePurchases
-import com.kesofty.axiapay.application.airtime.PrepareAirtime
-import com.kesofty.axiapay.domain.airtime.*
+import com.kesofty.axiapay.application.telecom.PrepareTelecom
+import com.kesofty.axiapay.application.telecom.TelecomPurchases
+import com.kesofty.axiapay.domain.telecom.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.Duration
@@ -22,22 +22,22 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
- * Own the live single-airtime MVI flow independently of the demo ledger. Optional composition
- * leaves the original demo path intact. Visit/account changes cancel UI work; durable IDs allow
- * explicit recovery without replaying a command on recreation, restoration or reconnect.
+ * Own the live airtime/data MVI flow independently of the demo ledger. Optional composition leaves
+ * the original demo path intact. Visit/account changes cancel UI work; durable IDs allow explicit
+ * recovery without replaying a command on recreation, restoration or reconnect.
  */
 @HiltViewModel
-class AirtimeViewModel
+class TelecomViewModel
 @Inject
 constructor(
-    feature: Optional<AirtimePurchases>,
-    private val prepare: PrepareAirtime,
+    feature: Optional<TelecomPurchases>,
+    private val prepare: PrepareTelecom,
     private val clock: Clock,
 ) : ViewModel() {
     private val purchases = feature.orElse(null)
-    private val mutableState = MutableStateFlow(AirtimeUiState(enabled = purchases != null))
+    private val mutableState = MutableStateFlow(TelecomUiState(enabled = purchases != null))
     val uiState = mutableState.asStateFlow()
-    private val effectChannel = Channel<AirtimeEffect>(Channel.BUFFERED)
+    private val effectChannel = Channel<TelecomEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
     private var action: Job? = null
     private var ticker: Job? = null
@@ -45,11 +45,11 @@ constructor(
 
     /** Keep one operation per visit; Views emit intents and never mutate the render snapshot. */
     @MainThread
-    fun accept(intent: AirtimeIntent) {
+    fun accept(intent: TelecomIntent) {
         if (purchases == null) {
             return
         }
-        if (intent is AirtimeIntent.Bind) {
+        if (intent is TelecomIntent.Bind) {
             bind(intent)
             return
         }
@@ -58,34 +58,35 @@ constructor(
             return
         }
         when (intent) {
-            AirtimeIntent.Reload -> load()
-            is AirtimeIntent.SelectProduct -> editForm { copy(selectedProductId = intent.id) }
-            is AirtimeIntent.EditRecipient -> editForm { copy(recipient = intent.value.take(40)) }
-            is AirtimeIntent.EditAmount -> editForm { copy(amount = intent.value.take(20)) }
-            AirtimeIntent.Review -> review()
-            AirtimeIntent.Edit -> {
+            TelecomIntent.Reload -> load()
+            is TelecomIntent.SelectNetwork -> selectNetwork(intent.code)
+            is TelecomIntent.SelectProduct -> selectProduct(intent.id)
+            is TelecomIntent.EditRecipient -> editForm { copy(recipient = intent.value.take(40)) }
+            is TelecomIntent.EditAmount -> editForm { copy(amount = intent.value.take(20)) }
+            TelecomIntent.Review -> review()
+            TelecomIntent.Edit -> {
                 ticker?.cancel()
                 mutableState.value =
-                    state.copy(screen = AirtimeScreen.Form, review = null, issue = null)
+                    state.copy(screen = TelecomScreen.Form, review = null, issue = null)
             }
-            AirtimeIntent.Confirm -> confirm()
-            AirtimeIntent.History ->
-                mutableState.value = state.copy(screen = AirtimeScreen.History, issue = null)
-            AirtimeIntent.NewPurchase -> newPurchase()
-            is AirtimeIntent.CheckSaved -> {
+            TelecomIntent.Confirm -> confirm()
+            TelecomIntent.History ->
+                mutableState.value = state.copy(screen = TelecomScreen.History, issue = null)
+            TelecomIntent.NewPurchase -> newPurchase()
+            is TelecomIntent.CheckSaved -> {
                 val request =
                     state.context?.requests?.find { it.requestKey == intent.requestKey } ?: return
                 progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
             }
-            AirtimeIntent.CheckStatus -> {
+            TelecomIntent.CheckStatus -> {
                 val request = state.progress?.request ?: return
                 progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
             }
-            AirtimeIntent.Reconcile -> {
+            TelecomIntent.Reconcile -> {
                 val current = state.progress ?: return
                 if (
                     current.payment?.status !in
-                        setOf(AirtimePaymentStatus.Pending, AirtimePaymentStatus.Reserved)
+                        setOf(TelecomPaymentStatus.Pending, TelecomPaymentStatus.Reserved)
                 ) {
                     return
                 }
@@ -93,12 +94,12 @@ constructor(
                     purchases.reconcile(state.accountId, current.request)
                 }
             }
-            AirtimeIntent.RetrySubmission -> {
+            TelecomIntent.RetrySubmission -> {
                 val current = state.progress ?: return
                 if (
                     current.payment?.isFinal == true ||
                         current.payment?.status in
-                            setOf(AirtimePaymentStatus.Pending, AirtimePaymentStatus.Reserved)
+                            setOf(TelecomPaymentStatus.Pending, TelecomPaymentStatus.Reserved)
                 ) {
                     return
                 }
@@ -106,14 +107,14 @@ constructor(
                     purchases.retrySubmission(state.accountId, current.request)
                 }
             }
-            AirtimeIntent.Done -> acknowledge()
-            is AirtimeIntent.Bind -> Unit
+            TelecomIntent.Done -> acknowledge()
+            is TelecomIntent.Bind -> Unit
         }
     }
 
     /** Reject queued closure after the same retained navigation ID has been reopened. */
     @MainThread
-    fun isCurrentClose(effect: AirtimeEffect.Close): Boolean =
+    fun isCurrentClose(effect: TelecomEffect.Close): Boolean =
         effect.visit == visit &&
             effect.accountId == mutableState.value.accountId &&
             effect.routeId == mutableState.value.routeId
@@ -122,9 +123,13 @@ constructor(
      * Drop transient personal data immediately when an account or sheet changes; new bindings read
      * only.
      */
-    private fun bind(intent: AirtimeIntent.Bind) {
+    private fun bind(intent: TelecomIntent.Bind) {
         val state = mutableState.value
-        if (state.accountId == intent.accountId && state.routeId == intent.routeId) {
+        if (
+            state.accountId == intent.accountId &&
+                state.routeId == intent.routeId &&
+                state.service == intent.service
+        ) {
             return
         }
         visit += 1
@@ -132,12 +137,13 @@ constructor(
         ticker?.cancel()
         val screen =
             when {
-                intent.routeId == null -> AirtimeScreen.Hidden
-                intent.accountId == null -> AirtimeScreen.SignIn
-                else -> AirtimeScreen.Loading
+                intent.routeId == null -> TelecomScreen.Hidden
+                intent.accountId == null -> TelecomScreen.SignIn
+                else -> TelecomScreen.Loading
             }
-        mutableState.value = AirtimeUiState(true, intent.accountId, intent.routeId, screen)
-        if (screen == AirtimeScreen.Loading) {
+        mutableState.value =
+            TelecomUiState(true, intent.accountId, intent.routeId, screen, service = intent.service)
+        if (screen == TelecomScreen.Loading) {
             load()
         }
     }
@@ -146,16 +152,38 @@ constructor(
     private fun load() {
         val owner = mutableState.value.accountId ?: return
         val workflow = purchases ?: return
-        execute { ActionResult.Loaded(workflow.load(owner)) }
+        val service = mutableState.value.service
+        execute { ActionResult.Loaded(workflow.load(owner, service)) }
+    }
+
+    /** Data network selection clears the previous plan so a hidden plan cannot be purchased. */
+    private fun selectNetwork(code: String) {
+        val state = mutableState.value
+        if (
+            state.service != TelecomService.Data ||
+                code !in state.networks ||
+                state.selectedNetworkCode == code
+        ) {
+            return
+        }
+        editForm { copy(selectedNetworkCode = code, selectedProductId = null, amount = "") }
+    }
+
+    /** Only a visible catalogue product from this visit can be selected. */
+    private fun selectProduct(id: String) {
+        if (mutableState.value.visibleProducts.none { it.id == id }) {
+            return
+        }
+        editForm { copy(selectedProductId = id) }
     }
 
     /**
      * Prepare changed input once; selected API constraints provide feedback while the server
      * remains authoritative.
      */
-    private fun editForm(update: AirtimeUiState.() -> AirtimeUiState) {
+    private fun editForm(update: TelecomUiState.() -> TelecomUiState) {
         val state = mutableState.value
-        if (state.screen != AirtimeScreen.Form) {
+        if (state.screen != TelecomScreen.Form) {
             return
         }
         val changed = state.update().copy(issue = null)
@@ -169,7 +197,7 @@ constructor(
         val input = state.prepared ?: return
         val owner = state.accountId ?: return
         val workflow = purchases ?: return
-        if (state.screen != AirtimeScreen.Form) {
+        if (state.screen != TelecomScreen.Form) {
             return
         }
         execute { ActionResult.Reviewed(workflow.review(owner, input)) }
@@ -185,7 +213,7 @@ constructor(
         val owner = state.accountId ?: return
         val workflow = purchases ?: return
         if (
-            state.screen != AirtimeScreen.Review ||
+            state.screen != TelecomScreen.Review ||
                 state.secondsRemaining == 0L ||
                 !reviewed.quote.isSubmissionAvailable
         ) {
@@ -199,7 +227,7 @@ constructor(
      * Publish observed or explicitly unconfirmed progress; errors never invent successful or failed
      * delivery.
      */
-    private fun progress(refreshWallet: Boolean = false, operation: suspend () -> AirtimeProgress) {
+    private fun progress(refreshWallet: Boolean = false, operation: suspend () -> TelecomProgress) {
         execute(refreshWallet) { ActionResult.Observed(operation()) }
     }
 
@@ -212,7 +240,14 @@ constructor(
         }
         ticker?.cancel()
         mutableState.value =
-            AirtimeUiState(true, state.accountId, state.routeId, AirtimeScreen.Form, state.context)
+            TelecomUiState(
+                true,
+                state.accountId,
+                state.routeId,
+                TelecomScreen.Form,
+                state.context,
+                service = state.service,
+            )
     }
 
     /**
@@ -235,13 +270,13 @@ constructor(
     /** IO produces typed results; only the owning visit may reduce them into state/effects. */
     private sealed interface ActionResult {
         /** Fresh owned display data and saved receipt/recovery references. */
-        data class Loaded(val context: AirtimeContext) : ActionResult
+        data class Loaded(val context: TelecomContext) : ActionResult
 
         /** Immutable server review ready for explicit consent. */
-        data class Reviewed(val review: AirtimeReview) : ActionResult
+        data class Reviewed(val review: TelecomReview) : ActionResult
 
         /** Correlated server progress or an honest uncertain result. */
-        data class Observed(val progress: AirtimeProgress) : ActionResult
+        data class Observed(val progress: TelecomProgress) : ActionResult
 
         /** Local terminal receipt acknowledgement completed. */
         data object Acknowledged : ActionResult
@@ -264,13 +299,13 @@ constructor(
                                 result.context.requests.any { !it.acknowledged } ||
                                     result.context.wallet == null
                             )
-                                AirtimeScreen.History
-                            else AirtimeScreen.Form,
+                                TelecomScreen.History
+                            else TelecomScreen.Form,
                     )
             is ActionResult.Reviewed -> {
                 mutableState.value =
                     state.copy(
-                        screen = AirtimeScreen.Review,
+                        screen = TelecomScreen.Review,
                         review = result.review,
                         secondsRemaining = remaining(result.review.quote),
                     )
@@ -285,7 +320,7 @@ constructor(
                     } + progress.request
                 mutableState.value =
                     state.copy(
-                        screen = AirtimeScreen.Progress,
+                        screen = TelecomScreen.Progress,
                         progress = progress,
                         review = null,
                         context =
@@ -294,7 +329,7 @@ constructor(
             }
             ActionResult.Acknowledged ->
                 effectChannel.trySend(
-                    AirtimeEffect.Close(
+                    TelecomEffect.Close(
                         requireNotNull(state.accountId),
                         requireNotNull(state.routeId),
                         visit,
@@ -328,14 +363,14 @@ constructor(
                 if (origin != visit) {
                     return@launch
                 }
-                val issue = (failure as? AirtimeFailure)?.issue ?: AirtimeIssue.Unavailable
+                val issue = (failure as? TelecomFailure)?.issue ?: TelecomIssue.Unavailable
                 val invalidSession =
-                    issue in setOf(AirtimeIssue.SignInRequired, AirtimeIssue.SessionChanged)
+                    issue in setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)
                 refreshAccountWallet = refreshAccountWallet || invalidSession
                 val screen =
                     when {
-                        invalidSession -> AirtimeScreen.SignIn
-                        mutableState.value.context == null -> AirtimeScreen.LoadFailure
+                        invalidSession -> TelecomScreen.SignIn
+                        mutableState.value.context == null -> TelecomScreen.LoadFailure
                         else -> mutableState.value.screen
                     }
                 mutableState.value = mutableState.value.copy(issue = issue, screen = screen)
@@ -354,7 +389,7 @@ constructor(
             mutableState.value = mutableState.value.copy(isProcessing = false)
         }
         if (refreshWallet) {
-            effectChannel.trySend(AirtimeEffect.RefreshWallet(owner))
+            effectChannel.trySend(TelecomEffect.RefreshWallet(owner))
         }
     }
 
@@ -362,7 +397,7 @@ constructor(
     private fun startTicker() {
         ticker?.cancel()
         ticker = viewModelScope.launch {
-            while (mutableState.value.screen == AirtimeScreen.Review) {
+            while (mutableState.value.screen == TelecomScreen.Review) {
                 val quote = mutableState.value.review?.quote ?: return@launch
                 mutableState.value = mutableState.value.copy(secondsRemaining = remaining(quote))
                 delay(1000)
@@ -374,6 +409,6 @@ constructor(
      * Conservatively disable confirmation during the last fractional second; API expiry remains
      * authoritative.
      */
-    private fun remaining(quote: AirtimeQuote): Long =
+    private fun remaining(quote: TelecomQuote): Long =
         Duration.between(clock.instant(), quote.expiresAt).seconds.coerceAtLeast(0)
 }
