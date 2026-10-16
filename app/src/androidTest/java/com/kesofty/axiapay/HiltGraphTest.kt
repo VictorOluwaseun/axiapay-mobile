@@ -1,20 +1,49 @@
 package com.kesofty.axiapay
 
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.lifecycle.ViewModelProvider
 import com.kesofty.axiapay.domain.ConnectionMode
 import com.kesofty.axiapay.presentation.*
+import com.kesofty.axiapay.presentation.airtime.AirtimeIntent
+import com.kesofty.axiapay.presentation.airtime.AirtimeScreen
+import com.kesofty.axiapay.presentation.airtime.AirtimeViewModel
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
 import org.junit.Assert.*
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 
 /** Exercises the installed flavor's real Hilt graph without replacing its bindings in the test. */
 class HiltGraphTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /** Production flavor composition enables live airtime only outside the demo flavor. */
+    @Test
+    fun airtimeCapabilityIsSelectedAtTheFlavorCompositionBoundary() {
+        compose.runOnIdle {
+            val vm = ViewModelProvider(compose.activity)[AirtimeViewModel::class.java]
+            assertEquals(BuildConfig.FLAVOR != "demo", vm.uiState.value.enabled)
+            vm.accept(AirtimeIntent.Bind(null, "isolated-test-visit"))
+            assertEquals(
+                if (BuildConfig.FLAVOR == "demo") AirtimeScreen.Hidden else AirtimeScreen.SignIn,
+                vm.uiState.value.screen,
+            )
+        }
+    }
+
+    /**
+     * Signed-out non-demo entry must render the live sign-in boundary instead of a demo purchase.
+     */
+    @Test
+    fun realAirtimeEntryCannotUseTheDemoLedgerWithoutSignIn() {
+        Assume.assumeTrue(BuildConfig.FLAVOR != "demo")
+        compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+        compose.onNodeWithText("Airtime", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("airtime-sign-in").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Confirm demo payment").assertDoesNotExist()
+    }
 
     /**
      * Queries and commands share one repository per ViewModel. Independent owner keys must not

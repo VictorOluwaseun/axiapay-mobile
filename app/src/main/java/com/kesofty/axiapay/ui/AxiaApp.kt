@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
+import com.kesofty.axiapay.presentation.airtime.*
+import com.kesofty.axiapay.ui.airtime.AirtimeSheet
 import com.kesofty.axiapay.ui.bulk.*
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
@@ -47,6 +49,8 @@ fun AxiaApp(
     authShortcutLabel: String? = null,
     homeWallet: HomeWalletState = HomeWalletState.Demo,
     onRefreshWallet: () -> Unit = {},
+    airtime: AirtimeUiState? = null,
+    onAirtimeIntent: (AirtimeIntent) -> Unit = {},
     onOpenAccount: () -> Unit = {},
 ) {
     if (uiState.isRestoring || uiState.restorationFailed) {
@@ -129,6 +133,8 @@ fun AxiaApp(
             onIntent,
             onOpenAccount,
             authShortcutLabel,
+            airtime,
+            onAirtimeIntent,
         )
     }
     (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
@@ -165,6 +171,8 @@ private fun AppSheet(
     onIntent: (AxiaIntent) -> Unit,
     onOpenAccount: () -> Unit,
     authShortcutLabel: String?,
+    airtime: AirtimeUiState?,
+    onAirtimeIntent: (AirtimeIntent) -> Unit,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -202,15 +210,26 @@ private fun AppSheet(
                                 }
                             }
                     is Sheet.Explore -> ExploreSheet(sheet.service)
-                    is Sheet.Payment ->
-                        PaymentSheet(
-                            sheet.form,
-                            state,
-                            { onIntent(AxiaIntent.EditPayment(it)) },
-                            { onIntent(AxiaIntent.ConfirmPayment) },
-                            { onIntent(AxiaIntent.SaveDraft) },
-                            { onIntent(AxiaIntent.Bulk(BulkIntent.FromPayment)) },
-                        )
+                    is Sheet.Payment -> {
+                        if (airtime != null && sheet.form.isAirtimePurchaseEntry) {
+                            AirtimeSheet(
+                                airtime,
+                                state.offline,
+                                state.hidden,
+                                onAirtimeIntent,
+                                onOpenAccount,
+                            )
+                        } else {
+                            PaymentSheet(
+                                sheet.form,
+                                state,
+                                { onIntent(AxiaIntent.EditPayment(it)) },
+                                { onIntent(AxiaIntent.ConfirmPayment) },
+                                { onIntent(AxiaIntent.SaveDraft) },
+                                { onIntent(AxiaIntent.Bulk(BulkIntent.FromPayment)) },
+                            )
+                        }
+                    }
                 }
             }
         }
