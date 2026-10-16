@@ -12,7 +12,7 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Exercises actual Android AtomicFile persistence across independent journal instances. */
+/** Exercises checked Android journal commits across independent store instances. */
 class TelecomRequestStorageTest {
     /** Cold reads remain account/API-scoped, immutable, idempotent and free of financial bodies. */
     @Test
@@ -58,6 +58,7 @@ class TelecomRequestStorageTest {
         } finally {
             file.delete()
             File(file.path + ".bak").delete()
+            File(file.path + ".new").delete()
         }
     }
 
@@ -114,6 +115,7 @@ class TelecomRequestStorageTest {
         } finally {
             file.delete()
             File(file.path + ".bak").delete()
+            File(file.path + ".new").delete()
         }
     }
 
@@ -209,6 +211,52 @@ class TelecomRequestStorageTest {
         } finally {
             file.delete()
             File(file.path + ".bak").delete()
+            File(file.path + ".new").delete()
+        }
+    }
+
+    /** Legacy backups win over interrupted base/staged files and retain all original references. */
+    @Test
+    fun legacyBackupAndInterruptedStagedWritePreserveCommittedReferences() = runBlocking {
+        val file =
+            File(
+                InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir,
+                "test-backup-${UUID.randomUUID()}.json",
+            )
+        val backup = File(file.path + ".bak")
+        val staged = File(file.path + ".new")
+        try {
+            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val earlier =
+                TelecomRequest(
+                    owner,
+                    UUID.randomUUID().toString(),
+                    UUID.randomUUID().toString(),
+                    Instant.now(),
+                )
+            AtomicTelecomRequestStore(file, Dispatchers.IO).save(earlier)
+            file.copyTo(backup)
+            file.writeText("interrupted legacy base")
+            staged.writeText("uncommitted staging bytes")
+            val cold = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            assertEquals(listOf(earlier), cold.read(owner))
+            assertFalse(backup.exists())
+            val next =
+                earlier.copy(
+                    requestKey = UUID.randomUUID().toString(),
+                    quoteId = UUID.randomUUID().toString(),
+                    service = TelecomService.Data,
+                )
+            cold.save(next)
+            assertEquals(
+                listOf(earlier, next),
+                AtomicTelecomRequestStore(file, Dispatchers.IO).read(owner),
+            )
+            assertFalse(staged.exists())
+        } finally {
+            file.delete()
+            backup.delete()
+            staged.delete()
         }
     }
 }

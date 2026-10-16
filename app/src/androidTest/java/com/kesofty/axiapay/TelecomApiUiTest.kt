@@ -69,6 +69,20 @@ class TelecomApiUiTest {
     @Volatile private var rejectPost = false
     @Volatile private var observed = false
     @Volatile private var productAvailable = true
+    @Volatile private var failJournalDirectorySync = false
+    private val journalCommits =
+        object : TelecomJournalCommitOperations by AndroidTelecomJournalCommitOperations {
+            /**
+             * Inject the ambiguous post-rename barrier while other IO uses the real Android
+             * adapter.
+             */
+            override fun syncDirectory(directory: File) {
+                if (failJournalDirectorySync) {
+                    throw java.io.IOException("Injected journal directory sync failure")
+                }
+                AndroidTelecomJournalCommitOperations.syncDirectory(directory)
+            }
+        }
     private lateinit var file: File
     private lateinit var http: ApiHttpClient
     private lateinit var sessions: TestSessions
@@ -175,6 +189,7 @@ class TelecomApiUiTest {
         if (::file.isInitialized) {
             file.delete()
             File(file.path + ".bak").delete()
+            File(file.path + ".new").delete()
         }
     }
 
@@ -186,7 +201,7 @@ class TelecomApiUiTest {
                 sessions,
                 HttpWalletRepository(http),
                 HttpTelecomRepository(http),
-                AtomicTelecomRequestStore(file, Dispatchers.IO),
+                AtomicTelecomRequestStore(file, Dispatchers.IO, journalCommits),
                 clock,
             ) {
                 requestKey
@@ -510,6 +525,41 @@ class TelecomApiUiTest {
                     .read(fixtureOwner())
                     .single()
                     .service
+            },
+        )
+    }
+
+    /**
+     * A post-rename sync failure blocks the real POST; explicit retry recommits the same identity.
+     */
+    @Test
+    fun journalDirectorySyncFailureBlocksPurchaseUntilExplicitDurableRetry() {
+        service = TelecomService.Data
+        status = "succeeded"
+        failJournalDirectorySync = true
+        show()
+        review()
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
+        compose.waitUntil(10000) {
+            vm.uiState.value.issue == TelecomIssue.Storage && !vm.uiState.value.isProcessing
+        }
+        assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+        assertEquals(0, posts.get())
+        val retained = runBlocking {
+            AtomicTelecomRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
+        }
+        assertEquals(requestKey, retained.requestKey)
+        assertEquals(quoteId, retained.quoteId)
+        failJournalDirectorySync = false
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
+        waitFor(TelecomScreen.Progress)
+        compose.onNodeWithTag("telecom-status").performScrollTo().assertTextEquals("Data purchased")
+        assertEquals(1, posts.get())
+        assertEquals(1, quotes.get())
+        assertEquals(
+            retained,
+            runBlocking {
+                AtomicTelecomRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
             },
         )
     }

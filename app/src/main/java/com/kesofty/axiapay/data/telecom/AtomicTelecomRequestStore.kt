@@ -1,8 +1,11 @@
 package com.kesofty.axiapay.data.telecom
 
-import android.util.AtomicFile
 import com.kesofty.axiapay.domain.telecom.*
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.time.Instant
 import java.util.Collections
 import java.util.Locale
@@ -18,11 +21,24 @@ import org.json.JSONObject
 
 /**
  * App-private no-backup recovery references, shared across owners through a singleton composition
- * binding. Atomic replacement preserves earlier requests; corruption/IO failure blocks new POSTs.
+ * binding. Checked file sync, atomic replacement and directory sync preserve recovery references;
+ * corruption/IO/commit failure blocks new POSTs. The app supplies an existing no-backup directory.
  * This is not a payment outbox: nothing here schedules or replays a purchase.
  */
-class AtomicTelecomRequestStore(private val file: File, private val io: CoroutineDispatcher) :
-    TelecomRequestStore {
+class AtomicTelecomRequestStore
+internal constructor(
+    private val file: File,
+    private val io: CoroutineDispatcher,
+    private val commits: TelecomJournalCommitOperations,
+) : TelecomRequestStore {
+    /**
+     * The app owns an existing no-backup parent directory; every commit error remains observable.
+     */
+    constructor(
+        file: File,
+        io: CoroutineDispatcher,
+    ) : this(file, io, AndroidTelecomJournalCommitOperations)
+
     private val mutex = Mutex()
 
     /** Read only this verified account/API scope and never expose a mutable backing collection. */
@@ -38,10 +54,13 @@ class AtomicTelecomRequestStore(private val file: File, private val io: Coroutin
         val existing = records.find {
             it.owner == request.owner && it.requestKey == request.requestKey
         }
+        require(existing == null || existing == request)
         if (existing == request) {
+            // A previous rename may have succeeded before directory sync failed. Reconfirm
+            // durability.
+            writeAll(records)
             return@storage
         }
-        require(existing == null)
         val oldestAcknowledged = records.firstOrNull { it.acknowledged }
         val retained =
             when {
@@ -63,10 +82,7 @@ class AtomicTelecomRequestStore(private val file: File, private val io: Coroutin
                 it.owner == request.owner && it.requestKey == request.requestKey
             } ?: error("Missing receipt reference")
         require(existing.copy(acknowledged = false) == request.copy(acknowledged = false))
-        if (existing.acknowledged) {
-            return@storage
-        }
-        writeAll(records.map { if (it == request) it.copy(acknowledged = true) else it })
+        writeAll(records.map { if (it == existing) it.copy(acknowledged = true) else it })
     }
 
     /** Serialize IO on the owning dispatcher and preserve cancellation/failure context. */
@@ -87,22 +103,19 @@ class AtomicTelecomRequestStore(private val file: File, private val io: Coroutin
      * reset recovery.
      */
     private fun readAll(): List<TelecomRequest> {
-        if (!file.exists() && !File(file.path + ".bak").exists()) {
-            return emptyList()
-        }
+        val stream = openCommitted() ?: return emptyList()
         val bytes = ByteArray(262145)
-        val size =
-            AtomicFile(file).openRead().use { stream ->
-                var count = 0
-                while (count < bytes.size) {
-                    val read = stream.read(bytes, count, bytes.size - count)
-                    if (read == -1) {
-                        break
-                    }
-                    count += read
+        val size = stream.use {
+            var count = 0
+            while (count < bytes.size) {
+                val read = stream.read(bytes, count, bytes.size - count)
+                if (read == -1) {
+                    break
                 }
-                count
+                count += read
             }
+            count
+        }
         require(size <= 262144)
         val json = JSONObject(String(bytes, 0, size, Charsets.UTF_8))
         val version = json.get("version")
@@ -153,17 +166,53 @@ class AtomicTelecomRequestStore(private val file: File, private val io: Coroutin
                     .toString()
                     .toByteArray(Charsets.UTF_8)
             require(bytes.size <= 262144)
-            check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
-            val atomic = AtomicFile(file)
-            val stream = atomic.startWrite()
+            val directory = requireNotNull(file.parentFile)
+            check(directory.isDirectory)
+            val staged = File(file.path + ".new")
             try {
-                stream.write(bytes)
-                atomic.finishWrite(stream)
+                FileOutputStream(staged).use { stream ->
+                    stream.write(bytes)
+                    commits.syncFile(stream)
+                }
+                commits.replace(staged, file)
+                commits.syncDirectory(directory)
             } catch (failure: Throwable) {
-                atomic.failWrite(stream)
+                try {
+                    Files.deleteIfExists(staged.toPath())
+                } catch (cleanupFailure: Exception) {
+                    failure.addSuppressed(cleanupFailure)
+                }
                 throw failure
             }
         }
+
+    /**
+     * Restore legacy AtomicFile backups with checked replacement. Only a genuinely absent file is
+     * empty; permission, recovery and read errors must block a new purchase. Staged .new files were
+     * never committed and never become authoritative on restart.
+     */
+    private fun openCommitted(): InputStream? {
+        val backup = File(file.path + ".bak")
+        val backupExists =
+            try {
+                Files.readAttributes(
+                    backup.toPath(),
+                    java.nio.file.attribute.BasicFileAttributes::class.java,
+                )
+                true
+            } catch (_: NoSuchFileException) {
+                false
+            }
+        if (backupExists) {
+            commits.replace(backup, file)
+            commits.syncDirectory(requireNotNull(file.parentFile))
+        }
+        return try {
+            Files.newInputStream(file.toPath())
+        } catch (_: NoSuchFileException) {
+            null
+        }
+    }
 
     /** Legacy version-one rows are airtime; migration never changes accepted quote/request IDs. */
     private fun storedService(row: JSONObject, legacy: Boolean): TelecomService {
