@@ -6,7 +6,7 @@ enum class AuthContactType {
     Email,
 }
 
-/** Selects password entry or a one-time-code preview; signup verifies contact in either case. */
+/** Selects password or one-time-code entry; signup verifies contact in either workflow. */
 enum class AuthMethod {
     Password,
     OneTimeCode,
