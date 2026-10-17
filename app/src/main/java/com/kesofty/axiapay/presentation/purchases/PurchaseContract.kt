@@ -1,10 +1,13 @@
 package com.kesofty.axiapay.presentation.purchases
 
+import com.kesofty.axiapay.application.purchases.hasMeterSyntax
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.presentation.PaymentFormState
 
 /**
- * Only immediate airtime/data entries use the real feature; scheduled/bulk tools remain previews.
+ * Only implemented immediate wallet purchase entries use the real feature; scheduled/bulk tools
+ * remain previews.
  */
 val PaymentFormState.purchaseService: PurchaseService?
     get() {
@@ -14,11 +17,12 @@ val PaymentFormState.purchaseService: PurchaseService?
         return when (route) {
             "Airtime" -> PurchaseService.Airtime
             "Data" -> PurchaseService.Data
+            "Electricity" -> PurchaseService.Electricity
             else -> null
         }
     }
 
-/** Select real phone-service sheets without inspecting build flavor in Views. */
+/** Select real wallet purchase sheets without inspecting build flavor in Views. */
 val PaymentFormState.isWalletPurchaseEntry: Boolean
     get() = purchaseService != null
 
@@ -56,7 +60,14 @@ data class PurchaseUiState(
     val issue: PurchaseIssue? = null,
     val service: PurchaseService = PurchaseService.Airtime,
     val selectedProviderCode: String? = null,
+    val selectedMeterType: ElectricityMeterType = ElectricityMeterType.Prepaid,
+    val verifiedMeter: VerifiedMeter? = null,
+    val contactPhoneNumber: String = "",
 ) {
+    /** Form-bound meter syntax permits a non-spending verification intent. */
+    val canVerifyMeter: Boolean
+        get() = selectedProduct?.isSubmissionAvailable == true && hasMeterSyntax(recipient)
+
     /** Publish only the selected API identity, never a locally guessed provider/product mapping. */
     val selectedProduct: PurchaseProduct?
         get() = context?.products?.find { it.id == selectedProductId }
@@ -71,7 +82,10 @@ data class PurchaseUiState(
     val visibleProducts: List<PurchaseProduct>
         get() =
             context?.products.orEmpty().filter {
-                service == PurchaseService.Airtime || it.providerCode == selectedProviderCode
+                service == PurchaseService.Airtime ||
+                    (it.providerCode == selectedProviderCode &&
+                        (service != PurchaseService.Electricity ||
+                            it.meterType == selectedMeterType))
             }
 
     /**
@@ -123,6 +137,15 @@ sealed interface PurchaseIntent {
 
     /** Select the API product explicitly, including for ported numbers. */
     data class SelectProduct(val id: String) : PurchaseIntent
+
+    /** Switching meter mode clears any product and verification for the previous mode. */
+    data class SelectMeterType(val value: ElectricityMeterType) : PurchaseIntent
+
+    /** Service delivery contact is distinct from the exact meter identifier. */
+    data class EditContactPhone(val value: String) : PurchaseIntent
+
+    /** Explicit non-spending verification must precede an electricity quote. */
+    data object VerifyMeter : PurchaseIntent
 
     /** Change transient recipient text only. */
     data class EditRecipient(val value: String) : PurchaseIntent

@@ -1,15 +1,18 @@
 package com.kesofty.axiapay.domain.purchases
 
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.wallet.WalletSummary
 import java.math.BigInteger
 import java.time.Instant
 
 /**
- * Supported phone-based purchases share consent/recovery while retaining distinct catalogue scopes.
+ * Supported wallet-funded purchases share consent/recovery while retaining distinct catalogue
+ * scopes.
  */
 enum class PurchaseService {
     Airtime,
     Data,
+    Electricity,
 }
 
 /** Account and normalized API scope for private recovery records; never a spending credential. */
@@ -30,6 +33,7 @@ data class PurchaseProduct(
     val service: PurchaseService = PurchaseService.Airtime,
     val allowanceLabel: String? = null,
     val validitySeconds: Long? = null,
+    val meterType: ElectricityMeterType? = null,
 )
 
 /** Boundary-prepared recipient and exact amount; fixed-price products omit the amount override. */
@@ -38,6 +42,8 @@ data class PurchaseQuoteInput(
     val recipientIdentifier: String,
     val amountMinorUnits: BigInteger?,
     val service: PurchaseService = PurchaseService.Airtime,
+    val verifiedMeter: VerifiedMeter? = null,
+    val contactPhoneNumber: String? = null,
 ) {
     /** Keep personal and financial form details out of diagnostics. */
     override fun toString() = "PurchaseQuoteInput(redacted)"
@@ -61,6 +67,8 @@ data class PurchaseQuote(
     val service: PurchaseService = PurchaseService.Airtime,
     val allowanceLabel: String? = null,
     val validitySeconds: Long? = null,
+    val meterValidation: MeterValidation? = null,
+    val contactPhoneNumber: String? = null,
 ) {
     /** Exclude recipient and monetary values from diagnostic interpolation. */
     override fun toString() = "PurchaseQuote(redacted)"
@@ -70,6 +78,45 @@ data class PurchaseQuote(
      */
     fun hasSameTerms(other: PurchaseQuote): Boolean =
         copy(isSubmissionAvailable = false) == other.copy(isSubmissionAvailable = false)
+}
+
+/** Verified server snapshot; exact meter text and leading zeros remain intact in memory only. */
+data class MeterValidation(
+    val id: String,
+    val productId: String,
+    val billerCode: String,
+    val meterType: ElectricityMeterType,
+    val accountNumber: String,
+    val customerName: String,
+    val serviceAddress: String?,
+    val verifiedAt: Instant,
+    val expiresAt: Instant,
+) {
+    /** Private recipient details never enter diagnostics. */
+    override fun toString() = "MeterValidation(redacted)"
+}
+
+/**
+ * Bind verification to the account/API that requested it; changing owner requires verification
+ * again.
+ */
+data class VerifiedMeter(val owner: PurchaseOwner, val validation: MeterValidation)
+
+/** Ordered prepaid tokens, including key-change tokens; values are exact display strings. */
+data class ElectricityToken(val label: String, val value: String) {
+    /** Tokens must never appear in diagnostic interpolation. */
+    override fun toString() = "ElectricityToken(redacted)"
+}
+
+/** A verified receipt is separate from settlement; postpaid receipts have no recharge tokens. */
+data class ElectricityReceipt(
+    val meterType: ElectricityMeterType,
+    val reference: String,
+    val tokens: List<ElectricityToken> = emptyList(),
+    val unitsKilowattHours: String? = null,
+) {
+    /** Fulfilment details remain in transient authenticated UI memory. */
+    override fun toString() = "ElectricityReceipt(redacted)"
 }
 
 /** Observable server state; only committed success or failure is terminal. */
@@ -89,10 +136,30 @@ data class PurchasePayment(
     val quote: PurchaseQuote,
     val createdAt: Instant,
     val submissionStartedAt: Instant?,
+    val electricityReceipt: ElectricityReceipt? = null,
 ) {
     /** Final server outcomes permit acknowledgement of the local recovery reference. */
     val isFinal: Boolean
         get() = status in setOf(PurchasePaymentStatus.Succeeded, PurchasePaymentStatus.Failed)
+
+    /** Successful vending with delayed fulfilment keeps the original reference recoverable. */
+    val needsReceipt: Boolean
+        get() =
+            quote.service == PurchaseService.Electricity &&
+                status == PurchasePaymentStatus.Succeeded &&
+                electricityReceipt == null
+
+    /** Explicit reconciliation also recovers a delayed receipt without buying again. */
+    val canReconcile: Boolean
+        get() =
+            status in setOf(PurchasePaymentStatus.Pending, PurchasePaymentStatus.Reserved) ||
+                needsReceipt
+
+    /**
+     * Keep unfulfilled successes unfinished so journal pruning cannot discard their recovery IDs.
+     */
+    val canAcknowledge: Boolean
+        get() = isFinal && !needsReceipt
 
     /** Avoid exposing private payment details through state logging. */
     override fun toString() = "PurchasePayment(status=$status, details=redacted)"
@@ -148,7 +215,12 @@ enum class PurchaseIssue {
     InvalidResponse,
     SelectProduct,
     InvalidRecipient,
+    InvalidMeter,
+    MeterUnconfirmed,
+    MeterVerificationRequired,
+    MeterVerificationExpired,
     InvalidAmount,
+    InvalidPayment,
     ProductUnavailable,
     QuoteExpired,
     PaymentConflict,

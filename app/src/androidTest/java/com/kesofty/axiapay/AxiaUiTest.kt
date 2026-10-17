@@ -45,6 +45,36 @@ class AxiaUiTest {
         compose.onNodeWithText("₦127,450.00").assertIsDisplayed()
     }
 
+    /** Demo electricity still uses local provider choices and explicit simulated payment. */
+    @Test
+    fun electricityKeepsDemoPaymentAndLocalBalance() {
+        compose.runOnIdle {
+            ViewModelProvider(compose.activity)[AxiaViewModel::class.java].accept(
+                AxiaIntent.SetConnectionMode(ConnectionMode.ForceOnline),
+            )
+        }
+        compose
+            .onNode(hasTextExactly("Electricity") and hasClickAction())
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag("electricity-provider-selector").performClick()
+        compose.onNodeWithTag("electricity-provider-search").performTextInput("YEDC")
+        compose.onNodeWithTag("electricity-provider-Yola Electric").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("electricity-provider-picker").fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithText("Meter number").performScrollTo().performTextInput("00123456789")
+        compose.onNodeWithText("Amount (₦)").performScrollTo().performTextInput("1000")
+        compose.onNodeWithTag("electricity-verify").assertDoesNotExist()
+        compose.onNodeWithText("Review payment").performScrollTo().performClick()
+        compose.onNodeWithText("Confirm demo payment").performScrollTo().performClick()
+        compose.onNodeWithText("All taken care of.").assertIsDisplayed()
+        compose.onNodeWithText("Done").performScrollTo().performClick()
+        compose.onNodeWithText("₦127,450.00").assertIsDisplayed()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithText("₦127,450.00").assertIsDisplayed()
+    }
+
     @Test
     fun fundingUpdatesWalletAndSurvivesActivityRecreation() {
         compose.onNodeWithText("Add money").performClick()

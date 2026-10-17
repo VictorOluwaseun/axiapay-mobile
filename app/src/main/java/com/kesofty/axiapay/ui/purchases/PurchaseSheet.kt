@@ -33,7 +33,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 /**
- * Render live account-owned airtime/data state in the existing payment sheet; only typed intents
+ * Render live account-owned wallet purchase state in the existing payment sheet; only typed intents
  * can trigger operations.
  */
 @Composable
@@ -45,13 +45,22 @@ fun PurchaseSheet(
     onOpenAccount: () -> Unit,
 ) {
     SheetContent {
-        IconTile(Glyph.Phone, tint = Mint)
+        IconTile(
+            if (state.service == PurchaseService.Electricity) Glyph.Bolt else Glyph.Phone,
+            tint = Mint,
+        )
         SheetHeading(
             stringResource(
-                if (state.service == PurchaseService.Data) R.string.telecom_title_data
-                else R.string.telecom_title_airtime,
+                when (state.service) {
+                    PurchaseService.Airtime -> R.string.telecom_title_airtime
+                    PurchaseService.Data -> R.string.telecom_title_data
+                    PurchaseService.Electricity -> R.string.electricity_live_title
+                },
             ),
-            stringResource(R.string.telecom_subtitle),
+            stringResource(
+                if (state.service == PurchaseService.Electricity) R.string.electricity_live_subtitle
+                else R.string.telecom_subtitle,
+            ),
         )
         if (offline) {
             Text(stringResource(R.string.telecom_offline), color = Warning)
@@ -120,15 +129,32 @@ private fun ColumnScope.PurchaseFields(
         if (hidden) stringResource(R.string.telecom_balance_hidden)
         else walletMoney(wallet.availableMinorUnits, wallet.currency),
     )
-    Text(stringResource(R.string.telecom_network), style = MaterialTheme.typography.titleSmall)
     Text(
-        stringResource(R.string.telecom_network_help),
+        stringResource(
+            if (state.service == PurchaseService.Electricity) R.string.electricity_live_provider
+            else R.string.telecom_network,
+        ),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    Text(
+        stringResource(
+            if (state.service == PurchaseService.Electricity)
+                R.string.electricity_live_provider_help
+            else R.string.telecom_network_help,
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = Muted,
     )
-    if (state.service == PurchaseService.Data) {
-        DataNetworks(state, onIntent)
-        Text(stringResource(R.string.telecom_plan), style = MaterialTheme.typography.titleSmall)
+    if (state.service != PurchaseService.Airtime) {
+        ProviderChoices(state, onIntent)
+        Text(stringResource(R.string.telecom_product), style = MaterialTheme.typography.titleSmall)
+    }
+    if (state.service == PurchaseService.Electricity) {
+        ElectricityMeterTypeChoices(
+            state.selectedMeterType,
+            { onIntent(PurchaseIntent.SelectMeterType(it)) },
+            enabled = !state.isProcessing,
+        )
     }
     FlowRow(
         Modifier.fillMaxWidth().selectableGroup(),
@@ -181,11 +207,35 @@ private fun ColumnScope.PurchaseFields(
         { onIntent(PurchaseIntent.EditRecipient(it)) },
         Modifier.fillMaxWidth().testTag("telecom-recipient"),
         enabled = !state.isProcessing,
-        label = { Text(stringResource(R.string.telecom_phone)) },
+        label = {
+            Text(
+                stringResource(
+                    if (state.service == PurchaseService.Electricity)
+                        R.string.electricity_live_meter
+                    else R.string.telecom_phone,
+                ),
+            )
+        },
         singleLine = true,
-        supportingText = { Text(stringResource(R.string.telecom_phone_help)) },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        supportingText = {
+            Text(
+                stringResource(
+                    if (state.service == PurchaseService.Electricity)
+                        R.string.electricity_live_meter_help
+                    else R.string.telecom_phone_help,
+                ),
+            )
+        },
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType =
+                    if (state.service == PurchaseService.Electricity) KeyboardType.Text
+                    else KeyboardType.Phone,
+            ),
     )
+    if (state.service == PurchaseService.Electricity) {
+        ElectricityVerification(state, offline, onIntent)
+    }
     val product = state.selectedProduct
     val fixed = product?.fixedMinorUnits
     when {
@@ -249,8 +299,11 @@ private fun ColumnScope.PurchaseReview(
     val quote = review.quote
     Text(
         stringResource(
-            if (state.service == PurchaseService.Data) R.string.telecom_review_title_data
-            else R.string.telecom_review_title_airtime,
+            when (state.service) {
+                PurchaseService.Airtime -> R.string.telecom_review_title_airtime
+                PurchaseService.Data -> R.string.telecom_review_title_data
+                PurchaseService.Electricity -> R.string.electricity_live_review
+            },
         ),
         style = MaterialTheme.typography.titleLarge,
     )
@@ -364,7 +417,8 @@ private fun ColumnScope.PurchaseProgress(
             style = MaterialTheme.typography.bodySmall,
         )
     }
-    if (progress.payment?.isFinal == true) {
+    progress.payment?.let { ElectricityFulfilment(it) }
+    if (progress.payment?.canAcknowledge == true) {
         PrimaryButton(
             stringResource(R.string.telecom_done),
             Modifier.testTag("telecom-done"),
@@ -405,7 +459,14 @@ private fun ColumnScope.PurchaseProgress(
                     ),
                 )
             }
-        PurchasePaymentStatus.Succeeded,
+        PurchasePaymentStatus.Succeeded ->
+            OutlinedButton(
+                { onIntent(PurchaseIntent.Reconcile) },
+                Modifier.fillMaxWidth().testTag("telecom-reconcile"),
+                enabled = !state.isProcessing && !offline,
+            ) {
+                Text(stringResource(R.string.electricity_live_recover_receipt))
+            }
         PurchasePaymentStatus.Failed -> Unit
     }
     SavedPaymentsLink(state, onIntent)
@@ -420,7 +481,13 @@ private fun QuoteTerms(quote: PurchaseQuote) {
         Modifier.fillMaxWidth().background(Canvas, RoundedCornerShape(20.dp)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        InfoRow(stringResource(R.string.telecom_network), quote.providerCode.uppercase(Locale.ROOT))
+        InfoRow(
+            stringResource(
+                if (quote.service == PurchaseService.Electricity) R.string.electricity_live_provider
+                else R.string.telecom_network,
+            ),
+            quote.providerCode.uppercase(Locale.ROOT),
+        )
         InfoRow(stringResource(R.string.telecom_product), quote.displayName)
         if (quote.service == PurchaseService.Data) {
             InfoRow(
@@ -429,7 +496,17 @@ private fun QuoteTerms(quote: PurchaseQuote) {
             )
             InfoRow(stringResource(R.string.telecom_validity), planValidity(quote.validitySeconds))
         }
-        InfoRow(stringResource(R.string.telecom_recipient), quote.recipientIdentifier)
+        InfoRow(
+            stringResource(
+                if (quote.service == PurchaseService.Electricity) R.string.electricity_live_meter
+                else R.string.telecom_recipient,
+            ),
+            quote.recipientIdentifier,
+        )
+        quote.meterValidation?.let { MeterDetails(it) }
+        quote.contactPhoneNumber?.let {
+            InfoRow(stringResource(R.string.electricity_live_contact), it)
+        }
         InfoRow(
             stringResource(R.string.telecom_principal),
             walletMoney(quote.principalMinorUnits, quote.currency),
@@ -498,11 +575,17 @@ private fun Notice(issue: PurchaseIssue) {
 private fun statusTitle(status: PurchasePaymentStatus?, service: PurchaseService): Int =
     when (status) {
         PurchasePaymentStatus.Succeeded ->
-            if (service == PurchaseService.Data) R.string.telecom_status_success_data
-            else R.string.telecom_status_success_airtime
+            when (service) {
+                PurchaseService.Airtime -> R.string.telecom_status_success_airtime
+                PurchaseService.Data -> R.string.telecom_status_success_data
+                PurchaseService.Electricity -> R.string.electricity_live_success
+            }
         PurchasePaymentStatus.Failed ->
-            if (service == PurchaseService.Data) R.string.telecom_status_failed_data
-            else R.string.telecom_status_failed_airtime
+            when (service) {
+                PurchaseService.Airtime -> R.string.telecom_status_failed_airtime
+                PurchaseService.Data -> R.string.telecom_status_failed_data
+                PurchaseService.Electricity -> R.string.electricity_live_failed
+            }
         PurchasePaymentStatus.Pending -> R.string.telecom_status_pending
         PurchasePaymentStatus.Reserved -> R.string.telecom_status_reserved
         PurchasePaymentStatus.AwaitingFunds -> R.string.telecom_status_funds
@@ -539,7 +622,12 @@ private fun issueMessage(issue: PurchaseIssue): Int =
         PurchaseIssue.InvalidResponse -> R.string.telecom_error_response
         PurchaseIssue.SelectProduct,
         PurchaseIssue.ProductUnavailable -> R.string.telecom_error_product
+        PurchaseIssue.InvalidMeter -> R.string.electricity_live_invalid_meter
+        PurchaseIssue.MeterUnconfirmed -> R.string.electricity_live_unconfirmed_meter
+        PurchaseIssue.MeterVerificationRequired -> R.string.electricity_live_verify_required
+        PurchaseIssue.MeterVerificationExpired -> R.string.electricity_live_verify_expired
         PurchaseIssue.InvalidRecipient -> R.string.telecom_error_phone
+        PurchaseIssue.InvalidPayment -> R.string.purchase_error_details
         PurchaseIssue.InvalidAmount -> R.string.telecom_error_amount
         PurchaseIssue.QuoteExpired -> R.string.telecom_error_expired
         PurchaseIssue.PaymentConflict -> R.string.telecom_error_conflict
@@ -550,7 +638,10 @@ private fun issueMessage(issue: PurchaseIssue): Int =
 
 /** Choose an API network explicitly; changing it clears the previous data plan in the owner. */
 @Composable
-private fun ColumnScope.DataNetworks(state: PurchaseUiState, onIntent: (PurchaseIntent) -> Unit) {
+private fun ColumnScope.ProviderChoices(
+    state: PurchaseUiState,
+    onIntent: (PurchaseIntent) -> Unit,
+) {
     FlowRow(
         Modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -578,10 +669,24 @@ private fun ColumnScope.DataNetworks(state: PurchaseUiState, onIntent: (Purchase
         }
     }
     if (state.selectedProviderCode == null) {
-        Text(stringResource(R.string.telecom_choose_network), color = Muted)
+        Text(
+            stringResource(
+                if (state.service == PurchaseService.Electricity)
+                    R.string.electricity_live_choose_provider
+                else R.string.telecom_choose_network,
+            ),
+            color = Muted,
+        )
     }
     if (state.selectedProviderCode != null && state.visibleProducts.isEmpty()) {
-        Text(stringResource(R.string.telecom_no_plans), color = Muted)
+        Text(
+            stringResource(
+                if (state.service == PurchaseService.Electricity)
+                    R.string.electricity_live_no_products
+                else R.string.telecom_no_plans,
+            ),
+            color = Muted,
+        )
     }
 }
 

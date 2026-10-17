@@ -22,6 +22,7 @@ fun ElectricityMeterTypeChoices(
     selected: ElectricityMeterType,
     onSelect: (ElectricityMeterType) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -37,6 +38,7 @@ fun ElectricityMeterTypeChoices(
                 SelectionChip(
                     label = stringResource(electricityMeterTypeLabel(type)),
                     selected = selected == type,
+                    enabled = enabled,
                     onSelect = { onSelect(type) },
                     modifier =
                         Modifier.weight(1f).fillMaxHeight().testTag("meter-type-${type.name}"),

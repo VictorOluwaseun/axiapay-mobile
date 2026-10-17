@@ -1,0 +1,27 @@
+<resources>
+    <string name="electricity_live_title">Pay electricity</string>
+    <string name="electricity_live_subtitle">Verify your meter and review payment from your wallet.</string>
+    <string name="electricity_live_provider">Electricity provider</string>
+    <string name="electricity_live_provider_help">Choose your provider and meter type from the available API products.</string>
+    <string name="electricity_live_choose_provider">Choose an electricity provider to view its products.</string>
+    <string name="electricity_live_no_products">No products are available for this provider and meter type.</string>
+    <string name="electricity_live_meter">Meter / account number</string>
+    <string name="electricity_live_meter_help">Enter the exact identifier, including any leading zeros.</string>
+    <string name="electricity_live_verify">Verify meter</string>
+    <string name="electricity_live_contact">Delivery phone number</string>
+    <string name="electricity_live_customer">Verified customer</string>
+    <string name="electricity_live_address">Service address</string>
+    <string name="electricity_live_verification_expiry">Meter verification expires</string>
+    <string name="electricity_live_review">Review electricity payment</string>
+    <string name="electricity_live_success">Electricity payment successful</string>
+    <string name="electricity_live_failed">Electricity payment failed</string>
+    <string name="electricity_live_receipt_pending">Payment succeeded. Your token or receipt is still pending. Recover this original payment; do not buy again for the missing receipt.</string>
+    <string name="electricity_live_recover_receipt">Recover token / receipt</string>
+    <string name="electricity_live_receipt_reference">Receipt reference</string>
+    <string name="electricity_live_units">Electricity units (kWh)</string>
+    <string name="electricity_live_invalid_meter">Enter a valid meter / account number for this product.</string>
+    <string name="electricity_live_unconfirmed_meter">Meter verification is unconfirmed. Try verifying again before paying.</string>
+    <string name="electricity_live_verify_required">Verify the selected meter and product before reviewing payment.</string>
+    <string name="electricity_live_verify_expired">Meter verification has expired. Verify the meter again before reviewing payment.</string>
+    <string name="purchase_error_details">The API could not accept these payment details. Check the product, recipient, delivery contact and amount.</string>
+</resources>

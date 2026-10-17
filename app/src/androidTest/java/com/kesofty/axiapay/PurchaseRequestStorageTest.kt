@@ -206,8 +206,22 @@ class PurchaseRequestStorageTest {
                 listOf(old, data),
                 AtomicPurchaseRequestStore(file, Dispatchers.IO).read(owner),
             )
+            val electricity =
+                data.copy(
+                    requestKey = UUID.randomUUID().toString(),
+                    quoteId = UUID.randomUUID().toString(),
+                    service = PurchaseService.Electricity,
+                )
+            store.save(electricity)
+            assertEquals(
+                listOf(old, data, electricity),
+                AtomicPurchaseRequestStore(file, Dispatchers.IO).read(owner),
+            )
             store.acknowledge(old)
-            assertEquals(listOf(old.copy(acknowledged = true), data), store.read(owner))
+            assertEquals(
+                listOf(old.copy(acknowledged = true), data, electricity),
+                store.read(owner),
+            )
         } finally {
             file.delete()
             File(file.path + ".bak").delete()

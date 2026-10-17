@@ -9,13 +9,13 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.components.ViewModelComponent
 
 /**
- * Let the non-demo source set supply real airtime/data without constructing API infrastructure in
- * demo.
+ * Let the non-demo source set supply real airtime, data and electricity without constructing API
+ * infrastructure in demo.
  */
 @Module
 @InstallIn(ViewModelComponent::class)
 internal interface PurchaseFeatureModule {
-    /** Absent in demo: the existing demo payment form/actions remain the only airtime path. */
+    /** Absent in demo: the existing demo payment form/actions remain the only purchase path. */
     @BindsOptionalOf fun optionalWalletPurchases(): WalletPurchases
 }
 

@@ -21,8 +21,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 
 /**
- * Select real immediate airtime/data purchases at composition while other payment tools remain
- * labelled previews.
+ * Select real immediate airtime, data and electricity purchases at composition while other payment
+ * tools remain labelled previews.
  */
 @Module
 @InstallIn(ViewModelComponent::class)

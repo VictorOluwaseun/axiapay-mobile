@@ -1,7 +1,7 @@
 package com.kesofty.axiapay.domain.purchases
 
 /**
- * Main-safe, cancellable first-party airtime/data transport. No automatic mutation retry or demo
+ * Main-safe, cancellable first-party wallet purchase transport. No automatic mutation retry or demo
  * fallback.
  */
 interface PurchaseRepository {
@@ -14,6 +14,15 @@ interface PurchaseRepository {
         currency: String,
         service: PurchaseService = PurchaseService.Airtime,
     ): List<PurchaseProduct>
+
+    /**
+     * Verify an electricity meter without reserving or paying; provider terms remain authoritative.
+     */
+    suspend fun verifyMeter(
+        accessToken: String,
+        productId: String,
+        accountNumber: String,
+    ): MeterValidation
 
     /** Obtain owned, exact server pricing without reserving or buying telecom. */
     suspend fun quote(

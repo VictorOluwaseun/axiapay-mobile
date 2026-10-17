@@ -29,7 +29,7 @@
     <string name="telecom_offline">Internet is required for this purchase. SMS purchases are not available here.</string>
     <string name="telecom_retry_load">Try loading again</string>
     <string name="telecom_empty">No products are available for this service right now.</string>
-    <string name="telecom_sign_in">Sign in to buy airtime or data from your wallet.</string>
+    <string name="telecom_sign_in">Sign in to pay from your wallet.</string>
     <string name="telecom_sign_in_button">Sign in / open account</string>
     <string name="telecom_history">Saved payments</string>
     <string name="telecom_history_help">Check progress or retrieve a receipt using its saved reference. Reopening this list does not submit a purchase.</string>

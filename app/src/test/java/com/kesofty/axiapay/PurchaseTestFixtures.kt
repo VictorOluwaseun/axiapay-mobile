@@ -96,6 +96,11 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
     var gets = 0
     var reconciles = 0
     val submissions = mutableListOf<PurchaseRequest>()
+    var meter: MeterValidation? = null
+    var verifyCalls = 0
+    var verifyFailure: PurchaseIssue? = null
+    var verifyGate: CompletableDeferred<Unit>? = null
+    var receipt: ElectricityReceipt? = null
     var status = PurchasePaymentStatus.Pending
     var observed: PurchasePayment? = null
     var submitFailure: PurchaseIssue? = null
@@ -112,6 +117,19 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
         requestedService = service
         catalogueFailure?.let { throw PurchaseFailure(it) }
         return catalogue.filter { it.service == service }
+    }
+
+    /** Injectable non-spending verification for correlation, expiry and late-result checks. */
+    override suspend fun verifyMeter(
+        accessToken: String,
+        productId: String,
+        accountNumber: String,
+    ): MeterValidation {
+        verifyCalls++
+        val snapshot = requireNotNull(meter)
+        verifyGate?.let { withContext(NonCancellable) { it.await() } }
+        verifyFailure?.let { throw PurchaseFailure(it) }
+        return snapshot
     }
 
     override suspend fun quote(
@@ -147,7 +165,9 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
 
     override suspend fun reconcile(accessToken: String, paymentId: String): PurchasePayment {
         reconciles++
-        return requireNotNull(observed).copy(status = status).also { observed = it }
+        return requireNotNull(observed).copy(status = status, electricityReceipt = receipt).also {
+            observed = it
+        }
     }
 
     /** Produces only documented statuses with the original request and quote correlation. */
@@ -159,5 +179,6 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
             quoted.copy(isSubmissionAvailable = false),
             quoted.createdAt,
             quoted.createdAt,
+            receipt,
         )
 }

@@ -65,6 +65,9 @@ class PurchaseApiUiTest {
     private val quotes = AtomicInteger()
     private val requests = ConcurrentLinkedQueue<RecordedRequest>()
     @Volatile private var service = PurchaseService.Airtime
+    @Volatile private var meterType = "prepaid"
+    @Volatile private var receiptAvailable = false
+    @Volatile private var verificationCode = 201
     @Volatile private var status = "pending"
     @Volatile private var rejectPost = false
     @Volatile private var observed = false
@@ -142,6 +145,12 @@ class PurchaseApiUiTest {
                                     .put("nextCursor", JSONObject.NULL)
                                     .toString(),
                             )
+                        request.target == "/v1/payments/account-validations" ->
+                            response(
+                                verificationCode,
+                                if (verificationCode == 201) meterValidation().toString()
+                                else "{\"code\":\"ACCOUNT_UNCONFIRMED\"}",
+                            )
                         request.target == "/v1/payments/quotes" -> {
                             quotes.incrementAndGet()
                             response(201, quote(true).toString())
@@ -159,6 +168,7 @@ class PurchaseApiUiTest {
                             else response(404, "{}")
                         request.target == "/v1/payments/$paymentId/reconcile" -> {
                             status = "succeeded"
+                            receiptAvailable = true
                             response(200, payment().toString())
                         }
                         else -> response(500, "{}")
@@ -250,6 +260,11 @@ class PurchaseApiUiTest {
             .put("amountStepMinorUnits", "1")
             .put("feeMinorUnits", "100")
             .put("isSubmissionAvailable", productAvailable)
+            .also {
+                if (service == PurchaseService.Electricity) {
+                    electricityTerms(it, false)
+                }
+            }
 
     /** A second API network makes plan filtering observable without local catalogue aliases. */
     private fun catalogue(): JSONArray {
@@ -299,6 +314,9 @@ class PurchaseApiUiTest {
                 )
                 .put("createdAt", now.toString())
                 .put("expiresAt", now.plusSeconds(120).toString())
+        if (service == PurchaseService.Electricity) {
+            electricityTerms(result, true)
+        }
         if (capability) {
             result.put("isSubmissionAvailable", productAvailable)
         }
@@ -314,6 +332,82 @@ class PurchaseApiUiTest {
             .put("quote", quote(false))
             .put("createdAt", now.toString())
             .put("submissionStartedAt", now.toString())
+            .also {
+                if (service == PurchaseService.Electricity) {
+                    electricityFulfilment(it)
+                }
+            }
+
+    /** Bind electricity catalogue and quote DTOs to an actual verified meter snapshot. */
+    private fun electricityTerms(json: JSONObject, quote: Boolean) {
+        json
+            .put("networkCode", JSONObject.NULL)
+            .put("billerCode", "ikeja-electric")
+            .put("electricityMeterType", meterType)
+            .put("displayName", "Ikeja electricity")
+        if (quote) {
+            json
+                .put("recipientPhoneNumber", JSONObject.NULL)
+                .put("accountValidation", meterValidation())
+                .put("contactPhoneNumber", "+2348012345678")
+        }
+    }
+
+    /** Non-spending first-party verification preserves leading-zero meter text. */
+    private fun meterValidation() =
+        JSONObject()
+            .put("id", "123e4567-e89b-42d3-a456-426614174030")
+            .put("productId", productId)
+            .put("serviceType", "electricity")
+            .put("billerCode", "ikeja-electric")
+            .put("electricityMeterType", meterType)
+            .put("accountNumber", "00123456789")
+            .put("customerName", "Test electricity customer")
+            .put("serviceAddress", "Test service address")
+            .put("verifiedAt", now.toString())
+            .put("expiresAt", now.plusSeconds(120).toString())
+
+    /**
+     * Financial success and token availability remain separately observable in the synthetic API.
+     */
+    private fun electricityFulfilment(json: JSONObject) {
+        val complete = status == "succeeded" && receiptAvailable
+        json.put(
+            "fulfilmentStatus",
+            when {
+                complete -> "available"
+                status == "succeeded" -> "pending"
+                else -> "not_available"
+            },
+        )
+        if (!complete) {
+            json.put("fulfilment", JSONObject.NULL)
+            return
+        }
+        val receipt =
+            JSONObject()
+                .put("fulfilmentType", "electricity_$meterType")
+                .put("receiptReference", "electricity-receipt")
+        if (meterType == "prepaid") {
+            receipt
+                .put(
+                    "tokens",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("label", "Key change token")
+                                .put("value", "00000000000000000001"),
+                        )
+                        .put(
+                            JSONObject()
+                                .put("label", "Recharge token")
+                                .put("value", "00000000000000000002"),
+                        ),
+                )
+                .put("unitsKilowattHours", "12.375")
+        }
+        json.put("fulfilment", receipt)
+    }
 
     /** Render AppSheet integration; direct sheet rendering makes large-font pixels capturable. */
     private fun show(offline: Boolean = false, fontScale: Float = 1f, sheetOnly: Boolean = false) {
@@ -322,7 +416,11 @@ class PurchaseApiUiTest {
                 "visit",
                 service.name,
                 PaymentInput(
-                    if (service == PurchaseService.Data) PaymentType.Data else PaymentType.Airtime,
+                    when (service) {
+                        PurchaseService.Airtime -> PaymentType.Airtime
+                        PurchaseService.Data -> PaymentType.Data
+                        PurchaseService.Electricity -> PaymentType.Electricity
+                    },
                     date = LocalDate.now(clock),
                 ),
             )
@@ -670,5 +768,191 @@ class PurchaseApiUiTest {
                 value = null
             }
         }
+    }
+
+    /** Fill the real API-owned electricity choices and explicitly verify before review. */
+    private fun electricityReview() {
+        compose.onNodeWithTag("telecom-network-ikeja-electric").performScrollTo().performClick()
+        compose
+            .onNodeWithTag("meter-type-${if (meterType == "prepaid") "Prepaid" else "Postpaid"}")
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
+        compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("00123456789")
+        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        compose.waitUntil(15_000) {
+            vm.uiState.value.verifiedMeter != null && !vm.uiState.value.isProcessing
+        }
+        compose
+            .onNodeWithTag("electricity-contact")
+            .performScrollTo()
+            .performTextInput("08012345678")
+        compose.onNodeWithTag("telecom-amount").performScrollTo().performTextInput("100")
+        compose.onNodeWithTag("telecom-review").performScrollTo().performClick()
+        waitFor(PurchaseScreen.Review)
+    }
+
+    /**
+     * Full prepaid flow shows a delayed token honestly, then recovers the original receipt once.
+     */
+    @Test
+    fun electricityPrepaidRecoversOrderedTokensWithoutAnotherPurchase() {
+        service = PurchaseService.Electricity
+        status = "succeeded"
+        show()
+        electricityReview()
+        val validation =
+            JSONObject(
+                requests.first { it.target == "/v1/payments/account-validations" }.body!!.utf8(),
+            )
+        assertEquals("00123456789", validation.get("accountNumber"))
+        val quoted = JSONObject(requests.first { it.target == "/v1/payments/quotes" }.body!!.utf8())
+        assertEquals(walletId, quoted.get("walletId"))
+        assertEquals("+2348012345678", quoted.get("contactPhoneNumber"))
+        assertFalse(quoted.has("recipientPhoneNumber"))
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
+        waitFor(PurchaseScreen.Progress)
+        compose.onNodeWithTag("electricity-receipt-pending").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("telecom-retry-original").assertDoesNotExist()
+        compose.onNodeWithTag("telecom-done").assertDoesNotExist()
+        compose.onNodeWithTag("telecom-reconcile").performScrollTo().performClick()
+        waitFor(PurchaseScreen.Progress)
+        compose
+            .onNodeWithTag("electricity-token-0")
+            .performScrollTo()
+            .assertTextEquals("00000000000000000001")
+        compose
+            .onNodeWithTag("electricity-token-1")
+            .performScrollTo()
+            .assertTextEquals("00000000000000000002")
+        compose.onNodeWithTag("telecom-done").performScrollTo().assertIsDisplayed()
+        assertEquals(1, posts.get())
+        assertEquals(1, quotes.get())
+        val raw = file.readText()
+        assertFalse(raw.contains("00123456789"))
+        assertFalse(raw.contains("00000000000000000002"))
+        assertTrue(raw.contains("electricity"))
+    }
+
+    /** Postpaid uses the selected product mode and renders a receipt without inventing tokens. */
+    @Test
+    fun electricityPostpaidDisplaysReceiptWithoutRechargeToken() {
+        service = PurchaseService.Electricity
+        meterType = "postpaid"
+        status = "succeeded"
+        receiptAvailable = true
+        show()
+        electricityReview()
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
+        waitFor(PurchaseScreen.Progress)
+        compose.onNodeWithTag("electricity-receipt").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("electricity-token-0").assertDoesNotExist()
+        assertEquals(1, posts.get())
+        assertTrue(vm.uiState.value.progress!!.payment!!.canAcknowledge)
+    }
+
+    /** Large-font offline electricity forms remain readable and cannot verify or spend. */
+    @Test
+    fun electricityLargeFontOfflineEntryDisablesNetworkMutations() {
+        service = PurchaseService.Electricity
+        show(offline = true, fontScale = 2f, sheetOnly = true)
+        compose.onNodeWithTag("telecom-network-ikeja-electric").performScrollTo().performClick()
+        compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
+        compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("00123456789")
+        compose.onNodeWithTag("electricity-verify").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("telecom-review").performScrollTo().assertIsNotEnabled()
+        assertEquals(0, posts.get())
+        assertEquals(0, quotes.get())
+        assertFalse(requests.any { it.target == "/v1/payments/account-validations" })
+    }
+
+    /**
+     * An accepted electricity payment reopens as read-only history and retains its original key.
+     */
+    @Test
+    fun electricityColdRecoveryNeverSubmitsAnotherPurchase() {
+        service = PurchaseService.Electricity
+        show()
+        electricityReview()
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
+        waitFor(PurchaseScreen.Progress)
+        compose.runOnIdle {
+            owners.clear()
+            vm = createViewModel("cold-electricity")
+            vm.accept(
+                PurchaseIntent.Bind(accountId, "cold-electricity", PurchaseService.Electricity),
+            )
+        }
+        waitFor(PurchaseScreen.History)
+        compose.runOnIdle { vm.accept(PurchaseIntent.CheckSaved(requestKey)) }
+        waitFor(PurchaseScreen.Progress)
+        assertEquals(
+            PurchaseService.Electricity,
+            vm.uiState.value.progress?.payment?.quote?.service,
+        )
+        assertEquals(1, posts.get())
+        assertEquals(1, quotes.get())
+        assertFalse(requests.any { it.target.endsWith("/reconcile") })
+    }
+
+    /** Verified customer, consent and ordered token text remain reachable at double font size. */
+    @Test
+    fun electricityReviewAndReceiptRemainReadableWithLargeFonts() {
+        service = PurchaseService.Electricity
+        status = "succeeded"
+        receiptAvailable = true
+        show(fontScale = 2f, sheetOnly = true)
+        electricityReview()
+        compose.onNodeWithText("Test electricity customer").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("telecom-confirm").performScrollTo().assertIsEnabled()
+        saveElectricityScreenshot("electricity-review-large-font.png")
+        compose.onNodeWithTag("telecom-confirm").performClick()
+        waitFor(PurchaseScreen.Progress)
+        compose
+            .onNodeWithTag("electricity-token-1")
+            .performScrollTo()
+            .assertTextEquals("00000000000000000002")
+        saveElectricityScreenshot("electricity-receipt-large-font.png")
+        assertEquals(1, posts.get())
+    }
+
+    /** Capture synthetic Compose pixels for visual inspection without live account details. */
+    private fun saveElectricityScreenshot(name: String) {
+        val file = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, name)
+        file.outputStream().use {
+            compose
+                .onRoot()
+                .captureToImage()
+                .asAndroidBitmap()
+                .compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
+    /**
+     * Unconfirmed meter verification disables review until a later explicit verification succeeds.
+     */
+    @Test
+    fun electricityUnconfirmedVerificationNeverQuotesOrSpends() {
+        service = PurchaseService.Electricity
+        verificationCode = 503
+        show()
+        compose.onNodeWithTag("telecom-network-ikeja-electric").performScrollTo().performClick()
+        compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
+        compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("00123456789")
+        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        compose.waitUntil(15_000) {
+            vm.uiState.value.issue == PurchaseIssue.MeterUnconfirmed &&
+                !vm.uiState.value.isProcessing
+        }
+        compose.onNodeWithTag("telecom-review").performScrollTo().assertIsNotEnabled()
+        assertEquals(0, quotes.get())
+        assertEquals(0, posts.get())
+        verificationCode = 201
+        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        compose.waitUntil(15_000) {
+            vm.uiState.value.verifiedMeter != null && !vm.uiState.value.isProcessing
+        }
+        assertEquals(0, quotes.get())
+        assertEquals(0, posts.get())
     }
 }

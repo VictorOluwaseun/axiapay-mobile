@@ -219,6 +219,7 @@ class HttpPurchaseRepositoryTest {
         for ((status, code, issue) in
             listOf(
                 Triple(409, "QUOTE_EXPIRED", PurchaseIssue.QuoteExpired),
+                Triple(400, "INVALID_PAYMENT", PurchaseIssue.InvalidPayment),
                 Triple(409, "INSUFFICIENT_FUNDS", PurchaseIssue.InsufficientFunds),
                 Triple(401, "UNAUTHORIZED", PurchaseIssue.SignInRequired),
                 Triple(503, "PAYMENT_UNAVAILABLE", PurchaseIssue.Unavailable),
@@ -256,7 +257,7 @@ class HttpPurchaseRepositoryTest {
         }
         server.enqueue(response(404, "{}"))
         assertNull(api.findByRequestKey("token", "saved-key"))
-        assertEquals(8, server.requestCount)
+        assertEquals(9, server.requestCount)
     }
 
     /** Data products require a fixed price matching both bounds and complete public plan terms. */
@@ -391,5 +392,235 @@ class HttpPurchaseRepositoryTest {
             }
         }
         assertEquals(4, server.requestCount)
+    }
+
+    /** Electricity products have explicit server biller/mode and variable exact amount bounds. */
+    private fun electricityProduct() =
+        product()
+            .put("serviceType", "electricity")
+            .put("networkCode", JSONObject.NULL)
+            .put("billerCode", "ikeja-electric")
+            .put("electricityMeterType", "prepaid")
+
+    /** Verification fixtures preserve exact meter strings and server customer evidence. */
+    private fun meter() =
+        JSONObject()
+            .put("id", "123e4567-e89b-42d3-a456-426614174030")
+            .put("productId", f.api.product.id)
+            .put("serviceType", "electricity")
+            .put("billerCode", "ikeja-electric")
+            .put("electricityMeterType", "prepaid")
+            .put("accountNumber", "00123456789")
+            .put("customerName", "Test customer")
+            .put("serviceAddress", "Test address")
+            .put("verifiedAt", f.now.toString())
+            .put("expiresAt", f.now.plusSeconds(120).toString())
+
+    /** Quotes embed the verified account and keep delivery contact distinct from a meter. */
+    private fun electricityQuote() =
+        quote()
+            .put("serviceType", "electricity")
+            .put("networkCode", JSONObject.NULL)
+            .put("billerCode", "ikeja-electric")
+            .put("electricityMeterType", "prepaid")
+            .put("recipientPhoneNumber", JSONObject.NULL)
+            .put("contactPhoneNumber", "+2348012345678")
+            .put("accountValidation", meter())
+
+    /** Complete prepaid receipts retain ordered KCT/recharge tokens and exact decimal units. */
+    private fun prepaidReceipt() =
+        JSONObject()
+            .put("fulfilmentType", "electricity_prepaid")
+            .put("receiptReference", "receipt-123")
+            .put("unitsKilowattHours", "12.375")
+            .put(
+                "tokens",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("label", "Key change")
+                            .put("value", "00000000000000000001"),
+                    )
+                    .put(
+                        JSONObject().put("label", "Recharge").put("value", "00000000000000000002"),
+                    ),
+            )
+
+    /** Match financial and fulfilment states independently under one original identity. */
+    private fun electricityPayment(receipt: JSONObject? = prepaidReceipt()) =
+        payment(
+                com.kesofty.axiapay.domain.purchases.PurchaseRequest(
+                    PurchaseOwner(f.accountId, api.apiIdentity),
+                    "123e4567-e89b-42d3-a456-426614174005",
+                    f.api.quoted.id,
+                    f.now,
+                    service = PurchaseService.Electricity,
+                ),
+                "succeeded",
+            )
+            .put("quote", electricityQuote().also { it.remove("isSubmissionAvailable") })
+            .put("fulfilmentStatus", if (receipt == null) "pending" else "available")
+            .put("fulfilment", receipt ?: JSONObject.NULL)
+
+    /**
+     * Meter verification and quotes use documented endpoints and never substitute phone recipients.
+     */
+    @Test
+    fun electricityVerificationCatalogueAndQuoteMatchApi() = runTest {
+        server.enqueue(
+            response(
+                200,
+                JSONObject()
+                    .put("products", JSONArray().put(electricityProduct()))
+                    .put("nextCursor", JSONObject.NULL)
+                    .toString(),
+            ),
+        )
+        val product = api.products("token", "NGN", PurchaseService.Electricity).single()
+        assertEquals("ikeja-electric", product.providerCode)
+        assertEquals(com.kesofty.axiapay.domain.ElectricityMeterType.Prepaid, product.meterType)
+        assertEquals(
+            "/v1/service-catalog/products?serviceType=electricity&currency=NGN&limit=25",
+            server.takeRequest().target,
+        )
+        server.enqueue(response(201, meter().toString()))
+        val validation = api.verifyMeter("token", product.id, "00123456789")
+        val verify = server.takeRequest()
+        assertEquals("/v1/payments/account-validations", verify.target)
+        assertEquals("Bearer token", verify.headers["Authorization"])
+        assertEquals("00123456789", JSONObject(verify.body!!.utf8()).get("accountNumber"))
+        server.enqueue(response(201, electricityQuote().toString()))
+        val prepared =
+            requireNotNull(
+                com.kesofty.axiapay.application.purchases.PreparePurchase()(
+                        product,
+                        validation.accountNumber,
+                        "100",
+                        VerifiedMeter(PurchaseOwner(f.accountId, api.apiIdentity), validation),
+                        "08012345678",
+                    )
+                    .input,
+            )
+        val result = api.quote("token", f.wallets.wallet.id, prepared)
+        assertEquals(validation, result.meterValidation)
+        val body = JSONObject(server.takeRequest().body!!.utf8())
+        assertEquals(
+            setOf(
+                "walletId",
+                "productId",
+                "accountValidationId",
+                "contactPhoneNumber",
+                "amountMinorUnits",
+            ),
+            body.keys().asSequence().toSet(),
+        )
+        assertEquals("10000", body.get("amountMinorUnits"))
+        assertEquals(validation.id, body.get("accountValidationId"))
+    }
+
+    /** Financial success can lack a token; explicit lookup recovers exact ordered fulfilment. */
+    @Test
+    fun electricityPendingPrepaidAndPostpaidReceiptsAreDistinct() = runTest {
+        server.enqueue(response(200, electricityPayment(null).toString()))
+        val pending = api.findByRequestKey("token", "key")!!
+        assertTrue(pending.needsReceipt)
+        assertTrue(pending.canReconcile)
+        assertFalse(pending.canAcknowledge)
+        server.enqueue(response(200, electricityPayment().toString()))
+        val complete = api.reconcile("token", pending.id)
+        assertEquals("12.375", complete.electricityReceipt!!.unitsKilowattHours)
+        assertEquals(
+            listOf("00000000000000000001", "00000000000000000002"),
+            complete.electricityReceipt.tokens.map { it.value },
+        )
+        assertTrue(complete.canAcknowledge)
+        val postpaid =
+            electricityPayment(
+                JSONObject()
+                    .put("fulfilmentType", "electricity_postpaid")
+                    .put("receiptReference", "postpaid-receipt"),
+            )
+        postpaid
+            .getJSONObject("quote")
+            .put("electricityMeterType", "postpaid")
+            .getJSONObject("accountValidation")
+            .put("electricityMeterType", "postpaid")
+        server.enqueue(response(200, postpaid.toString()))
+        val paid = api.findByRequestKey("token", "key")!!
+        assertTrue(paid.electricityReceipt!!.tokens.isEmpty())
+        assertEquals(
+            com.kesofty.axiapay.domain.ElectricityMeterType.Postpaid,
+            paid.electricityReceipt.meterType,
+        )
+    }
+
+    /** Reject malformed/mismatched private evidence instead of fabricating successful receipts. */
+    @Test
+    fun electricityMalformedMetersAndReceiptsFailClosed() = runTest {
+        for (invalid in
+            listOf(
+                meter().put("accountNumber", 123456789),
+                meter().put("electricityMeterType", "unknown"),
+                meter().put("expiresAt", f.now.toString()),
+                meter().put("customerName", ""),
+            )) {
+            server.enqueue(response(201, invalid.toString()))
+            try {
+                api.verifyMeter("token", f.api.product.id, "00123456789")
+                fail()
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
+            }
+        }
+        for (invalid in
+            listOf(
+                electricityPayment(prepaidReceipt().put("tokens", JSONArray())),
+                electricityPayment(prepaidReceipt().put("unitsKilowattHours", 12.375)),
+                electricityPayment(prepaidReceipt().put("fulfilmentType", "electricity_postpaid")),
+                electricityPayment(
+                    prepaidReceipt()
+                        .put(
+                            "tokens",
+                            JSONArray()
+                                .put(JSONObject().put("label", "a").put("value", "same"))
+                                .put(JSONObject().put("label", "b").put("value", "same")),
+                        ),
+                ),
+                electricityPayment().put("fulfilmentStatus", "pending"),
+                electricityPayment(null).put("fulfilmentStatus", "not_available"),
+            )) {
+            server.enqueue(response(200, invalid.toString()))
+            try {
+                api.findByRequestKey("token", "key")
+                fail()
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
+            }
+        }
+    }
+
+    /** Provider verification failures remain safe actionable classifications before purchase. */
+    @Test
+    fun electricityVerificationErrorsRemainDistinct() = runTest {
+        for ((code, issue) in
+            listOf(
+                "ACCOUNT_INVALID" to PurchaseIssue.InvalidMeter,
+                "ACCOUNT_UNCONFIRMED" to PurchaseIssue.MeterUnconfirmed,
+                "ACCOUNT_VALIDATION_EXPIRED" to PurchaseIssue.MeterVerificationExpired,
+            )) {
+            server.enqueue(
+                response(
+                    503,
+                    JSONObject().put("code", code).put("message", "secret meter detail").toString(),
+                ),
+            )
+            try {
+                api.verifyMeter("token", f.api.product.id, "00123456789")
+                fail()
+            } catch (failure: PurchaseFailure) {
+                assertEquals(issue, failure.issue)
+                assertFalse(failure.toString().contains("secret"))
+            }
+        }
     }
 }

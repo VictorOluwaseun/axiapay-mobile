@@ -222,6 +222,7 @@ internal constructor(
         return when (text(row, "serviceType")) {
             "airtime" -> PurchaseService.Airtime
             "data" -> PurchaseService.Data
+            "electricity" -> PurchaseService.Electricity
             else -> error("Unsupported saved service")
         }
     }

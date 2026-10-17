@@ -21,6 +21,8 @@ class PreparePurchase {
         product: PurchaseProduct?,
         recipient: String,
         amount: String,
+        verifiedMeter: VerifiedMeter? = null,
+        contactPhoneNumber: String = "",
     ): PurchaseInputCheck {
         if (product == null) {
             return PurchaseInputCheck(null, PurchaseIssue.SelectProduct)
@@ -28,9 +30,20 @@ class PreparePurchase {
         if (!product.isSubmissionAvailable) {
             return PurchaseInputCheck(null, PurchaseIssue.ProductUnavailable)
         }
-        val phone = canonicalPhoneNumber(recipient)
+        val electricity = product.service == PurchaseService.Electricity
+        val phone = canonicalPhoneNumber(if (electricity) contactPhoneNumber else recipient)
         if (!hasE164Syntax(phone)) {
             return PurchaseInputCheck(null, PurchaseIssue.InvalidRecipient)
+        }
+        if (electricity && !hasMeterSyntax(recipient)) {
+            return PurchaseInputCheck(null, PurchaseIssue.InvalidMeter)
+        }
+        if (
+            electricity &&
+                (verifiedMeter?.validation?.productId != product.id ||
+                    verifiedMeter.validation.accountNumber != recipient)
+        ) {
+            return PurchaseInputCheck(null, PurchaseIssue.MeterVerificationRequired)
         }
         if (product.fixedMinorUnits != null) {
             return PurchaseInputCheck(
@@ -51,8 +64,21 @@ class PreparePurchase {
             return PurchaseInputCheck(null, PurchaseIssue.InvalidAmount)
         }
         return PurchaseInputCheck(
-            PurchaseQuoteInput(product.id, phone, minorUnits, product.service),
+            PurchaseQuoteInput(
+                product.id,
+                if (electricity) recipient else phone,
+                minorUnits,
+                product.service,
+                if (electricity) verifiedMeter else null,
+                if (electricity) phone else null,
+            ),
             null,
         )
     }
 }
+
+/**
+ * Exact printable meter identifiers are prepared once; the API verifies provider-specific rules.
+ */
+fun hasMeterSyntax(value: String): Boolean =
+    value.length in 1..100 && value == value.trim() && value.all { it.code in 32..126 }

@@ -74,12 +74,37 @@ class WalletPurchases(
             }
         }
 
+    /** Verify selected API product/mode and bind the returned meter to the captured owner. */
+    suspend fun verifyMeter(
+        accountId: String,
+        product: PurchaseProduct,
+        accountNumber: String,
+    ): VerifiedMeter =
+        withAccess(accountId) { access ->
+            val result =
+                purchases.verifyMeter(access.session.accessToken, product.id, accountNumber)
+            if (
+                product.service != PurchaseService.Electricity ||
+                    result.productId != product.id ||
+                    result.accountNumber != accountNumber ||
+                    result.billerCode != product.providerCode ||
+                    result.meterType != product.meterType
+            ) {
+                throw PurchaseFailure(PurchaseIssue.InvalidResponse)
+            }
+            if (result.expiresAt <= clock.instant()) {
+                throw PurchaseFailure(PurchaseIssue.MeterVerificationExpired)
+            }
+            VerifiedMeter(access.owner, result)
+        }
+
     /**
      * Request server pricing for an already prepared input; bind the result to the verified wallet
      * and recipient.
      */
     suspend fun review(accountId: String, input: PurchaseQuoteInput): PurchaseReview =
         withAccess(accountId) { access ->
+            requireCurrentMeter(access, input)
             val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
             val quote = purchases.quote(access.session.accessToken, wallet.id, input)
             val matches =
@@ -88,6 +113,9 @@ class WalletPurchases(
                     quote.productId == input.productId &&
                     quote.recipientIdentifier == input.recipientIdentifier &&
                     quote.currency == wallet.currency &&
+                    quote.meterValidation == input.verifiedMeter?.validation &&
+                    (input.service != PurchaseService.Electricity ||
+                        quote.contactPhoneNumber == input.contactPhoneNumber) &&
                     (input.amountMinorUnits == null ||
                         input.amountMinorUnits == quote.principalMinorUnits)
             if (!matches) {
@@ -171,7 +199,7 @@ class WalletPurchases(
                         PurchaseIssue.NotFound,
                     )
             val current = observed(request, payment)
-            if (payment.isFinal || payment.status == PurchasePaymentStatus.AwaitingFunds) {
+            if (!payment.canReconcile) {
                 return@withAccess current
             }
             assertCurrentSession(access)
@@ -184,7 +212,7 @@ class WalletPurchases(
      */
     suspend fun acknowledge(progress: PurchaseProgress) {
         val payment = progress.payment ?: throw PurchaseFailure(PurchaseIssue.Unavailable)
-        if (!payment.isFinal) {
+        if (!payment.canAcknowledge) {
             throw PurchaseFailure(PurchaseIssue.Unavailable)
         }
         observed(progress.request, payment)
@@ -247,6 +275,21 @@ class WalletPurchases(
             throw PurchaseFailure(PurchaseIssue.InvalidResponse)
         }
         return PurchaseProgress(request, payment, payment.quote)
+    }
+
+    /** A validation capability belongs to one owner/API and must be fresh at quote creation. */
+    private fun requireCurrentMeter(access: Access, input: PurchaseQuoteInput) {
+        if (input.service != PurchaseService.Electricity) {
+            return
+        }
+        val verified =
+            input.verifiedMeter ?: throw PurchaseFailure(PurchaseIssue.MeterVerificationRequired)
+        if (verified.owner != access.owner) {
+            throw PurchaseFailure(PurchaseIssue.SessionChanged)
+        }
+        if (verified.validation.expiresAt <= clock.instant()) {
+            throw PurchaseFailure(PurchaseIssue.MeterVerificationExpired)
+        }
     }
 
     /** Check record scope without interpreting a cached wallet as authorization. */

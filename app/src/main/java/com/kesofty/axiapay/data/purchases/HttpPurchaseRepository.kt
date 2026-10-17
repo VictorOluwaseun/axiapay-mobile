@@ -1,6 +1,7 @@
 package com.kesofty.axiapay.data.purchases
 
 import com.kesofty.axiapay.data.http.*
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.purchases.*
 import java.math.BigInteger
 import java.time.Instant
@@ -11,7 +12,7 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 /**
- * First-party airtime/data DTO adapter; bearer headers and bounded uncached IO use the shared
+ * First-party wallet purchase DTO adapter; bearer headers and bounded uncached IO use the shared
  * transport.
  */
 class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseRepository {
@@ -66,17 +67,38 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
         throw PurchaseFailure(PurchaseIssue.InvalidResponse)
     }
 
+    /** Verify exact meter text with the selected server product; never send a payment here. */
+    override suspend fun verifyMeter(
+        accessToken: String,
+        productId: String,
+        accountNumber: String,
+    ): MeterValidation = mapped {
+        val body = JSONObject().put("productId", productId).put("accountNumber", accountNumber)
+        val result =
+            meterValidation(
+                requireNotNull(
+                    http.request("payments/account-validations", 201, body, accessToken),
+                ),
+            )
+        require(result.productId == productId && result.accountNumber == accountNumber)
+        result
+    }
+
     /** Serialize prepared values directly; quote creation never submits or uses demo funds. */
     override suspend fun quote(
         accessToken: String,
         walletId: String,
         input: PurchaseQuoteInput,
     ): PurchaseQuote = mapped {
-        val body =
-            JSONObject()
-                .put("walletId", walletId)
-                .put("productId", input.productId)
-                .put("recipientPhoneNumber", input.recipientIdentifier)
+        val body = JSONObject().put("walletId", walletId).put("productId", input.productId)
+        when (input.service) {
+            PurchaseService.Electricity ->
+                body
+                    .put("accountValidationId", requireNotNull(input.verifiedMeter).validation.id)
+                    .put("contactPhoneNumber", requireNotNull(input.contactPhoneNumber))
+            PurchaseService.Airtime,
+            PurchaseService.Data -> body.put("recipientPhoneNumber", input.recipientIdentifier)
+        }
         input.amountMinorUnits?.let { body.put("amountMinorUnits", it.toString()) }
         quote(requireNotNull(http.request("payments/quotes", 201, body, accessToken)), true)
     }
@@ -161,10 +183,15 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
             require(fixed != null && fixed == minimum && fixed == maximum)
             require(allowance != null && validity != null)
         }
+        val meterType = if (service == PurchaseService.Electricity) meterType(json) else null
+        if (meterType != null) {
+            require(fixed == null && allowance == null && validity == null)
+            require(nullableString(json, "networkCode") == null)
+        }
         return PurchaseProduct(
             id(json, "id"),
             label(json, "displayName"),
-            label(json, "networkCode"),
+            providerCode(json, service),
             currency,
             fixed,
             minimum,
@@ -175,6 +202,7 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
             service,
             allowance,
             validity,
+            meterType,
         )
     }
 
@@ -190,9 +218,29 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
         val total = amount(json, "totalDebitMinorUnits")
         val created = Instant.parse(string(json, "createdAt"))
         val expires = Instant.parse(string(json, "expiresAt"))
-        val recipient = string(json, "recipientPhoneNumber")
+        val validation =
+            if (service == PurchaseService.Electricity)
+                meterValidation(json.getJSONObject("accountValidation"))
+            else null
+        val recipient = validation?.accountNumber ?: string(json, "recipientPhoneNumber")
         require(principal > BigInteger.ZERO && total == principal + fee && expires > created)
-        require(Regex("\\+[1-9][0-9]{7,14}").matches(recipient))
+        if (validation == null) {
+            require(Regex("\\+[1-9][0-9]{7,14}").matches(recipient))
+        }
+        val contact = if (validation == null) null else string(json, "contactPhoneNumber")
+        if (validation != null) {
+            require(validation.productId == id(json, "productId"))
+            require(
+                validation.billerCode == providerCode(json, service) &&
+                    validation.meterType == meterType(json),
+            )
+            require(
+                nullableString(json, "recipientPhoneNumber") == null &&
+                    nullableString(json, "networkCode") == null,
+            )
+            require(expires <= validation.expiresAt && created >= validation.verifiedAt)
+            require(Regex("\\+[1-9][0-9]{7,14}").matches(requireNotNull(contact)))
+        }
         val allowance = nullableLabel(json, "allowanceLabel")
         val validity = validitySeconds(json)
         if (service == PurchaseService.Data) {
@@ -203,7 +251,7 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
             id(json, "walletId"),
             id(json, "productId"),
             label(json, "displayName"),
-            label(json, "networkCode"),
+            providerCode(json, service),
             recipient,
             "NGN",
             principal,
@@ -215,6 +263,8 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
             service,
             allowance,
             validity,
+            validation,
+            contact,
         )
     }
 
@@ -229,23 +279,125 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
                 "failed" -> PurchasePaymentStatus.Failed
                 else -> error("Unknown payment status")
             }
+        val quote = quote(json.getJSONObject("quote"), false)
         return PurchasePayment(
             id(json, "id"),
             label(json, "requestKey"),
             status,
-            quote(json.getJSONObject("quote"), false),
+            quote,
             Instant.parse(string(json, "createdAt")),
             nullableString(json, "submissionStartedAt")?.let(Instant::parse),
+            if (quote.service == PurchaseService.Electricity) receipt(json, quote, status)
+            else null,
         )
     }
 
-    /** Accept only the phone-based services supported by this adapter. */
+    /** Accept only implemented service contracts, never a guessed provider mapping. */
     private fun service(json: JSONObject): PurchaseService =
         when (string(json, "serviceType")) {
             "airtime" -> PurchaseService.Airtime
             "data" -> PurchaseService.Data
+            "electricity" -> PurchaseService.Electricity
             else -> error("Unsupported service")
         }
+
+    /** Catalogue codes belong to their service and retain canonical server identity. */
+    private fun providerCode(json: JSONObject, service: PurchaseService): String {
+        if (service != PurchaseService.Electricity) {
+            return label(json, "networkCode")
+        }
+        return string(json, "billerCode").also {
+            require(Regex("[a-z0-9][a-z0-9-]{0,49}").matches(it))
+        }
+    }
+
+    /** Meter mode comes from the selected product and cannot be overridden during payment. */
+    private fun meterType(json: JSONObject): ElectricityMeterType =
+        when (string(json, "electricityMeterType")) {
+            "prepaid" -> ElectricityMeterType.Prepaid
+            "postpaid" -> ElectricityMeterType.Postpaid
+            else -> error("Unsupported meter mode")
+        }
+
+    /**
+     * Project the authenticated meter capability without leaking transport models or private
+     * diagnostics.
+     */
+    private fun meterValidation(json: JSONObject): MeterValidation {
+        require(service(json) == PurchaseService.Electricity)
+        val account = string(json, "accountNumber")
+        require(
+            account.length in 1..100 &&
+                account == account.trim() &&
+                account.all { it.code in 32..126 },
+        )
+        val verifiedAt = Instant.parse(string(json, "verifiedAt"))
+        val expiresAt = Instant.parse(string(json, "expiresAt"))
+        require(expiresAt > verifiedAt)
+        val address = nullableString(json, "serviceAddress")?.also { displayText(it, 500) }
+        return MeterValidation(
+            id(json, "id"),
+            id(json, "productId"),
+            providerCode(json, PurchaseService.Electricity),
+            meterType(json),
+            account,
+            label(json, "customerName"),
+            address,
+            verifiedAt,
+            expiresAt,
+        )
+    }
+
+    /**
+     * Separate financial state from typed receipt availability; missing tokens remain recoverable.
+     */
+    private fun receipt(
+        json: JSONObject,
+        quote: PurchaseQuote,
+        status: PurchasePaymentStatus,
+    ): ElectricityReceipt? {
+        val fulfilmentStatus = string(json, "fulfilmentStatus")
+        val body = json.get("fulfilment")
+        require(fulfilmentStatus in setOf("not_available", "pending", "available"))
+        if (fulfilmentStatus != "available") {
+            require(body == JSONObject.NULL)
+            require(status != PurchasePaymentStatus.Succeeded || fulfilmentStatus == "pending")
+            return null
+        }
+        require(body is JSONObject && status != PurchasePaymentStatus.Failed)
+        val type = requireNotNull(quote.meterValidation).meterType
+        val expected =
+            if (type == ElectricityMeterType.Prepaid) "electricity_prepaid"
+            else "electricity_postpaid"
+        require(string(body, "fulfilmentType") == expected)
+        val reference = label(body, "receiptReference")
+        if (type == ElectricityMeterType.Postpaid) {
+            return ElectricityReceipt(type, reference)
+        }
+        val rows = body.getJSONArray("tokens")
+        require(rows.length() in 1..8)
+        val tokens =
+            (0 until rows.length()).map { index ->
+                val token = rows.getJSONObject(index)
+                ElectricityToken(
+                    string(token, "label").also { displayText(it, 100) },
+                    string(token, "value").also { displayText(it, 128) },
+                )
+            }
+        require(tokens.map { it.value }.distinct().size == tokens.size)
+        val units =
+            nullableString(body, "unitsKilowattHours")?.also {
+                require(Regex("(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,9})?").matches(it))
+            }
+        return ElectricityReceipt(type, reference, Collections.unmodifiableList(tokens), units)
+    }
+
+    /** Bounded printable receipt text never permits controls in an authenticated display value. */
+    private fun displayText(value: String, maximumLength: Int) {
+        require(
+            value.isNotBlank() && value.length <= maximumLength && value.none(Char::isISOControl),
+        )
+    }
 
     /**
      * Nullable airtime fields and required data descriptions remain bounded public display text.
@@ -315,13 +467,19 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
                     failure.kind == ApiFailureKind.Network -> PurchaseIssue.Network
                     failure.kind == ApiFailureKind.InvalidResponse -> PurchaseIssue.InvalidResponse
                     failure.status == 401 -> PurchaseIssue.SignInRequired
+                    failure.code == "ACCOUNT_INVALID" -> PurchaseIssue.InvalidMeter
+                    failure.code == "ACCOUNT_UNCONFIRMED" -> PurchaseIssue.MeterUnconfirmed
+                    failure.code == "ACCOUNT_VALIDATION_EXPIRED" ->
+                        PurchaseIssue.MeterVerificationExpired
+                    failure.code == "ACCOUNT_VALIDATION_NOT_FOUND" ->
+                        PurchaseIssue.MeterVerificationRequired
                     failure.code == "QUOTE_EXPIRED" -> PurchaseIssue.QuoteExpired
                     failure.code == "INSUFFICIENT_FUNDS" -> PurchaseIssue.InsufficientFunds
                     failure.code == "WALLET_RESTRICTED" -> PurchaseIssue.WalletRestricted
                     failure.code in setOf("PAYMENT_CONFLICT", "IDEMPOTENCY_CONFLICT") ->
                         PurchaseIssue.PaymentConflict
                     failure.code == "PRODUCT_UNAVAILABLE" -> PurchaseIssue.ProductUnavailable
-                    failure.code == "INVALID_PAYMENT" -> PurchaseIssue.InvalidAmount
+                    failure.code == "INVALID_PAYMENT" -> PurchaseIssue.InvalidPayment
                     failure.status == 404 -> PurchaseIssue.NotFound
                     else -> PurchaseIssue.Unavailable
                 }

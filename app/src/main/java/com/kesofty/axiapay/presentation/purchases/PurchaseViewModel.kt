@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kesofty.axiapay.application.purchases.PreparePurchase
 import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.application.purchases.hasMeterSyntax
+import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.purchases.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
@@ -22,9 +24,9 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
- * Own the live airtime/data MVI flow independently of the demo ledger. Optional composition leaves
- * the original demo path intact. Visit/account changes cancel UI work; durable IDs allow explicit
- * recovery without replaying a command on recreation, restoration or reconnect.
+ * Own the live wallet purchase MVI flow independently of the demo ledger. Optional composition
+ * leaves the original demo path intact. Visit/account changes cancel UI work; durable IDs allow
+ * explicit recovery without replaying a command on recreation, restoration or reconnect.
  */
 @HiltViewModel
 class PurchaseViewModel
@@ -61,7 +63,20 @@ constructor(
             PurchaseIntent.Reload -> load()
             is PurchaseIntent.SelectProvider -> selectProvider(intent.code)
             is PurchaseIntent.SelectProduct -> selectProduct(intent.id)
-            is PurchaseIntent.EditRecipient -> editForm { copy(recipient = intent.value.take(40)) }
+            is PurchaseIntent.EditRecipient ->
+                editForm {
+                    copy(
+                        recipient =
+                            intent.value.take(
+                                if (service == PurchaseService.Electricity) 100 else 40,
+                            ),
+                        verifiedMeter = null,
+                    )
+                }
+            is PurchaseIntent.SelectMeterType -> selectMeterType(intent.value)
+            is PurchaseIntent.EditContactPhone ->
+                editForm { copy(contactPhoneNumber = intent.value.take(40)) }
+            PurchaseIntent.VerifyMeter -> verifyMeter()
             is PurchaseIntent.EditAmount -> editForm { copy(amount = intent.value.take(20)) }
             PurchaseIntent.Review -> review()
             PurchaseIntent.Edit -> {
@@ -84,10 +99,7 @@ constructor(
             }
             PurchaseIntent.Reconcile -> {
                 val current = state.progress ?: return
-                if (
-                    current.payment?.status !in
-                        setOf(PurchasePaymentStatus.Pending, PurchasePaymentStatus.Reserved)
-                ) {
+                if (current.payment?.canReconcile != true) {
                     return
                 }
                 progress(refreshWallet = true) {
@@ -166,13 +178,20 @@ constructor(
     private fun selectProvider(code: String) {
         val state = mutableState.value
         if (
-            state.service != PurchaseService.Data ||
+            state.service == PurchaseService.Airtime ||
                 code !in state.providers ||
                 state.selectedProviderCode == code
         ) {
             return
         }
-        editForm { copy(selectedProviderCode = code, selectedProductId = null, amount = "") }
+        editForm {
+            copy(
+                selectedProviderCode = code,
+                selectedProductId = null,
+                amount = "",
+                verifiedMeter = null,
+            )
+        }
     }
 
     /** Only a visible catalogue product from this visit can be selected. */
@@ -180,7 +199,10 @@ constructor(
         if (mutableState.value.visibleProducts.none { it.id == id }) {
             return
         }
-        editForm { copy(selectedProductId = id) }
+        if (mutableState.value.selectedProductId == id) {
+            return
+        }
+        editForm { copy(selectedProductId = id, verifiedMeter = null) }
     }
 
     /**
@@ -193,8 +215,51 @@ constructor(
             return
         }
         val changed = state.update().copy(issue = null)
-        val check = prepare(changed.selectedProduct, changed.recipient, changed.amount)
+        val check =
+            prepare(
+                changed.selectedProduct,
+                changed.recipient,
+                changed.amount,
+                changed.verifiedMeter,
+                changed.contactPhoneNumber,
+            )
         mutableState.value = changed.copy(prepared = check.input, inputIssue = check.issue)
+    }
+
+    /**
+     * Meter modes are product constraints; changing mode discards prior verification and quote
+     * input.
+     */
+    private fun selectMeterType(value: ElectricityMeterType) {
+        if (
+            mutableState.value.service != PurchaseService.Electricity ||
+                mutableState.value.selectedMeterType == value
+        ) {
+            return
+        }
+        editForm { copy(selectedMeterType = value, selectedProductId = null, verifiedMeter = null) }
+    }
+
+    /**
+     * Verify exact prepared meter text only after a user tap; late results retain normal visit
+     * guards.
+     */
+    private fun verifyMeter() {
+        val state = mutableState.value
+        val product = state.selectedProduct ?: return
+        val owner = state.accountId ?: return
+        val workflow = purchases ?: return
+        if (
+            state.screen != PurchaseScreen.Form ||
+                state.service != PurchaseService.Electricity ||
+                !hasMeterSyntax(state.recipient)
+        ) {
+            return
+        }
+        editForm { copy(verifiedMeter = null) }
+        execute {
+            ActionResult.MeterVerified(workflow.verifyMeter(owner, product, state.recipient))
+        }
     }
 
     /** Request a quote only after valid boundary preparation, never as a rendering side effect. */
@@ -266,7 +331,7 @@ constructor(
         val state = mutableState.value
         val progress = state.progress ?: return
         val workflow = purchases ?: return
-        if (progress.payment?.isFinal != true) {
+        if (progress.payment?.canAcknowledge != true) {
             return
         }
         execute {
@@ -279,6 +344,9 @@ constructor(
     private sealed interface ActionResult {
         /** Fresh owned display data and saved receipt/recovery references. */
         data class Loaded(val context: PurchaseContext) : ActionResult
+
+        /** Owner-bound verified meter for the unchanged form. */
+        data class MeterVerified(val value: VerifiedMeter) : ActionResult
 
         /** Immutable server review ready for explicit consent. */
         data class Reviewed(val review: PurchaseReview) : ActionResult
@@ -310,6 +378,7 @@ constructor(
                                 PurchaseScreen.History
                             else PurchaseScreen.Form,
                     )
+            is ActionResult.MeterVerified -> editForm { copy(verifiedMeter = result.value) }
             is ActionResult.Reviewed -> {
                 mutableState.value =
                     state.copy(

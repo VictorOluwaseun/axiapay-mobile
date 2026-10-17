@@ -21,7 +21,7 @@ import org.junit.Test
 class HiltGraphTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    /** Production flavor composition enables live airtime/data only outside the demo flavor. */
+    /** Production flavor composition enables live wallet purchases only outside the demo flavor. */
     @Test
     fun telecomCapabilityIsSelectedAtTheFlavorCompositionBoundary() {
         compose.runOnIdle {
@@ -42,7 +42,7 @@ class HiltGraphTest {
     fun realPurchaseEntriesCannotUseTheDemoLedgerWithoutSignIn() {
         Assume.assumeTrue(BuildConfig.FLAVOR != "demo")
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
-        for (service in listOf("Airtime", "Data")) {
+        for (service in listOf("Airtime", "Data", "Electricity")) {
             compose
                 .onNode(hasTextExactly(service) and hasClickAction())
                 .performScrollTo()
