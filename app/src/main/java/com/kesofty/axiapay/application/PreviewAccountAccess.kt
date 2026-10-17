@@ -8,9 +8,8 @@ import com.kesofty.axiapay.domain.*
 class PrepareDemoAccess(private val repository: DemoAccessRepository) {
     /**
      * All signup methods and code sign-in require verification. Password sign-in completes
-     * directly. The eight-character password minimum is a preview rule, not a confirmed backend
-     * policy. Password whitespace/case is preserved; failures and cancellation propagate to the
-     * caller.
+     * directly. The preview uses an eight-character password minimum. Password whitespace/case is
+     * preserved; failures and cancellation propagate to the caller.
      */
     suspend operator fun invoke(input: DemoAccessInput): DemoAccessResult {
         val normalized =
