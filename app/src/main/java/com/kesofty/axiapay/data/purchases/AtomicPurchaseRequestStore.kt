@@ -1,6 +1,6 @@
-package com.kesofty.axiapay.data.telecom
+package com.kesofty.axiapay.data.purchases
 
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -25,31 +25,31 @@ import org.json.JSONObject
  * corruption/IO/commit failure blocks new POSTs. The app supplies an existing no-backup directory.
  * This is not a payment outbox: nothing here schedules or replays a purchase.
  */
-class AtomicTelecomRequestStore
+class AtomicPurchaseRequestStore
 internal constructor(
     private val file: File,
     private val io: CoroutineDispatcher,
-    private val commits: TelecomJournalCommitOperations,
-) : TelecomRequestStore {
+    private val commits: PurchaseJournalCommitOperations,
+) : PurchaseRequestStore {
     /**
      * The app owns an existing no-backup parent directory; every commit error remains observable.
      */
     constructor(
         file: File,
         io: CoroutineDispatcher,
-    ) : this(file, io, AndroidTelecomJournalCommitOperations)
+    ) : this(file, io, AndroidPurchaseJournalCommitOperations)
 
     private val mutex = Mutex()
 
     /** Read only this verified account/API scope and never expose a mutable backing collection. */
-    override suspend fun read(owner: TelecomOwner): List<TelecomRequest> = storage {
+    override suspend fun read(owner: PurchaseOwner): List<PurchaseRequest> = storage {
         Collections.unmodifiableList(readAll().filter { it.owner == owner })
     }
 
     /**
      * Keep the original quote/key immutable and commit it durably before its network submission.
      */
-    override suspend fun save(request: TelecomRequest) = storage {
+    override suspend fun save(request: PurchaseRequest) = storage {
         val records = readAll()
         val existing = records.find {
             it.owner == request.owner && it.requestKey == request.requestKey
@@ -75,7 +75,7 @@ internal constructor(
      * Retain receipt references after acknowledgement; only acknowledged entries may be pruned at
      * capacity.
      */
-    override suspend fun acknowledge(request: TelecomRequest) = storage {
+    override suspend fun acknowledge(request: PurchaseRequest) = storage {
         val records = readAll()
         val existing =
             records.find {
@@ -91,10 +91,10 @@ internal constructor(
             withContext(io) { operation() }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: TelecomFailure) {
+        } catch (failure: PurchaseFailure) {
             throw failure
         } catch (failure: Exception) {
-            throw TelecomFailure(TelecomIssue.Storage, failure)
+            throw PurchaseFailure(PurchaseIssue.Storage, failure)
         }
     }
 
@@ -102,7 +102,7 @@ internal constructor(
      * Bound actual bytes before parsing; unsupported versions or damaged records never silently
      * reset recovery.
      */
-    private fun readAll(): List<TelecomRequest> {
+    private fun readAll(): List<PurchaseRequest> {
         val stream = openCommitted() ?: return emptyList()
         val bytes = ByteArray(262145)
         val size = stream.use {
@@ -127,8 +127,8 @@ internal constructor(
                 val row = array.getJSONObject(index)
                 val api = text(row, "apiIdentity")
                 require(api.length in 1..4096)
-                TelecomRequest(
-                    TelecomOwner(id(row, "accountId"), api),
+                PurchaseRequest(
+                    PurchaseOwner(id(row, "accountId"), api),
                     id(row, "requestKey"),
                     id(row, "quoteId"),
                     Instant.parse(text(row, "createdAt")),
@@ -144,7 +144,7 @@ internal constructor(
      * Finish a small atomic commit despite cancellation; only IDs, scope and creation time enter
      * storage.
      */
-    private suspend fun writeAll(records: List<TelecomRequest>) =
+    private suspend fun writeAll(records: List<PurchaseRequest>) =
         withContext(NonCancellable + io) {
             val rows = JSONArray()
             records.forEach { request ->
@@ -215,13 +215,13 @@ internal constructor(
     }
 
     /** Legacy version-one rows are airtime; migration never changes accepted quote/request IDs. */
-    private fun storedService(row: JSONObject, legacy: Boolean): TelecomService {
+    private fun storedService(row: JSONObject, legacy: Boolean): PurchaseService {
         if (legacy) {
-            return TelecomService.Airtime
+            return PurchaseService.Airtime
         }
         return when (text(row, "serviceType")) {
-            "airtime" -> TelecomService.Airtime
-            "data" -> TelecomService.Data
+            "airtime" -> PurchaseService.Airtime
+            "data" -> PurchaseService.Data
             else -> error("Unsupported saved service")
         }
     }

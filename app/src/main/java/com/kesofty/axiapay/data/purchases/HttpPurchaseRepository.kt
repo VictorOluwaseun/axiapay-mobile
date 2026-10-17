@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.data.telecom
+package com.kesofty.axiapay.data.purchases
 
 import com.kesofty.axiapay.data.http.*
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
 import java.math.BigInteger
 import java.time.Instant
 import java.util.Collections
@@ -14,22 +14,22 @@ import org.json.JSONObject
  * First-party airtime/data DTO adapter; bearer headers and bounded uncached IO use the shared
  * transport.
  */
-class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository {
+class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseRepository {
     override val apiIdentity: String
         get() =
             try {
                 http.apiIdentity
             } catch (failure: ApiRequestFailure) {
-                throw TelecomFailure(TelecomIssue.Configuration, failure)
+                throw PurchaseFailure(PurchaseIssue.Configuration, failure)
             }
 
     /** Follow bounded pages with unchanged filters; never substitute a local product catalogue. */
     override suspend fun products(
         accessToken: String,
         currency: String,
-        service: TelecomService,
-    ): List<TelecomProduct> = mapped {
-        val products = mutableListOf<TelecomProduct>()
+        service: PurchaseService,
+    ): List<PurchaseProduct> = mapped {
+        val products = mutableListOf<PurchaseProduct>()
         val seenCursors = mutableSetOf<String>()
         val seenProducts = mutableSetOf<String>()
         var cursor: String? = null
@@ -63,26 +63,26 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
             }
             require(validId(cursor) && seenCursors.add(cursor))
         }
-        throw TelecomFailure(TelecomIssue.InvalidResponse)
+        throw PurchaseFailure(PurchaseIssue.InvalidResponse)
     }
 
     /** Serialize prepared values directly; quote creation never submits or uses demo funds. */
     override suspend fun quote(
         accessToken: String,
         walletId: String,
-        input: TelecomQuoteInput,
-    ): TelecomQuote = mapped {
+        input: PurchaseQuoteInput,
+    ): PurchaseQuote = mapped {
         val body =
             JSONObject()
                 .put("walletId", walletId)
                 .put("productId", input.productId)
-                .put("recipientPhoneNumber", input.recipientPhoneNumber)
+                .put("recipientPhoneNumber", input.recipientIdentifier)
         input.amountMinorUnits?.let { body.put("amountMinorUnits", it.toString()) }
         quote(requireNotNull(http.request("payments/quotes", 201, body, accessToken)), true)
     }
 
     /** Retrieve the exact original quote, including capability and expiry, without requoting. */
-    override suspend fun getQuote(accessToken: String, quoteId: String): TelecomQuote = mapped {
+    override suspend fun getQuote(accessToken: String, quoteId: String): PurchaseQuote = mapped {
         val quote =
             quote(
                 requireNotNull(http.request("payments/quotes/$quoteId", 200, bearer = accessToken)),
@@ -93,7 +93,7 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     }
 
     /** A single consent POST contains only the original quote and request key. */
-    override suspend fun submit(accessToken: String, request: TelecomRequest): TelecomPayment =
+    override suspend fun submit(accessToken: String, request: PurchaseRequest): PurchasePayment =
         mapped {
             val body =
                 JSONObject().put("quoteId", request.quoteId).put("requestKey", request.requestKey)
@@ -106,7 +106,7 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     override suspend fun findByRequestKey(
         accessToken: String,
         requestKey: String,
-    ): TelecomPayment? {
+    ): PurchasePayment? {
         try {
             return mapped {
                 payment(
@@ -120,8 +120,8 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
                     ),
                 )
             }
-        } catch (failure: TelecomFailure) {
-            if (failure.issue == TelecomIssue.NotFound) {
+        } catch (failure: PurchaseFailure) {
+            if (failure.issue == PurchaseIssue.NotFound) {
                 return null
             }
             throw failure
@@ -131,7 +131,7 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     /**
      * Explicit accepted-payment recovery keeps the same server identity and sends no new quote/key.
      */
-    override suspend fun reconcile(accessToken: String, paymentId: String): TelecomPayment =
+    override suspend fun reconcile(accessToken: String, paymentId: String): PurchasePayment =
         mapped {
             payment(
                 requireNotNull(
@@ -146,8 +146,8 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     private fun product(
         json: JSONObject,
         currency: String,
-        service: TelecomService,
-    ): TelecomProduct {
+        service: PurchaseService,
+    ): PurchaseProduct {
         require(service(json) == service && string(json, "currency") == currency)
         val minimum = amount(json, "minimumAmountMinorUnits")
         val maximum = amount(json, "maximumAmountMinorUnits")
@@ -157,11 +157,11 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
         require(fixed == null || fixed in minimum..maximum)
         val allowance = nullableLabel(json, "allowanceLabel")
         val validity = validitySeconds(json)
-        if (service == TelecomService.Data) {
+        if (service == PurchaseService.Data) {
             require(fixed != null && fixed == minimum && fixed == maximum)
             require(allowance != null && validity != null)
         }
-        return TelecomProduct(
+        return PurchaseProduct(
             id(json, "id"),
             label(json, "displayName"),
             label(json, "networkCode"),
@@ -182,7 +182,7 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
      * Read exact immutable review terms; progress quotes deliberately have no current-submission
      * capability.
      */
-    private fun quote(json: JSONObject, withCapability: Boolean): TelecomQuote {
+    private fun quote(json: JSONObject, withCapability: Boolean): PurchaseQuote {
         val service = service(json)
         require(string(json, "currency") == "NGN")
         val principal = amount(json, "principalMinorUnits")
@@ -195,10 +195,10 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
         require(Regex("\\+[1-9][0-9]{7,14}").matches(recipient))
         val allowance = nullableLabel(json, "allowanceLabel")
         val validity = validitySeconds(json)
-        if (service == TelecomService.Data) {
+        if (service == PurchaseService.Data) {
             require(allowance != null && validity != null)
         }
-        return TelecomQuote(
+        return PurchaseQuote(
             id(json, "id"),
             id(json, "walletId"),
             id(json, "productId"),
@@ -219,17 +219,17 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     }
 
     /** Only documented committed status values may become progress or a final receipt. */
-    private fun payment(json: JSONObject): TelecomPayment {
+    private fun payment(json: JSONObject): PurchasePayment {
         val status =
             when (string(json, "paymentStatus")) {
-                "awaiting_funds" -> TelecomPaymentStatus.AwaitingFunds
-                "reserved" -> TelecomPaymentStatus.Reserved
-                "pending" -> TelecomPaymentStatus.Pending
-                "succeeded" -> TelecomPaymentStatus.Succeeded
-                "failed" -> TelecomPaymentStatus.Failed
+                "awaiting_funds" -> PurchasePaymentStatus.AwaitingFunds
+                "reserved" -> PurchasePaymentStatus.Reserved
+                "pending" -> PurchasePaymentStatus.Pending
+                "succeeded" -> PurchasePaymentStatus.Succeeded
+                "failed" -> PurchasePaymentStatus.Failed
                 else -> error("Unknown payment status")
             }
-        return TelecomPayment(
+        return PurchasePayment(
             id(json, "id"),
             label(json, "requestKey"),
             status,
@@ -240,10 +240,10 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
     }
 
     /** Accept only the phone-based services supported by this adapter. */
-    private fun service(json: JSONObject): TelecomService =
+    private fun service(json: JSONObject): PurchaseService =
         when (string(json, "serviceType")) {
-            "airtime" -> TelecomService.Airtime
-            "data" -> TelecomService.Data
+            "airtime" -> PurchaseService.Airtime
+            "data" -> PurchaseService.Data
             else -> error("Unsupported service")
         }
 
@@ -306,28 +306,28 @@ class HttpTelecomRepository(private val http: ApiHttpClient) : TelecomRepository
             return operation()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: TelecomFailure) {
+        } catch (failure: PurchaseFailure) {
             throw failure
         } catch (failure: ApiRequestFailure) {
             val issue =
                 when {
-                    failure.kind == ApiFailureKind.Configuration -> TelecomIssue.Configuration
-                    failure.kind == ApiFailureKind.Network -> TelecomIssue.Network
-                    failure.kind == ApiFailureKind.InvalidResponse -> TelecomIssue.InvalidResponse
-                    failure.status == 401 -> TelecomIssue.SignInRequired
-                    failure.code == "QUOTE_EXPIRED" -> TelecomIssue.QuoteExpired
-                    failure.code == "INSUFFICIENT_FUNDS" -> TelecomIssue.InsufficientFunds
-                    failure.code == "WALLET_RESTRICTED" -> TelecomIssue.WalletRestricted
+                    failure.kind == ApiFailureKind.Configuration -> PurchaseIssue.Configuration
+                    failure.kind == ApiFailureKind.Network -> PurchaseIssue.Network
+                    failure.kind == ApiFailureKind.InvalidResponse -> PurchaseIssue.InvalidResponse
+                    failure.status == 401 -> PurchaseIssue.SignInRequired
+                    failure.code == "QUOTE_EXPIRED" -> PurchaseIssue.QuoteExpired
+                    failure.code == "INSUFFICIENT_FUNDS" -> PurchaseIssue.InsufficientFunds
+                    failure.code == "WALLET_RESTRICTED" -> PurchaseIssue.WalletRestricted
                     failure.code in setOf("PAYMENT_CONFLICT", "IDEMPOTENCY_CONFLICT") ->
-                        TelecomIssue.PaymentConflict
-                    failure.code == "PRODUCT_UNAVAILABLE" -> TelecomIssue.ProductUnavailable
-                    failure.code == "INVALID_PAYMENT" -> TelecomIssue.InvalidAmount
-                    failure.status == 404 -> TelecomIssue.NotFound
-                    else -> TelecomIssue.Unavailable
+                        PurchaseIssue.PaymentConflict
+                    failure.code == "PRODUCT_UNAVAILABLE" -> PurchaseIssue.ProductUnavailable
+                    failure.code == "INVALID_PAYMENT" -> PurchaseIssue.InvalidAmount
+                    failure.status == 404 -> PurchaseIssue.NotFound
+                    else -> PurchaseIssue.Unavailable
                 }
-            throw TelecomFailure(issue, failure)
+            throw PurchaseFailure(issue, failure)
         } catch (failure: Exception) {
-            throw TelecomFailure(TelecomIssue.InvalidResponse, failure)
+            throw PurchaseFailure(PurchaseIssue.InvalidResponse, failure)
         }
     }
 }

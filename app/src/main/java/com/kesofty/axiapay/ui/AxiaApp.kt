@@ -33,10 +33,10 @@ import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
-import com.kesofty.axiapay.presentation.telecom.*
+import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.bulk.*
 import com.kesofty.axiapay.ui.components.*
-import com.kesofty.axiapay.ui.telecom.TelecomSheet
+import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -49,8 +49,8 @@ fun AxiaApp(
     authShortcutLabel: String? = null,
     homeWallet: HomeWalletState = HomeWalletState.Demo,
     onRefreshWallet: () -> Unit = {},
-    telecom: TelecomUiState? = null,
-    onTelecomIntent: (TelecomIntent) -> Unit = {},
+    purchases: PurchaseUiState? = null,
+    onPurchaseIntent: (PurchaseIntent) -> Unit = {},
     onOpenAccount: () -> Unit = {},
 ) {
     if (uiState.isRestoring || uiState.restorationFailed) {
@@ -133,8 +133,8 @@ fun AxiaApp(
             onIntent,
             onOpenAccount,
             authShortcutLabel,
-            telecom,
-            onTelecomIntent,
+            purchases,
+            onPurchaseIntent,
         )
     }
     (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
@@ -171,8 +171,8 @@ private fun AppSheet(
     onIntent: (AxiaIntent) -> Unit,
     onOpenAccount: () -> Unit,
     authShortcutLabel: String?,
-    telecom: TelecomUiState?,
-    onTelecomIntent: (TelecomIntent) -> Unit,
+    purchases: PurchaseUiState?,
+    onPurchaseIntent: (PurchaseIntent) -> Unit,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -211,12 +211,12 @@ private fun AppSheet(
                             }
                     is Sheet.Explore -> ExploreSheet(sheet.service)
                     is Sheet.Payment -> {
-                        if (telecom != null && sheet.form.isTelecomPurchaseEntry) {
-                            TelecomSheet(
-                                telecom,
+                        if (purchases != null && sheet.form.isWalletPurchaseEntry) {
+                            PurchaseSheet(
+                                purchases,
                                 state.offline,
                                 state.hidden,
-                                onTelecomIntent,
+                                onPurchaseIntent,
                                 onOpenAccount,
                             )
                         } else {

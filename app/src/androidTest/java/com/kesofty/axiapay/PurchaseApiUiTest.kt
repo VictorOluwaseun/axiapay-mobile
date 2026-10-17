@@ -15,19 +15,19 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.application.*
-import com.kesofty.axiapay.application.telecom.*
+import com.kesofty.axiapay.application.purchases.*
 import com.kesofty.axiapay.data.DemoSessionSeed
 import com.kesofty.axiapay.data.auth.HttpAuthenticationRepository
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.telecom.*
+import com.kesofty.axiapay.data.purchases.*
 import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.presentation.*
-import com.kesofty.axiapay.presentation.telecom.*
+import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.AxiaApp
-import com.kesofty.axiapay.ui.telecom.TelecomSheet
+import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
 import java.io.File
 import java.time.*
@@ -43,7 +43,7 @@ import org.junit.*
 import org.junit.Assert.*
 
 /** End-to-end UI/application/HTTP/journal checks use a disposable API and no real funds. */
-class TelecomApiUiTest {
+class PurchaseApiUiTest {
     @get:Rule val compose = createComposeRule()
     private val owners = ViewModelStore()
     private val server = MockWebServer()
@@ -64,14 +64,14 @@ class TelecomApiUiTest {
     private val posts = AtomicInteger()
     private val quotes = AtomicInteger()
     private val requests = ConcurrentLinkedQueue<RecordedRequest>()
-    @Volatile private var service = TelecomService.Airtime
+    @Volatile private var service = PurchaseService.Airtime
     @Volatile private var status = "pending"
     @Volatile private var rejectPost = false
     @Volatile private var observed = false
     @Volatile private var productAvailable = true
     @Volatile private var failJournalDirectorySync = false
     private val journalCommits =
-        object : TelecomJournalCommitOperations by AndroidTelecomJournalCommitOperations {
+        object : PurchaseJournalCommitOperations by AndroidPurchaseJournalCommitOperations {
             /**
              * Inject the ambiguous post-rename barrier while other IO uses the real Android
              * adapter.
@@ -80,13 +80,13 @@ class TelecomApiUiTest {
                 if (failJournalDirectorySync) {
                     throw java.io.IOException("Injected journal directory sync failure")
                 }
-                AndroidTelecomJournalCommitOperations.syncDirectory(directory)
+                AndroidPurchaseJournalCommitOperations.syncDirectory(directory)
             }
         }
     private lateinit var file: File
     private lateinit var http: ApiHttpClient
     private lateinit var sessions: TestSessions
-    private lateinit var vm: TelecomViewModel
+    private lateinit var vm: PurchaseViewModel
 
     /** Route only documented first-party requests; unexpected network paths fail the test. */
     @Before
@@ -194,19 +194,19 @@ class TelecomApiUiTest {
     }
 
     /** Construct real adapters/workflow with isolated session persistence for a test UI owner. */
-    private fun createViewModel(key: String): TelecomViewModel {
+    private fun createViewModel(key: String): PurchaseViewModel {
         val workflow =
-            TelecomPurchases(
+            WalletPurchases(
                 HttpAuthenticationRepository(http, clock),
                 sessions,
                 HttpWalletRepository(http),
-                HttpTelecomRepository(http),
-                AtomicTelecomRequestStore(file, Dispatchers.IO, journalCommits),
+                HttpPurchaseRepository(http),
+                AtomicPurchaseRequestStore(file, Dispatchers.IO, journalCommits),
                 clock,
             ) {
                 requestKey
             }
-        return TelecomViewModel(Optional.of(workflow), PrepareTelecom(), clock).also {
+        return PurchaseViewModel(Optional.of(workflow), PreparePurchase(), clock).also {
             owners.put(key, it)
         }
     }
@@ -224,28 +224,28 @@ class TelecomApiUiTest {
         JSONObject()
             .put("id", productId)
             .put("serviceType", service.name.lowercase(Locale.ROOT))
-            .put("allowanceLabel", if (service == TelecomService.Data) "1 GB" else JSONObject.NULL)
+            .put("allowanceLabel", if (service == PurchaseService.Data) "1 GB" else JSONObject.NULL)
             .put(
                 "validitySeconds",
-                if (service == TelecomService.Data) 2592000 else JSONObject.NULL,
+                if (service == PurchaseService.Data) 2592000 else JSONObject.NULL,
             )
             .put(
                 "displayName",
-                if (service == TelecomService.Data) "MTN 1 GB monthly" else "MTN airtime",
+                if (service == PurchaseService.Data) "MTN 1 GB monthly" else "MTN airtime",
             )
             .put("networkCode", "mtn")
             .put("currency", "NGN")
             .put(
                 "fixedPriceMinorUnits",
-                if (service == TelecomService.Data) "125050" else JSONObject.NULL,
+                if (service == PurchaseService.Data) "125050" else JSONObject.NULL,
             )
             .put(
                 "minimumAmountMinorUnits",
-                if (service == TelecomService.Data) "125050" else "5000",
+                if (service == PurchaseService.Data) "125050" else "5000",
             )
             .put(
                 "maximumAmountMinorUnits",
-                if (service == TelecomService.Data) "125050" else "1000000",
+                if (service == PurchaseService.Data) "125050" else "1000000",
             )
             .put("amountStepMinorUnits", "1")
             .put("feeMinorUnits", "100")
@@ -254,7 +254,7 @@ class TelecomApiUiTest {
     /** A second API network makes plan filtering observable without local catalogue aliases. */
     private fun catalogue(): JSONArray {
         val rows = JSONArray().put(product())
-        if (service == TelecomService.Data) {
+        if (service == PurchaseService.Data) {
             rows.put(
                 product()
                     .put("id", "123e4567-e89b-42d3-a456-426614174009")
@@ -275,27 +275,27 @@ class TelecomApiUiTest {
                 .put("serviceType", service.name.lowercase(Locale.ROOT))
                 .put(
                     "allowanceLabel",
-                    if (service == TelecomService.Data) "1 GB" else JSONObject.NULL,
+                    if (service == PurchaseService.Data) "1 GB" else JSONObject.NULL,
                 )
                 .put(
                     "validitySeconds",
-                    if (service == TelecomService.Data) 2592000 else JSONObject.NULL,
+                    if (service == PurchaseService.Data) 2592000 else JSONObject.NULL,
                 )
                 .put(
                     "displayName",
-                    if (service == TelecomService.Data) "MTN 1 GB monthly" else "MTN airtime",
+                    if (service == PurchaseService.Data) "MTN 1 GB monthly" else "MTN airtime",
                 )
                 .put("networkCode", "mtn")
                 .put("recipientPhoneNumber", "+2348012345678")
                 .put("currency", "NGN")
                 .put(
                     "principalMinorUnits",
-                    if (service == TelecomService.Data) "125050" else "10000",
+                    if (service == PurchaseService.Data) "125050" else "10000",
                 )
                 .put("feeMinorUnits", "100")
                 .put(
                     "totalDebitMinorUnits",
-                    if (service == TelecomService.Data) "125150" else "10100",
+                    if (service == PurchaseService.Data) "125150" else "10100",
                 )
                 .put("createdAt", now.toString())
                 .put("expiresAt", now.plusSeconds(120).toString())
@@ -322,7 +322,7 @@ class TelecomApiUiTest {
                 "visit",
                 service.name,
                 PaymentInput(
-                    if (service == TelecomService.Data) PaymentType.Data else PaymentType.Airtime,
+                    if (service == PurchaseService.Data) PaymentType.Data else PaymentType.Airtime,
                     date = LocalDate.now(clock),
                 ),
             )
@@ -332,34 +332,34 @@ class TelecomApiUiTest {
                 NavigationState(sheet = Sheet.Payment(form)),
             )
         compose.setContent {
-            val telecom by vm.uiState.collectAsStateWithLifecycle()
+            val purchases by vm.uiState.collectAsStateWithLifecycle()
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
                 AxiapayTheme(offline) {
                     if (sheetOnly) {
                         Surface(Modifier.fillMaxSize()) {
-                            TelecomSheet(telecom, offline, false, vm::accept, {})
+                            PurchaseSheet(purchases, offline, false, vm::accept, {})
                         }
                     } else {
                         AxiaApp(
                             state,
                             {},
                             homeWallet =
-                                telecom.context?.wallet?.let { HomeWalletState.Loaded(it) }
+                                purchases.context?.wallet?.let { HomeWalletState.Loaded(it) }
                                     ?: HomeWalletState.Loading,
-                            telecom = telecom,
-                            onTelecomIntent = vm::accept,
+                            purchases = purchases,
+                            onPurchaseIntent = vm::accept,
                         )
                     }
                 }
             }
         }
-        compose.runOnIdle { vm.accept(TelecomIntent.Bind(accountId, "visit", service)) }
-        waitFor(TelecomScreen.Form)
+        compose.runOnIdle { vm.accept(PurchaseIntent.Bind(accountId, "visit", service)) }
+        waitFor(PurchaseScreen.Form)
     }
 
     /** Wait for bounded IO without using animation/timer idleness as a payment signal. */
-    private fun waitFor(screen: TelecomScreen) {
+    private fun waitFor(screen: PurchaseScreen) {
         compose.waitUntil(15_000) {
             vm.uiState.value.screen == screen && !vm.uiState.value.isProcessing
         }
@@ -367,16 +367,16 @@ class TelecomApiUiTest {
 
     /** Enter the server product, canonical recipient and exact amount through real fields. */
     private fun review() {
-        if (service == TelecomService.Data) {
+        if (service == PurchaseService.Data) {
             compose.onNodeWithTag("telecom-network-mtn").performScrollTo().performClick()
         }
         compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
         compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("08012345678")
-        if (service == TelecomService.Airtime) {
+        if (service == PurchaseService.Airtime) {
             compose.onNodeWithTag("telecom-amount").performScrollTo().performTextInput("100")
         }
         compose.onNodeWithTag("telecom-review").performScrollTo().performClick()
-        waitFor(TelecomScreen.Review)
+        waitFor(PurchaseScreen.Review)
     }
 
     /** Full UI quote/confirm/status flow uses the owned wallet, with one explicit consent POST. */
@@ -390,7 +390,7 @@ class TelecomApiUiTest {
             .performScrollTo()
             .assertTextContains("101.00", substring = true)
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose
             .onNodeWithTag("telecom-status")
             .performScrollTo()
@@ -402,7 +402,7 @@ class TelecomApiUiTest {
         assertEquals(2, command.length())
         assertEquals(requestKey, command.getString("requestKey"))
         compose.onNodeWithTag("telecom-reconcile").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose
             .onNodeWithTag("telecom-status")
             .performScrollTo()
@@ -411,8 +411,8 @@ class TelecomApiUiTest {
         compose.onNodeWithTag("telecom-done").performScrollTo().performClick()
         compose.waitUntil(5000) { !vm.uiState.value.isProcessing }
         val records = runBlocking {
-            AtomicTelecomRequestStore(file, Dispatchers.IO)
-                .read(TelecomOwner(accountId, http.apiIdentity))
+            AtomicPurchaseRequestStore(file, Dispatchers.IO)
+                .read(PurchaseOwner(accountId, http.apiIdentity))
         }
         assertTrue(records.single().acknowledged)
         val text = file.readText()
@@ -428,24 +428,24 @@ class TelecomApiUiTest {
         show()
         review()
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose
             .onNodeWithTag("telecom-status")
             .performScrollTo()
             .assertTextEquals("Payment status unconfirmed")
         assertEquals(1, posts.get())
         compose.runOnIdle {
-            vm.accept(TelecomIntent.Bind(null, null))
+            vm.accept(PurchaseIntent.Bind(null, null))
             owners.clear()
             vm = createViewModel("cold")
-            vm.accept(TelecomIntent.Bind(accountId, "cold", service))
+            vm.accept(PurchaseIntent.Bind(accountId, "cold", service))
         }
-        waitFor(TelecomScreen.History)
+        waitFor(PurchaseScreen.History)
         assertEquals(1, posts.get())
         status = "succeeded"
-        compose.runOnIdle { vm.accept(TelecomIntent.CheckSaved(requestKey)) }
-        waitFor(TelecomScreen.Progress)
-        assertEquals(TelecomPaymentStatus.Succeeded, vm.uiState.value.progress?.payment?.status)
+        compose.runOnIdle { vm.accept(PurchaseIntent.CheckSaved(requestKey)) }
+        waitFor(PurchaseScreen.Progress)
+        assertEquals(PurchasePaymentStatus.Succeeded, vm.uiState.value.progress?.payment?.status)
         assertEquals(1, posts.get())
         assertEquals(1, quotes.get())
     }
@@ -492,7 +492,7 @@ class TelecomApiUiTest {
     /** Actual data UI uses a fixed API plan, exact quote, owned wallet and one explicit POST. */
     @Test
     fun dataPlanPurchaseOmitsPriceOverrideAndDisplaysServerReceipt() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         status = "succeeded"
         show()
         review()
@@ -504,7 +504,7 @@ class TelecomApiUiTest {
             .performScrollTo()
             .assertTextContains("1,251.50", substring = true)
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose.onNodeWithTag("telecom-status").performScrollTo().assertTextEquals("Data purchased")
         val quoteCommand =
             JSONObject(requests.first { it.target == "/v1/payments/quotes" }.body!!.utf8())
@@ -519,9 +519,9 @@ class TelecomApiUiTest {
         )
         assertEquals(1, posts.get())
         assertEquals(
-            TelecomService.Data,
+            PurchaseService.Data,
             runBlocking {
-                AtomicTelecomRequestStore(file, Dispatchers.IO)
+                AtomicPurchaseRequestStore(file, Dispatchers.IO)
                     .read(fixtureOwner())
                     .single()
                     .service
@@ -534,65 +534,65 @@ class TelecomApiUiTest {
      */
     @Test
     fun journalDirectorySyncFailureBlocksPurchaseUntilExplicitDurableRetry() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         status = "succeeded"
         failJournalDirectorySync = true
         show()
         review()
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
         compose.waitUntil(10000) {
-            vm.uiState.value.issue == TelecomIssue.Storage && !vm.uiState.value.isProcessing
+            vm.uiState.value.issue == PurchaseIssue.Storage && !vm.uiState.value.isProcessing
         }
-        assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+        assertEquals(PurchaseScreen.Review, vm.uiState.value.screen)
         assertEquals(0, posts.get())
         val retained = runBlocking {
-            AtomicTelecomRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
+            AtomicPurchaseRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
         }
         assertEquals(requestKey, retained.requestKey)
         assertEquals(quoteId, retained.quoteId)
         failJournalDirectorySync = false
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose.onNodeWithTag("telecom-status").performScrollTo().assertTextEquals("Data purchased")
         assertEquals(1, posts.get())
         assertEquals(1, quotes.get())
         assertEquals(
             retained,
             runBlocking {
-                AtomicTelecomRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
+                AtomicPurchaseRequestStore(file, Dispatchers.IO).read(fixtureOwner()).single()
             },
         )
     }
 
     /** Phone-service recovery records are scoped to this fixture account/API. */
-    private fun fixtureOwner() = TelecomOwner(accountId, http.apiIdentity)
+    private fun fixtureOwner() = PurchaseOwner(accountId, http.apiIdentity)
 
     /** A timed-out data response survives a new owner/store and status checks do not buy again. */
     @Test
     fun dataRequestSurvivesColdRestoreWithoutAnotherPurchase() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         rejectPost = true
         show()
         review()
         compose.onNodeWithTag("telecom-confirm").performScrollTo().performClick()
-        waitFor(TelecomScreen.Progress)
+        waitFor(PurchaseScreen.Progress)
         compose
             .onNodeWithTag("telecom-status")
             .performScrollTo()
             .assertTextEquals("Payment status unconfirmed")
         compose.runOnIdle {
-            vm.accept(TelecomIntent.Bind(null, null))
+            vm.accept(PurchaseIntent.Bind(null, null))
             owners.clear()
             vm = createViewModel("data-cold")
-            vm.accept(TelecomIntent.Bind(accountId, "cold", TelecomService.Data))
+            vm.accept(PurchaseIntent.Bind(accountId, "cold", PurchaseService.Data))
         }
-        waitFor(TelecomScreen.History)
+        waitFor(PurchaseScreen.History)
         assertEquals(1, posts.get())
         status = "succeeded"
-        compose.runOnIdle { vm.accept(TelecomIntent.CheckSaved(requestKey)) }
-        waitFor(TelecomScreen.Progress)
-        assertEquals(TelecomService.Data, vm.uiState.value.progress?.payment?.quote?.service)
-        assertEquals(TelecomPaymentStatus.Succeeded, vm.uiState.value.progress?.payment?.status)
+        compose.runOnIdle { vm.accept(PurchaseIntent.CheckSaved(requestKey)) }
+        waitFor(PurchaseScreen.Progress)
+        assertEquals(PurchaseService.Data, vm.uiState.value.progress?.payment?.quote?.service)
+        assertEquals(PurchasePaymentStatus.Succeeded, vm.uiState.value.progress?.payment?.status)
         assertEquals(1, posts.get())
         assertEquals(1, quotes.get())
     }
@@ -600,7 +600,7 @@ class TelecomApiUiTest {
     /** Switching networks clears the current plan and cannot review a hidden provider's product. */
     @Test
     fun dataNetworkChangeClearsSelectionAndHidesOtherPlans() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         show()
         compose.onNodeWithTag("telecom-product-$productId").assertDoesNotExist()
         compose.onNodeWithTag("telecom-network-mtn").performScrollTo().performClick()
@@ -617,7 +617,7 @@ class TelecomApiUiTest {
     /** A valid data plan cannot be submitted while the real purchase flow is offline. */
     @Test
     fun offlineDataRequiresInternetAndNeverFallsBackToSmsOrDemo() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         show(offline = true)
         compose.onNodeWithTag("telecom-network-mtn").performScrollTo().performClick()
         compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
@@ -631,7 +631,7 @@ class TelecomApiUiTest {
     /** Data allowance, validity, fee and consent remain readable at double font size. */
     @Test
     fun dataReviewRemainsReadableWithLargeFonts() {
-        service = TelecomService.Data
+        service = PurchaseService.Data
         show(fontScale = 2f, sheetOnly = true)
         review()
         compose.onNodeWithText("1 GB").performScrollTo().assertIsDisplayed()

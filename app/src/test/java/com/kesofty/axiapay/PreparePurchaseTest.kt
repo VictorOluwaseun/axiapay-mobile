@@ -1,20 +1,20 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.application.telecom.PrepareTelecom
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.application.purchases.PreparePurchase
+import com.kesofty.axiapay.domain.purchases.*
 import org.junit.Assert.*
 import org.junit.Test
 
 /** Exact boundary preparation uses published product constraints without local pricing. */
-class PrepareTelecomTest {
-    private val prepare = PrepareTelecom()
-    private val product = TelecomFixture().api.product
+class PreparePurchaseTest {
+    private val prepare = PreparePurchase()
+    private val product = PurchaseFixture().api.product
 
     /** Canonical phone input and exact decimal conversion retain explicit network selection. */
     @Test
     fun canonicalInputAndExactMinorUnits() {
         val input = requireNotNull(prepare(product, "0801 234-5678", "100.50").input)
-        assertEquals("+2348012345678", input.recipientPhoneNumber)
+        assertEquals("+2348012345678", input.recipientIdentifier)
         assertEquals("10050", input.amountMinorUnits.toString())
         assertEquals(product.id, input.productId)
         val fixed =
@@ -44,14 +44,14 @@ class PrepareTelecomTest {
             )) {
             assertEquals(
                 amount,
-                TelecomIssue.InvalidAmount,
+                PurchaseIssue.InvalidAmount,
                 prepare(product, "08012345678", amount).issue,
             )
         }
-        assertEquals(TelecomIssue.InvalidRecipient, prepare(product, "invalid", "100").issue)
-        assertEquals(TelecomIssue.SelectProduct, prepare(null, "08012345678", "100").issue)
+        assertEquals(PurchaseIssue.InvalidRecipient, prepare(product, "invalid", "100").issue)
+        assertEquals(PurchaseIssue.SelectProduct, prepare(null, "08012345678", "100").issue)
         assertEquals(
-            TelecomIssue.ProductUnavailable,
+            PurchaseIssue.ProductUnavailable,
             prepare(product.copy(isSubmissionAvailable = false), "08012345678", "100").issue,
         )
     }

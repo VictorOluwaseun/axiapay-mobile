@@ -1,12 +1,12 @@
 package com.kesofty.axiapay.di
 
 import android.content.Context
-import com.kesofty.axiapay.application.telecom.TelecomPurchases
+import com.kesofty.axiapay.application.purchases.WalletPurchases
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.telecom.AtomicTelecomRequestStore
-import com.kesofty.axiapay.data.telecom.HttpTelecomRepository
+import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
+import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.domain.wallet.WalletRepository
 import dagger.Module
 import dagger.Provides
@@ -26,27 +26,27 @@ import kotlinx.coroutines.Dispatchers
  */
 @Module
 @InstallIn(ViewModelComponent::class)
-internal object FlavorTelecomModule {
+internal object FlavorPurchaseModule {
     /**
      * Bind one plain workflow per UI owner; the durable journal and HTTP pool are shared
      * infrastructure.
      */
     @Provides
     @ViewModelScoped
-    fun provideTelecomPurchases(
+    fun provideWalletPurchases(
         authentication: AuthenticationRepository,
         sessions: AuthenticationSessionStore,
         wallets: WalletRepository,
-        telecom: TelecomRepository,
-        requestStore: TelecomRequestStore,
+        purchases: PurchaseRepository,
+        requestStore: PurchaseRequestStore,
         clock: Clock,
         newRequestId: () -> String,
-    ): TelecomPurchases =
-        TelecomPurchases(
+    ): WalletPurchases =
+        WalletPurchases(
             authentication,
             sessions,
             wallets,
-            telecom,
+            purchases,
             requestStore,
             clock,
             newRequestId,
@@ -59,12 +59,12 @@ internal object FlavorTelecomModule {
  */
 @Module
 @InstallIn(SingletonComponent::class)
-internal object TelecomInfrastructureModule {
+internal object PurchaseInfrastructureModule {
     /** Reuse the existing bounded auth/wallet transport and credential scope. */
     @Provides
     @Singleton
-    fun provideTelecomRepository(http: ApiHttpClient): TelecomRepository =
-        HttpTelecomRepository(http)
+    fun providePurchaseRepository(http: ApiHttpClient): PurchaseRepository =
+        HttpPurchaseRepository(http)
 
     /**
      * A singleton journal serializes independent ViewModels; no tokens, recipients or balances
@@ -72,8 +72,8 @@ internal object TelecomInfrastructureModule {
      */
     @Provides
     @Singleton
-    fun provideTelecomRequestStore(@ApplicationContext context: Context): TelecomRequestStore =
-        AtomicTelecomRequestStore(
+    fun providePurchaseRequestStore(@ApplicationContext context: Context): PurchaseRequestStore =
+        AtomicPurchaseRequestStore(
             File(context.noBackupFilesDir, "airtime-requests-v1.json"),
             Dispatchers.IO,
         )

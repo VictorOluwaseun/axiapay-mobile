@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.application.telecom
+package com.kesofty.axiapay.application.purchases
 
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.domain.wallet.*
 import java.time.Clock
 import java.util.Collections
@@ -14,19 +14,19 @@ import kotlinx.coroutines.ensureActive
  * durable recovery journal. The server owns pricing, spending, dispatch and settlement. No
  * lifecycle event submits, resumes or reconciles a payment automatically.
  */
-class TelecomPurchases(
+class WalletPurchases(
     private val authentication: AuthenticationRepository,
     private val sessions: AuthenticationSessionStore,
     private val wallets: WalletRepository,
-    private val telecom: TelecomRepository,
-    private val requestStore: TelecomRequestStore,
+    private val purchases: PurchaseRepository,
+    private val requestStore: PurchaseRequestStore,
     private val clock: Clock,
     private val newRequestId: () -> String,
 ) {
     /** Keep the captured credential inside the application workflow, never in UI or saved state. */
-    private data class Access(val owner: TelecomOwner, val session: StoredAuthenticationSession) {
+    private data class Access(val owner: PurchaseOwner, val session: StoredAuthenticationSession) {
         /** Prevent accidental diagnostic interpolation of a bearer. */
-        override fun toString() = "TelecomAccess(redacted)"
+        override fun toString() = "PurchaseAccess(redacted)"
     }
 
     /**
@@ -34,8 +34,8 @@ class TelecomPurchases(
      */
     suspend fun load(
         accountId: String,
-        service: TelecomService = TelecomService.Airtime,
-    ): TelecomContext =
+        service: PurchaseService = PurchaseService.Airtime,
+    ): PurchaseContext =
         withAccess(accountId) { access ->
             val requests =
                 Collections.unmodifiableList(
@@ -44,8 +44,8 @@ class TelecomPurchases(
             try {
                 val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
                 val products =
-                    telecom.products(access.session.accessToken, wallet.currency, service)
-                TelecomContext(
+                    purchases.products(access.session.accessToken, wallet.currency, service)
+                PurchaseContext(
                     access.owner,
                     wallet,
                     Collections.unmodifiableList(products.toList()),
@@ -55,22 +55,22 @@ class TelecomPurchases(
                 if (requests.isEmpty() || failure.issue == WalletIssue.InvalidSession) {
                     throw failure
                 }
-                TelecomContext(
+                PurchaseContext(
                     access.owner,
                     null,
                     emptyList(),
                     requests,
-                    TelecomIssue.WalletUnavailable,
+                    PurchaseIssue.WalletUnavailable,
                 )
-            } catch (failure: TelecomFailure) {
+            } catch (failure: PurchaseFailure) {
                 if (
                     requests.isEmpty() ||
                         failure.issue in
-                            setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)
+                            setOf(PurchaseIssue.SignInRequired, PurchaseIssue.SessionChanged)
                 ) {
                     throw failure
                 }
-                TelecomContext(access.owner, null, emptyList(), requests, failure.issue)
+                PurchaseContext(access.owner, null, emptyList(), requests, failure.issue)
             }
         }
 
@@ -78,23 +78,23 @@ class TelecomPurchases(
      * Request server pricing for an already prepared input; bind the result to the verified wallet
      * and recipient.
      */
-    suspend fun review(accountId: String, input: TelecomQuoteInput): TelecomReview =
+    suspend fun review(accountId: String, input: PurchaseQuoteInput): PurchaseReview =
         withAccess(accountId) { access ->
             val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
-            val quote = telecom.quote(access.session.accessToken, wallet.id, input)
+            val quote = purchases.quote(access.session.accessToken, wallet.id, input)
             val matches =
                 quote.service == input.service &&
                     quote.walletId == wallet.id &&
                     quote.productId == input.productId &&
-                    quote.recipientPhoneNumber == input.recipientPhoneNumber &&
+                    quote.recipientIdentifier == input.recipientIdentifier &&
                     quote.currency == wallet.currency &&
                     (input.amountMinorUnits == null ||
                         input.amountMinorUnits == quote.principalMinorUnits)
             if (!matches) {
-                throw TelecomFailure(TelecomIssue.InvalidResponse)
+                throw PurchaseFailure(PurchaseIssue.InvalidResponse)
             }
-            TelecomReview(
-                TelecomRequest(
+            PurchaseReview(
+                PurchaseRequest(
                     access.owner,
                     newRequestId(),
                     quote.id,
@@ -109,20 +109,20 @@ class TelecomPurchases(
      * Persist the original identity before the sole explicitly confirmed POST; storage failure
      * sends nothing.
      */
-    suspend fun submit(accountId: String, review: TelecomReview): TelecomProgress =
+    suspend fun submit(accountId: String, review: PurchaseReview): PurchaseProgress =
         withAccess(accountId) { access ->
             requireOwner(access, review.request)
             if (
                 review.request.quoteId != review.quote.id ||
                     review.request.service != review.quote.service
             ) {
-                throw TelecomFailure(TelecomIssue.InvalidResponse)
+                throw PurchaseFailure(PurchaseIssue.InvalidResponse)
             }
             if (!review.quote.isSubmissionAvailable) {
-                throw TelecomFailure(TelecomIssue.ProductUnavailable)
+                throw PurchaseFailure(PurchaseIssue.ProductUnavailable)
             }
             if (review.quote.expiresAt <= clock.instant()) {
-                throw TelecomFailure(TelecomIssue.QuoteExpired)
+                throw PurchaseFailure(PurchaseIssue.QuoteExpired)
             }
             requestStore.save(review.request)
             assertCurrentSession(access)
@@ -133,22 +133,22 @@ class TelecomPurchases(
      * Read only on restoration or status checks. A missing record is unconfirmed and retains its
      * key.
      */
-    suspend fun recover(accountId: String, request: TelecomRequest): TelecomProgress =
+    suspend fun recover(accountId: String, request: PurchaseRequest): PurchaseProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
-            val payment = telecom.findByRequestKey(access.session.accessToken, request.requestKey)
+            val payment = purchases.findByRequestKey(access.session.accessToken, request.requestKey)
             if (payment != null) {
                 return@withAccess observed(request, payment)
             }
             val quote = recoverQuote(access, request)
-            TelecomProgress(request, null, quote, TelecomIssue.NotFound)
+            PurchaseProgress(request, null, quote, PurchaseIssue.NotFound)
         }
 
     /**
      * Explicitly retry only the original saved quote/key; never requote or manufacture a new
      * payment after uncertainty.
      */
-    suspend fun retrySubmission(accountId: String, request: TelecomRequest): TelecomProgress =
+    suspend fun retrySubmission(accountId: String, request: PurchaseRequest): PurchaseProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
             assertCurrentSession(access)
@@ -159,33 +159,33 @@ class TelecomPurchases(
      * Explicitly recover accepted held progress. Awaiting funds must use the distinct resume
      * action.
      */
-    suspend fun reconcile(accountId: String, request: TelecomRequest): TelecomProgress =
+    suspend fun reconcile(accountId: String, request: PurchaseRequest): PurchaseProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
             val payment =
-                telecom.findByRequestKey(access.session.accessToken, request.requestKey)
-                    ?: return@withAccess TelecomProgress(
+                purchases.findByRequestKey(access.session.accessToken, request.requestKey)
+                    ?: return@withAccess PurchaseProgress(
                         request,
                         null,
                         recoverQuote(access, request),
-                        TelecomIssue.NotFound,
+                        PurchaseIssue.NotFound,
                     )
             val current = observed(request, payment)
-            if (payment.isFinal || payment.status == TelecomPaymentStatus.AwaitingFunds) {
+            if (payment.isFinal || payment.status == PurchasePaymentStatus.AwaitingFunds) {
                 return@withAccess current
             }
             assertCurrentSession(access)
-            observed(request, telecom.reconcile(access.session.accessToken, payment.id))
+            observed(request, purchases.reconcile(access.session.accessToken, payment.id))
         }
 
     /**
      * Acknowledge only observed final progress; closing an unfinished sheet never forgets a
      * request.
      */
-    suspend fun acknowledge(progress: TelecomProgress) {
-        val payment = progress.payment ?: throw TelecomFailure(TelecomIssue.Unavailable)
+    suspend fun acknowledge(progress: PurchaseProgress) {
+        val payment = progress.payment ?: throw PurchaseFailure(PurchaseIssue.Unavailable)
         if (!payment.isFinal) {
-            throw TelecomFailure(TelecomIssue.Unavailable)
+            throw PurchaseFailure(PurchaseIssue.Unavailable)
         }
         observed(progress.request, payment)
         requestStore.acknowledge(progress.request)
@@ -197,38 +197,40 @@ class TelecomPurchases(
      */
     private suspend fun transmit(
         access: Access,
-        request: TelecomRequest,
-        reviewed: TelecomQuote?,
-    ): TelecomProgress {
+        request: PurchaseRequest,
+        reviewed: PurchaseQuote?,
+    ): PurchaseProgress {
         try {
-            val payment = telecom.submit(access.session.accessToken, request)
+            val payment = purchases.submit(access.session.accessToken, request)
             val result = observed(request, payment)
             if (reviewed != null && !reviewed.hasSameTerms(payment.quote)) {
-                throw TelecomFailure(TelecomIssue.InvalidResponse)
+                throw PurchaseFailure(PurchaseIssue.InvalidResponse)
             }
             return result
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: TelecomFailure) {
-            if (failure.issue in setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)) {
+        } catch (failure: PurchaseFailure) {
+            if (
+                failure.issue in setOf(PurchaseIssue.SignInRequired, PurchaseIssue.SessionChanged)
+            ) {
                 throw failure
             }
-            return TelecomProgress(request, null, reviewed, failure.issue)
+            return PurchaseProgress(request, null, reviewed, failure.issue)
         }
     }
 
     /**
      * A recovered quote helps explain uncertainty but is never substituted for an observed payment.
      */
-    private suspend fun recoverQuote(access: Access, request: TelecomRequest): TelecomQuote? {
+    private suspend fun recoverQuote(access: Access, request: PurchaseRequest): PurchaseQuote? {
         try {
-            val quote = telecom.getQuote(access.session.accessToken, request.quoteId)
+            val quote = purchases.getQuote(access.session.accessToken, request.quoteId)
             if (quote.id != request.quoteId || quote.service != request.service) {
-                throw TelecomFailure(TelecomIssue.InvalidResponse)
+                throw PurchaseFailure(PurchaseIssue.InvalidResponse)
             }
             return quote
-        } catch (failure: TelecomFailure) {
-            if (failure.issue == TelecomIssue.NotFound) {
+        } catch (failure: PurchaseFailure) {
+            if (failure.issue == PurchaseIssue.NotFound) {
                 return null
             }
             throw failure
@@ -236,29 +238,29 @@ class TelecomPurchases(
     }
 
     /** Correlate every submission/recovery response to the persisted logical identity. */
-    private fun observed(request: TelecomRequest, payment: TelecomPayment): TelecomProgress {
+    private fun observed(request: PurchaseRequest, payment: PurchasePayment): PurchaseProgress {
         if (
             payment.requestKey != request.requestKey ||
                 payment.quote.id != request.quoteId ||
                 payment.quote.service != request.service
         ) {
-            throw TelecomFailure(TelecomIssue.InvalidResponse)
+            throw PurchaseFailure(PurchaseIssue.InvalidResponse)
         }
-        return TelecomProgress(request, payment, payment.quote)
+        return PurchaseProgress(request, payment, payment.quote)
     }
 
     /** Check record scope without interpreting a cached wallet as authorization. */
-    private fun requireOwner(access: Access, request: TelecomRequest) {
+    private fun requireOwner(access: Access, request: PurchaseRequest) {
         if (request.owner != access.owner) {
-            throw TelecomFailure(TelecomIssue.SessionChanged)
+            throw PurchaseFailure(PurchaseIssue.SessionChanged)
         }
     }
 
     /** Resumes require the durable original instruction; no caller may swap its quote/key. */
-    private suspend fun requireSaved(access: Access, request: TelecomRequest) {
+    private suspend fun requireSaved(access: Access, request: PurchaseRequest) {
         requireOwner(access, request)
         if (requestStore.read(access.owner).none { it == request }) {
-            throw TelecomFailure(TelecomIssue.NotFound)
+            throw PurchaseFailure(PurchaseIssue.NotFound)
         }
     }
 
@@ -269,22 +271,22 @@ class TelecomPurchases(
     private suspend fun <T> withAccess(accountId: String, operation: suspend (Access) -> T): T {
         var captured: StoredAuthenticationSession? = null
         try {
-            val session = sessions.read() ?: throw TelecomFailure(TelecomIssue.SignInRequired)
+            val session = sessions.read() ?: throw PurchaseFailure(PurchaseIssue.SignInRequired)
             captured = session
-            val identity = telecom.apiIdentity
+            val identity = purchases.apiIdentity
             val sameApi = identity == authentication.apiIdentity && identity == wallets.apiIdentity
             if (!sameApi) {
-                throw TelecomFailure(TelecomIssue.Configuration)
+                throw PurchaseFailure(PurchaseIssue.Configuration)
             }
             if (session.apiIdentity != identity || session.expiresAt <= clock.instant()) {
                 sessions.clear(session)
-                throw TelecomFailure(TelecomIssue.SignInRequired)
+                throw PurchaseFailure(PurchaseIssue.SignInRequired)
             }
             val account = authentication.currentAccount(session.accessToken)
             if (account.id != accountId) {
-                throw TelecomFailure(TelecomIssue.SessionChanged)
+                throw PurchaseFailure(PurchaseIssue.SessionChanged)
             }
-            val access = Access(TelecomOwner(accountId, identity), session)
+            val access = Access(PurchaseOwner(accountId, identity), session)
             assertCurrentSession(access)
             val result = operation(access)
             assertCurrentSession(access)
@@ -294,37 +296,37 @@ class TelecomPurchases(
         } catch (failure: AuthenticationFailure) {
             val issue =
                 when (failure.issue) {
-                    AccountAccessIssue.Network -> TelecomIssue.Network
-                    AccountAccessIssue.Configuration -> TelecomIssue.Configuration
-                    AccountAccessIssue.SecureStorage -> TelecomIssue.Storage
-                    AccountAccessIssue.InvalidCredentials -> TelecomIssue.SignInRequired
-                    else -> TelecomIssue.Unavailable
+                    AccountAccessIssue.Network -> PurchaseIssue.Network
+                    AccountAccessIssue.Configuration -> PurchaseIssue.Configuration
+                    AccountAccessIssue.SecureStorage -> PurchaseIssue.Storage
+                    AccountAccessIssue.InvalidCredentials -> PurchaseIssue.SignInRequired
+                    else -> PurchaseIssue.Unavailable
                 }
-            if (issue == TelecomIssue.SignInRequired && captured != null) {
+            if (issue == PurchaseIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
-            throw TelecomFailure(issue, failure)
+            throw PurchaseFailure(issue, failure)
         } catch (failure: WalletFailure) {
             val issue =
                 when (failure.issue) {
-                    WalletIssue.Missing -> TelecomIssue.WalletMissing
-                    WalletIssue.InvalidSession -> TelecomIssue.SignInRequired
-                    WalletIssue.Network -> TelecomIssue.Network
-                    WalletIssue.Configuration -> TelecomIssue.Configuration
-                    WalletIssue.InvalidResponse -> TelecomIssue.InvalidResponse
-                    WalletIssue.Unavailable -> TelecomIssue.WalletUnavailable
+                    WalletIssue.Missing -> PurchaseIssue.WalletMissing
+                    WalletIssue.InvalidSession -> PurchaseIssue.SignInRequired
+                    WalletIssue.Network -> PurchaseIssue.Network
+                    WalletIssue.Configuration -> PurchaseIssue.Configuration
+                    WalletIssue.InvalidResponse -> PurchaseIssue.InvalidResponse
+                    WalletIssue.Unavailable -> PurchaseIssue.WalletUnavailable
                 }
-            if (issue == TelecomIssue.SignInRequired && captured != null) {
+            if (issue == PurchaseIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
-            throw TelecomFailure(issue, failure)
-        } catch (failure: TelecomFailure) {
-            if (failure.issue == TelecomIssue.SignInRequired && captured != null) {
+            throw PurchaseFailure(issue, failure)
+        } catch (failure: PurchaseFailure) {
+            if (failure.issue == PurchaseIssue.SignInRequired && captured != null) {
                 sessions.clear(captured)
             }
             throw failure
         } catch (failure: Exception) {
-            throw TelecomFailure(TelecomIssue.Unavailable, failure)
+            throw PurchaseFailure(PurchaseIssue.Unavailable, failure)
         }
     }
 
@@ -334,7 +336,7 @@ class TelecomPurchases(
         val current = sessions.read()
         currentCoroutineContext().ensureActive()
         if (current != access.session || access.session.expiresAt <= clock.instant()) {
-            throw TelecomFailure(TelecomIssue.SessionChanged)
+            throw PurchaseFailure(PurchaseIssue.SessionChanged)
         }
     }
 }

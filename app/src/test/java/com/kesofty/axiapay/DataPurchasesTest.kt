@@ -1,9 +1,9 @@
 package com.kesofty.axiapay
 
 import androidx.lifecycle.ViewModelStore
-import com.kesofty.axiapay.application.telecom.PrepareTelecom
-import com.kesofty.axiapay.domain.telecom.*
-import com.kesofty.axiapay.presentation.telecom.*
+import com.kesofty.axiapay.application.purchases.PreparePurchase
+import com.kesofty.axiapay.domain.purchases.*
+import com.kesofty.axiapay.presentation.purchases.*
 import java.util.Optional
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -34,7 +34,7 @@ class DataPurchasesTest {
      * A published plan has exact server pricing, allowance and duration, never demo catalogue IDs.
      */
     private fun fixture() =
-        TelecomFixture().apply {
+        PurchaseFixture().apply {
             val plan =
                 api.product.copy(
                     id = "123e4567-e89b-42d3-a456-426614174020",
@@ -43,7 +43,7 @@ class DataPurchasesTest {
                     minimumMinorUnits = 125050.toBigInteger(),
                     maximumMinorUnits = 125050.toBigInteger(),
                     stepMinorUnits = 1.toBigInteger(),
-                    service = TelecomService.Data,
+                    service = PurchaseService.Data,
                     allowanceLabel = "1 GB",
                     validitySeconds = 2592000,
                 )
@@ -62,23 +62,23 @@ class DataPurchasesTest {
         }
 
     /** Prepare a fixed plan once: the selected product determines price, not entered text. */
-    private fun input(f: TelecomFixture) =
-        requireNotNull(PrepareTelecom()(f.api.catalogue.first(), "0801 234-5678", "999999").input)
+    private fun input(f: PurchaseFixture) =
+        requireNotNull(PreparePurchase()(f.api.catalogue.first(), "0801 234-5678", "999999").input)
 
     /** Construct the actual reducer/workflow with a test lifecycle owner. */
-    private fun vm(f: TelecomFixture) =
-        TelecomViewModel(Optional.of(f.workflow), PrepareTelecom(), f.clock).also {
+    private fun vm(f: PurchaseFixture) =
+        PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
             owners.put("data", it)
         }
 
     /** Select the explicit network and plan and obtain server review without spending. */
-    private fun review(vm: TelecomViewModel, f: TelecomFixture) {
-        vm.accept(TelecomIntent.Bind(f.accountId, "visit", TelecomService.Data))
-        vm.accept(TelecomIntent.SelectNetwork("mtn"))
-        vm.accept(TelecomIntent.SelectProduct(f.api.catalogue.first().id))
-        vm.accept(TelecomIntent.EditRecipient("08012345678"))
-        vm.accept(TelecomIntent.Review)
-        assertEquals(TelecomScreen.Review, vm.uiState.value.screen)
+    private fun review(vm: PurchaseViewModel, f: PurchaseFixture) {
+        vm.accept(PurchaseIntent.Bind(f.accountId, "visit", PurchaseService.Data))
+        vm.accept(PurchaseIntent.SelectProvider("mtn"))
+        vm.accept(PurchaseIntent.SelectProduct(f.api.catalogue.first().id))
+        vm.accept(PurchaseIntent.EditRecipient("08012345678"))
+        vm.accept(PurchaseIntent.Review)
+        assertEquals(PurchaseScreen.Review, vm.uiState.value.screen)
     }
 
     /**
@@ -87,18 +87,18 @@ class DataPurchasesTest {
     @Test
     fun fixedPlanReviewUsesOwnedWalletAndPublishedTerms() = runTest {
         val f = fixture()
-        val context = f.workflow.load(f.accountId, TelecomService.Data)
-        assertEquals(TelecomService.Data, f.api.requestedService)
+        val context = f.workflow.load(f.accountId, PurchaseService.Data)
+        assertEquals(PurchaseService.Data, f.api.requestedService)
         assertEquals(listOf(f.api.catalogue.first()), context.products)
         val prepared = input(f)
         assertNull(prepared.amountMinorUnits)
-        assertEquals(TelecomService.Data, prepared.service)
+        assertEquals(PurchaseService.Data, prepared.service)
         val reviewed = f.workflow.review(f.accountId, prepared)
         assertEquals(f.wallets.wallet.id, f.api.quoteWallet)
         assertEquals("125050", reviewed.quote.principalMinorUnits.toString())
         assertEquals("1 GB", reviewed.quote.allowanceLabel)
         assertEquals(2592000L, reviewed.quote.validitySeconds)
-        assertEquals(TelecomService.Data, reviewed.request.service)
+        assertEquals(PurchaseService.Data, reviewed.request.service)
         assertTrue(f.api.submissions.isEmpty())
     }
 
@@ -110,18 +110,21 @@ class DataPurchasesTest {
         val airtime =
             data.copy(
                 requestKey = "123e4567-e89b-42d3-a456-426614174022",
-                service = TelecomService.Airtime,
+                service = PurchaseService.Airtime,
             )
         val foreign =
             data.copy(owner = data.owner.copy(accountId = "123e4567-e89b-42d3-a456-426614174099"))
         f.store.records = listOf(data, airtime, foreign)
-        assertEquals(listOf(data), f.workflow.load(f.accountId, TelecomService.Data).requests)
-        assertEquals(listOf(airtime), f.workflow.load(f.accountId, TelecomService.Airtime).requests)
-        f.api.status = TelecomPaymentStatus.Succeeded
+        assertEquals(listOf(data), f.workflow.load(f.accountId, PurchaseService.Data).requests)
+        assertEquals(
+            listOf(airtime),
+            f.workflow.load(f.accountId, PurchaseService.Airtime).requests,
+        )
+        f.api.status = PurchasePaymentStatus.Succeeded
         f.api.observed =
-            f.api.payment(data).copy(quote = f.api.quoted.copy(service = TelecomService.Airtime))
-        failure(TelecomIssue.InvalidResponse) { f.workflow.recover(f.accountId, data) }
-        failure(TelecomIssue.InvalidResponse) { f.workflow.reconcile(f.accountId, data) }
+            f.api.payment(data).copy(quote = f.api.quoted.copy(service = PurchaseService.Airtime))
+        failure(PurchaseIssue.InvalidResponse) { f.workflow.recover(f.accountId, data) }
+        failure(PurchaseIssue.InvalidResponse) { f.workflow.reconcile(f.accountId, data) }
         assertEquals(0, f.api.reconciles)
         assertTrue(f.api.submissions.isEmpty())
     }
@@ -131,14 +134,14 @@ class DataPurchasesTest {
     fun quoteAndRequestServiceMustMatchBeforeSubmission() = runTest {
         val f = fixture()
         val reviewed = f.workflow.review(f.accountId, input(f))
-        failure(TelecomIssue.InvalidResponse) {
+        failure(PurchaseIssue.InvalidResponse) {
             f.workflow.submit(
                 f.accountId,
-                reviewed.copy(request = reviewed.request.copy(service = TelecomService.Airtime)),
+                reviewed.copy(request = reviewed.request.copy(service = PurchaseService.Airtime)),
             )
         }
-        f.api.quoted = f.api.quoted.copy(service = TelecomService.Airtime)
-        failure(TelecomIssue.InvalidResponse) { f.workflow.review(f.accountId, input(f)) }
+        f.api.quoted = f.api.quoted.copy(service = PurchaseService.Airtime)
+        failure(PurchaseIssue.InvalidResponse) { f.workflow.review(f.accountId, input(f)) }
         assertTrue(f.api.submissions.isEmpty())
         assertTrue(f.store.records.isEmpty())
     }
@@ -150,19 +153,19 @@ class DataPurchasesTest {
     fun uncertainDataPurchaseKeepsOriginalKeyAndRecoveryDuringOutages() = runTest {
         val f = fixture()
         val review = f.workflow.review(f.accountId, input(f))
-        f.api.submitFailure = TelecomIssue.Network
+        f.api.submitFailure = PurchaseIssue.Network
         assertNull(f.workflow.submit(f.accountId, review).payment)
-        f.api.catalogueFailure = TelecomIssue.Unavailable
+        f.api.catalogueFailure = PurchaseIssue.Unavailable
         assertEquals(
             listOf(review.request),
-            f.workflow.load(f.accountId, TelecomService.Data).requests,
+            f.workflow.load(f.accountId, PurchaseService.Data).requests,
         )
-        assertEquals(TelecomIssue.NotFound, f.workflow.recover(f.accountId, review.request).issue)
+        assertEquals(PurchaseIssue.NotFound, f.workflow.recover(f.accountId, review.request).issue)
         assertEquals(1, f.api.submissions.size)
         f.api.submitFailure = null
-        f.api.status = TelecomPaymentStatus.Succeeded
+        f.api.status = PurchasePaymentStatus.Succeeded
         val result = f.workflow.retrySubmission(f.accountId, review.request)
-        assertEquals(TelecomService.Data, result.payment?.quote?.service)
+        assertEquals(PurchaseService.Data, result.payment?.quote?.service)
         assertEquals(listOf(review.request, review.request), f.api.submissions)
         f.workflow.acknowledge(result)
         assertTrue(f.store.records.single().acknowledged)
@@ -177,23 +180,23 @@ class DataPurchasesTest {
             val second =
                 f.api.catalogue
                     .first()
-                    .copy(id = "123e4567-e89b-42d3-a456-426614174023", networkCode = "airtel")
+                    .copy(id = "123e4567-e89b-42d3-a456-426614174023", providerCode = "airtel")
             f.api.catalogue = f.api.catalogue + second
             val vm = vm(f)
-            vm.accept(TelecomIntent.Bind(f.accountId, "visit", TelecomService.Data))
-            vm.accept(TelecomIntent.SelectProduct(f.api.catalogue.first().id))
+            vm.accept(PurchaseIntent.Bind(f.accountId, "visit", PurchaseService.Data))
+            vm.accept(PurchaseIntent.SelectProduct(f.api.catalogue.first().id))
             assertNull(vm.uiState.value.selectedProduct)
-            vm.accept(TelecomIntent.SelectNetwork("mtn"))
-            vm.accept(TelecomIntent.SelectProduct(f.api.catalogue.first().id))
-            vm.accept(TelecomIntent.EditRecipient("08012345678"))
+            vm.accept(PurchaseIntent.SelectProvider("mtn"))
+            vm.accept(PurchaseIntent.SelectProduct(f.api.catalogue.first().id))
+            vm.accept(PurchaseIntent.EditRecipient("08012345678"))
             assertNotNull(vm.uiState.value.prepared)
-            vm.accept(TelecomIntent.SelectNetwork("mtn"))
+            vm.accept(PurchaseIntent.SelectProvider("mtn"))
             assertNotNull(vm.uiState.value.prepared)
-            vm.accept(TelecomIntent.SelectNetwork("airtel"))
+            vm.accept(PurchaseIntent.SelectProvider("airtel"))
             assertNull(vm.uiState.value.selectedProduct)
             assertNull(vm.uiState.value.prepared)
-            vm.accept(TelecomIntent.SelectProduct(f.api.catalogue.first().id))
-            vm.accept(TelecomIntent.Review)
+            vm.accept(PurchaseIntent.SelectProduct(f.api.catalogue.first().id))
+            vm.accept(PurchaseIntent.Review)
             assertEquals(0, f.api.quoteCalls)
             assertEquals(listOf(second), vm.uiState.value.visibleProducts)
         } finally {
@@ -208,18 +211,18 @@ class DataPurchasesTest {
             val f = fixture()
             val vm = vm(f)
             f.api.quoteGate = CompletableDeferred()
-            vm.accept(TelecomIntent.Bind(f.accountId, "same", TelecomService.Data))
-            vm.accept(TelecomIntent.SelectNetwork("mtn"))
-            vm.accept(TelecomIntent.SelectProduct(f.api.catalogue.first().id))
-            vm.accept(TelecomIntent.EditRecipient("08012345678"))
-            vm.accept(TelecomIntent.Review)
-            vm.accept(TelecomIntent.Bind(f.accountId, "same", TelecomService.Airtime))
+            vm.accept(PurchaseIntent.Bind(f.accountId, "same", PurchaseService.Data))
+            vm.accept(PurchaseIntent.SelectProvider("mtn"))
+            vm.accept(PurchaseIntent.SelectProduct(f.api.catalogue.first().id))
+            vm.accept(PurchaseIntent.EditRecipient("08012345678"))
+            vm.accept(PurchaseIntent.Review)
+            vm.accept(PurchaseIntent.Bind(f.accountId, "same", PurchaseService.Airtime))
             f.api.quoteGate!!.complete(Unit)
-            assertEquals(TelecomService.Airtime, vm.uiState.value.service)
-            assertEquals(TelecomScreen.Form, vm.uiState.value.screen)
+            assertEquals(PurchaseService.Airtime, vm.uiState.value.service)
+            assertEquals(PurchaseScreen.Form, vm.uiState.value.screen)
             assertEquals("", vm.uiState.value.recipient)
             assertNull(vm.uiState.value.review)
-            assertNull(vm.uiState.value.forScope(f.accountId, "same", TelecomService.Data).context)
+            assertNull(vm.uiState.value.forScope(f.accountId, "same", PurchaseService.Data).context)
             assertTrue(f.api.submissions.isEmpty())
         } finally {
             owners.clear()
@@ -232,21 +235,21 @@ class DataPurchasesTest {
         try {
             val f = fixture()
             val vm = vm(f)
-            val effects = mutableListOf<TelecomEffect>()
+            val effects = mutableListOf<PurchaseEffect>()
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
                 vm.effects.collect { effects += it }
             }
             review(vm, f)
             f.api.submitGate = CompletableDeferred()
-            vm.accept(TelecomIntent.Confirm)
-            vm.accept(TelecomIntent.Confirm)
+            vm.accept(PurchaseIntent.Confirm)
+            vm.accept(PurchaseIntent.Confirm)
             assertEquals(1, f.api.submissions.size)
             f.api.submitGate!!.complete(Unit)
-            assertTrue(effects.contains(TelecomEffect.RefreshWallet(f.accountId)))
-            assertEquals(TelecomPaymentStatus.Pending, vm.uiState.value.progress?.payment?.status)
-            vm.accept(TelecomIntent.Bind(null, null))
-            vm.accept(TelecomIntent.Bind(f.accountId, "new", TelecomService.Data))
-            assertEquals(TelecomScreen.History, vm.uiState.value.screen)
+            assertTrue(effects.contains(PurchaseEffect.RefreshWallet(f.accountId)))
+            assertEquals(PurchasePaymentStatus.Pending, vm.uiState.value.progress?.payment?.status)
+            vm.accept(PurchaseIntent.Bind(null, null))
+            vm.accept(PurchaseIntent.Bind(f.accountId, "new", PurchaseService.Data))
+            assertEquals(PurchaseScreen.History, vm.uiState.value.screen)
             assertEquals(1, f.api.submissions.size)
             assertEquals(0, f.api.reconciles)
         } finally {
@@ -255,11 +258,11 @@ class DataPurchasesTest {
     }
 
     /** Known classifications remain distinct without exposing provider bodies. */
-    private suspend fun failure(expected: TelecomIssue, operation: suspend () -> Any?) {
+    private suspend fun failure(expected: PurchaseIssue, operation: suspend () -> Any?) {
         try {
             operation()
             fail("Expected $expected")
-        } catch (failure: TelecomFailure) {
+        } catch (failure: PurchaseFailure) {
             assertEquals(expected, failure.issue)
         }
     }

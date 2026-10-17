@@ -1,11 +1,11 @@
-package com.kesofty.axiapay.presentation.telecom
+package com.kesofty.axiapay.presentation.purchases
 
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kesofty.axiapay.application.telecom.PrepareTelecom
-import com.kesofty.axiapay.application.telecom.TelecomPurchases
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.application.purchases.PreparePurchase
+import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.domain.purchases.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.Duration
@@ -27,17 +27,17 @@ import kotlinx.coroutines.launch
  * recovery without replaying a command on recreation, restoration or reconnect.
  */
 @HiltViewModel
-class TelecomViewModel
+class PurchaseViewModel
 @Inject
 constructor(
-    feature: Optional<TelecomPurchases>,
-    private val prepare: PrepareTelecom,
+    feature: Optional<WalletPurchases>,
+    private val prepare: PreparePurchase,
     private val clock: Clock,
 ) : ViewModel() {
     private val purchases = feature.orElse(null)
-    private val mutableState = MutableStateFlow(TelecomUiState(enabled = purchases != null))
+    private val mutableState = MutableStateFlow(PurchaseUiState(enabled = purchases != null))
     val uiState = mutableState.asStateFlow()
-    private val effectChannel = Channel<TelecomEffect>(Channel.BUFFERED)
+    private val effectChannel = Channel<PurchaseEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
     private var action: Job? = null
     private var ticker: Job? = null
@@ -45,11 +45,11 @@ constructor(
 
     /** Keep one operation per visit; Views emit intents and never mutate the render snapshot. */
     @MainThread
-    fun accept(intent: TelecomIntent) {
+    fun accept(intent: PurchaseIntent) {
         if (purchases == null) {
             return
         }
-        if (intent is TelecomIntent.Bind) {
+        if (intent is PurchaseIntent.Bind) {
             bind(intent)
             return
         }
@@ -58,35 +58,35 @@ constructor(
             return
         }
         when (intent) {
-            TelecomIntent.Reload -> load()
-            is TelecomIntent.SelectNetwork -> selectNetwork(intent.code)
-            is TelecomIntent.SelectProduct -> selectProduct(intent.id)
-            is TelecomIntent.EditRecipient -> editForm { copy(recipient = intent.value.take(40)) }
-            is TelecomIntent.EditAmount -> editForm { copy(amount = intent.value.take(20)) }
-            TelecomIntent.Review -> review()
-            TelecomIntent.Edit -> {
+            PurchaseIntent.Reload -> load()
+            is PurchaseIntent.SelectProvider -> selectProvider(intent.code)
+            is PurchaseIntent.SelectProduct -> selectProduct(intent.id)
+            is PurchaseIntent.EditRecipient -> editForm { copy(recipient = intent.value.take(40)) }
+            is PurchaseIntent.EditAmount -> editForm { copy(amount = intent.value.take(20)) }
+            PurchaseIntent.Review -> review()
+            PurchaseIntent.Edit -> {
                 ticker?.cancel()
                 mutableState.value =
-                    state.copy(screen = TelecomScreen.Form, review = null, issue = null)
+                    state.copy(screen = PurchaseScreen.Form, review = null, issue = null)
             }
-            TelecomIntent.Confirm -> confirm()
-            TelecomIntent.History ->
-                mutableState.value = state.copy(screen = TelecomScreen.History, issue = null)
-            TelecomIntent.NewPurchase -> newPurchase()
-            is TelecomIntent.CheckSaved -> {
+            PurchaseIntent.Confirm -> confirm()
+            PurchaseIntent.History ->
+                mutableState.value = state.copy(screen = PurchaseScreen.History, issue = null)
+            PurchaseIntent.NewPurchase -> newPurchase()
+            is PurchaseIntent.CheckSaved -> {
                 val request =
                     state.context?.requests?.find { it.requestKey == intent.requestKey } ?: return
                 progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
             }
-            TelecomIntent.CheckStatus -> {
+            PurchaseIntent.CheckStatus -> {
                 val request = state.progress?.request ?: return
                 progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
             }
-            TelecomIntent.Reconcile -> {
+            PurchaseIntent.Reconcile -> {
                 val current = state.progress ?: return
                 if (
                     current.payment?.status !in
-                        setOf(TelecomPaymentStatus.Pending, TelecomPaymentStatus.Reserved)
+                        setOf(PurchasePaymentStatus.Pending, PurchasePaymentStatus.Reserved)
                 ) {
                     return
                 }
@@ -94,12 +94,12 @@ constructor(
                     purchases.reconcile(state.accountId, current.request)
                 }
             }
-            TelecomIntent.RetrySubmission -> {
+            PurchaseIntent.RetrySubmission -> {
                 val current = state.progress ?: return
                 if (
                     current.payment?.isFinal == true ||
                         current.payment?.status in
-                            setOf(TelecomPaymentStatus.Pending, TelecomPaymentStatus.Reserved)
+                            setOf(PurchasePaymentStatus.Pending, PurchasePaymentStatus.Reserved)
                 ) {
                     return
                 }
@@ -107,14 +107,14 @@ constructor(
                     purchases.retrySubmission(state.accountId, current.request)
                 }
             }
-            TelecomIntent.Done -> acknowledge()
-            is TelecomIntent.Bind -> Unit
+            PurchaseIntent.Done -> acknowledge()
+            is PurchaseIntent.Bind -> Unit
         }
     }
 
     /** Reject queued closure after the same retained navigation ID has been reopened. */
     @MainThread
-    fun isCurrentClose(effect: TelecomEffect.Close): Boolean =
+    fun isCurrentClose(effect: PurchaseEffect.Close): Boolean =
         effect.visit == visit &&
             effect.accountId == mutableState.value.accountId &&
             effect.routeId == mutableState.value.routeId
@@ -123,7 +123,7 @@ constructor(
      * Drop transient personal data immediately when an account or sheet changes; new bindings read
      * only.
      */
-    private fun bind(intent: TelecomIntent.Bind) {
+    private fun bind(intent: PurchaseIntent.Bind) {
         val state = mutableState.value
         if (
             state.accountId == intent.accountId &&
@@ -137,13 +137,19 @@ constructor(
         ticker?.cancel()
         val screen =
             when {
-                intent.routeId == null -> TelecomScreen.Hidden
-                intent.accountId == null -> TelecomScreen.SignIn
-                else -> TelecomScreen.Loading
+                intent.routeId == null -> PurchaseScreen.Hidden
+                intent.accountId == null -> PurchaseScreen.SignIn
+                else -> PurchaseScreen.Loading
             }
         mutableState.value =
-            TelecomUiState(true, intent.accountId, intent.routeId, screen, service = intent.service)
-        if (screen == TelecomScreen.Loading) {
+            PurchaseUiState(
+                true,
+                intent.accountId,
+                intent.routeId,
+                screen,
+                service = intent.service,
+            )
+        if (screen == PurchaseScreen.Loading) {
             load()
         }
     }
@@ -157,16 +163,16 @@ constructor(
     }
 
     /** Data network selection clears the previous plan so a hidden plan cannot be purchased. */
-    private fun selectNetwork(code: String) {
+    private fun selectProvider(code: String) {
         val state = mutableState.value
         if (
-            state.service != TelecomService.Data ||
-                code !in state.networks ||
-                state.selectedNetworkCode == code
+            state.service != PurchaseService.Data ||
+                code !in state.providers ||
+                state.selectedProviderCode == code
         ) {
             return
         }
-        editForm { copy(selectedNetworkCode = code, selectedProductId = null, amount = "") }
+        editForm { copy(selectedProviderCode = code, selectedProductId = null, amount = "") }
     }
 
     /** Only a visible catalogue product from this visit can be selected. */
@@ -181,9 +187,9 @@ constructor(
      * Prepare changed input once; selected API constraints provide feedback while the server
      * remains authoritative.
      */
-    private fun editForm(update: TelecomUiState.() -> TelecomUiState) {
+    private fun editForm(update: PurchaseUiState.() -> PurchaseUiState) {
         val state = mutableState.value
-        if (state.screen != TelecomScreen.Form) {
+        if (state.screen != PurchaseScreen.Form) {
             return
         }
         val changed = state.update().copy(issue = null)
@@ -197,7 +203,7 @@ constructor(
         val input = state.prepared ?: return
         val owner = state.accountId ?: return
         val workflow = purchases ?: return
-        if (state.screen != TelecomScreen.Form) {
+        if (state.screen != PurchaseScreen.Form) {
             return
         }
         execute { ActionResult.Reviewed(workflow.review(owner, input)) }
@@ -213,7 +219,7 @@ constructor(
         val owner = state.accountId ?: return
         val workflow = purchases ?: return
         if (
-            state.screen != TelecomScreen.Review ||
+            state.screen != PurchaseScreen.Review ||
                 state.secondsRemaining == 0L ||
                 !reviewed.quote.isSubmissionAvailable
         ) {
@@ -226,7 +232,10 @@ constructor(
      * Publish observed or explicitly unconfirmed progress; errors never invent successful or failed
      * delivery.
      */
-    private fun progress(refreshWallet: Boolean = false, operation: suspend () -> TelecomProgress) {
+    private fun progress(
+        refreshWallet: Boolean = false,
+        operation: suspend () -> PurchaseProgress,
+    ) {
         execute(refreshWallet) { ActionResult.Observed(operation()) }
     }
 
@@ -239,11 +248,11 @@ constructor(
         }
         ticker?.cancel()
         mutableState.value =
-            TelecomUiState(
+            PurchaseUiState(
                 true,
                 state.accountId,
                 state.routeId,
-                TelecomScreen.Form,
+                PurchaseScreen.Form,
                 state.context,
                 service = state.service,
             )
@@ -269,13 +278,13 @@ constructor(
     /** IO produces typed results; only the owning visit may reduce them into state/effects. */
     private sealed interface ActionResult {
         /** Fresh owned display data and saved receipt/recovery references. */
-        data class Loaded(val context: TelecomContext) : ActionResult
+        data class Loaded(val context: PurchaseContext) : ActionResult
 
         /** Immutable server review ready for explicit consent. */
-        data class Reviewed(val review: TelecomReview) : ActionResult
+        data class Reviewed(val review: PurchaseReview) : ActionResult
 
         /** Correlated server progress or an honest uncertain result. */
-        data class Observed(val progress: TelecomProgress) : ActionResult
+        data class Observed(val progress: PurchaseProgress) : ActionResult
 
         /** Local terminal receipt acknowledgement completed. */
         data object Acknowledged : ActionResult
@@ -298,13 +307,13 @@ constructor(
                                 result.context.requests.any { !it.acknowledged } ||
                                     result.context.wallet == null
                             )
-                                TelecomScreen.History
-                            else TelecomScreen.Form,
+                                PurchaseScreen.History
+                            else PurchaseScreen.Form,
                     )
             is ActionResult.Reviewed -> {
                 mutableState.value =
                     state.copy(
-                        screen = TelecomScreen.Review,
+                        screen = PurchaseScreen.Review,
                         review = result.review,
                         secondsRemaining = remaining(result.review.quote),
                     )
@@ -320,7 +329,7 @@ constructor(
                     } + progress.request
                 mutableState.value =
                     state.copy(
-                        screen = TelecomScreen.Progress,
+                        screen = PurchaseScreen.Progress,
                         progress = progress,
                         review = null,
                         context =
@@ -329,7 +338,7 @@ constructor(
             }
             ActionResult.Acknowledged ->
                 effectChannel.trySend(
-                    TelecomEffect.Close(
+                    PurchaseEffect.Close(
                         requireNotNull(state.accountId),
                         requireNotNull(state.routeId),
                         visit,
@@ -341,7 +350,7 @@ constructor(
     /**
      * A quote can survive uncertainty only for the exact saved/reviewed request that supplied it.
      */
-    private fun retainedQuote(state: TelecomUiState, request: TelecomRequest): TelecomQuote? {
+    private fun retainedQuote(state: PurchaseUiState, request: PurchaseRequest): PurchaseQuote? {
         val progressQuote = state.progress?.takeIf { it.request == request }?.quote
         val reviewQuote = state.review?.takeIf { it.request == request }?.quote
         return (progressQuote ?: reviewQuote)?.takeIf {
@@ -374,14 +383,14 @@ constructor(
                 if (origin != visit) {
                     return@launch
                 }
-                val issue = (failure as? TelecomFailure)?.issue ?: TelecomIssue.Unavailable
+                val issue = (failure as? PurchaseFailure)?.issue ?: PurchaseIssue.Unavailable
                 val invalidSession =
-                    issue in setOf(TelecomIssue.SignInRequired, TelecomIssue.SessionChanged)
+                    issue in setOf(PurchaseIssue.SignInRequired, PurchaseIssue.SessionChanged)
                 refreshAccountWallet = refreshAccountWallet || invalidSession
                 val screen =
                     when {
-                        invalidSession -> TelecomScreen.SignIn
-                        mutableState.value.context == null -> TelecomScreen.LoadFailure
+                        invalidSession -> PurchaseScreen.SignIn
+                        mutableState.value.context == null -> PurchaseScreen.LoadFailure
                         else -> mutableState.value.screen
                     }
                 mutableState.value = mutableState.value.copy(issue = issue, screen = screen)
@@ -400,7 +409,7 @@ constructor(
             mutableState.value = mutableState.value.copy(isProcessing = false)
         }
         if (refreshWallet) {
-            effectChannel.trySend(TelecomEffect.RefreshWallet(owner))
+            effectChannel.trySend(PurchaseEffect.RefreshWallet(owner))
         }
     }
 
@@ -408,7 +417,7 @@ constructor(
     private fun startTicker() {
         ticker?.cancel()
         ticker = viewModelScope.launch {
-            while (mutableState.value.screen == TelecomScreen.Review) {
+            while (mutableState.value.screen == PurchaseScreen.Review) {
                 val quote = mutableState.value.review?.quote ?: return@launch
                 mutableState.value = mutableState.value.copy(secondsRemaining = remaining(quote))
                 delay(1000)
@@ -420,6 +429,6 @@ constructor(
      * Conservatively disable confirmation during the last fractional second; API expiry remains
      * authoritative.
      */
-    private fun remaining(quote: TelecomQuote): Long =
+    private fun remaining(quote: PurchaseQuote): Long =
         Duration.between(clock.instant(), quote.expiresAt).seconds.coerceAtLeast(0)
 }

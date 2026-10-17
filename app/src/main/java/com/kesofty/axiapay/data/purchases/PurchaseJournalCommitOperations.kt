@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.data.telecom
+package com.kesofty.axiapay.data.purchases
 
 import android.system.Os
 import android.system.OsConstants
@@ -11,7 +11,7 @@ import java.nio.file.StandardCopyOption
  * Observable durability operations for the private recovery journal. Keeping this storage-only
  * boundary explicit permits sync/rename fault injection without changing workflow contracts.
  */
-internal interface TelecomJournalCommitOperations {
+internal interface PurchaseJournalCommitOperations {
     /** Persist staged bytes; failure must propagate before the committed file is replaced. */
     fun syncFile(stream: FileOutputStream)
 
@@ -25,7 +25,7 @@ internal interface TelecomJournalCommitOperations {
 }
 
 /** Android/POSIX commit operations propagate errors instead of logging a successful return. */
-internal object AndroidTelecomJournalCommitOperations : TelecomJournalCommitOperations {
+internal object AndroidPurchaseJournalCommitOperations : PurchaseJournalCommitOperations {
     /** FileDescriptor.sync throws on fsync failure; closing the stream remains the caller's job. */
     override fun syncFile(stream: FileOutputStream) {
         stream.fd.sync()

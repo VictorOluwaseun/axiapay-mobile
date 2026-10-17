@@ -1,8 +1,8 @@
 package com.kesofty.axiapay
 
 import androidx.test.platform.app.InstrumentationRegistry
-import com.kesofty.axiapay.data.telecom.AtomicTelecomRequestStore
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
+import com.kesofty.axiapay.domain.purchases.*
 import java.io.File
 import java.time.Instant
 import java.util.UUID
@@ -13,7 +13,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /** Exercises checked Android journal commits across independent store instances. */
-class TelecomRequestStorageTest {
+class PurchaseRequestStorageTest {
     /** Cold reads remain account/API-scoped, immutable, idempotent and free of financial bodies. */
     @Test
     fun durableReferencesRemainIsolatedAcrossOwnersAndColdInstances() = runBlocking {
@@ -23,18 +23,18 @@ class TelecomRequestStorageTest {
                 "test-journal-${UUID.randomUUID()}.json",
             )
         try {
-            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = PurchaseOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val request =
-                TelecomRequest(
+                PurchaseRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
                     Instant.now(),
                 )
-            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val store = AtomicPurchaseRequestStore(file, Dispatchers.IO)
             store.save(request)
             store.save(request)
-            val cold = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val cold = AtomicPurchaseRequestStore(file, Dispatchers.IO)
             assertEquals(listOf(request), cold.read(owner))
             assertTrue(cold.read(owner.copy(accountId = UUID.randomUUID().toString())).isEmpty())
             assertTrue(
@@ -51,8 +51,8 @@ class TelecomRequestStorageTest {
             try {
                 cold.save(request.copy(quoteId = UUID.randomUUID().toString()))
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.Storage, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.Storage, failure.issue)
             }
             assertEquals(earlier, file.readText())
         } finally {
@@ -71,10 +71,10 @@ class TelecomRequestStorageTest {
                 "test-journal-${UUID.randomUUID()}.json",
             )
         try {
-            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = PurchaseOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val records =
                 (0 until 200).map {
-                    TelecomRequest(
+                    PurchaseRequest(
                         owner,
                         UUID.randomUUID().toString(),
                         UUID.randomUUID().toString(),
@@ -94,9 +94,9 @@ class TelecomRequestStorageTest {
                 )
             }
             file.writeText(JSONObject().put("version", 1).put("requests", rows).toString())
-            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val store = AtomicPurchaseRequestStore(file, Dispatchers.IO)
             val next =
-                TelecomRequest(
+                PurchaseRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
@@ -105,8 +105,8 @@ class TelecomRequestStorageTest {
             try {
                 store.save(next)
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.Storage, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.Storage, failure.issue)
             }
             assertEquals(records, store.read(owner))
             store.acknowledge(records.first())
@@ -129,17 +129,17 @@ class TelecomRequestStorageTest {
             )
         try {
             file.writeText("damaged recovery journal")
-            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
-            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val store = AtomicPurchaseRequestStore(file, Dispatchers.IO)
+            val owner = PurchaseOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             try {
                 store.read(owner)
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.Storage, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.Storage, failure.issue)
             }
             try {
                 store.save(
-                    TelecomRequest(
+                    PurchaseRequest(
                         owner,
                         UUID.randomUUID().toString(),
                         UUID.randomUUID().toString(),
@@ -147,8 +147,8 @@ class TelecomRequestStorageTest {
                     ),
                 )
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.Storage, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.Storage, failure.issue)
             }
             assertEquals("damaged recovery journal", file.readText())
         } finally {
@@ -167,9 +167,9 @@ class TelecomRequestStorageTest {
                 "test-migration-${UUID.randomUUID()}.json",
             )
         try {
-            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = PurchaseOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val old =
-                TelecomRequest(
+                PurchaseRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
@@ -186,25 +186,25 @@ class TelecomRequestStorageTest {
             file.writeText(
                 JSONObject().put("version", 1).put("requests", JSONArray().put(row)).toString(),
             )
-            val store = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val store = AtomicPurchaseRequestStore(file, Dispatchers.IO)
             assertEquals(listOf(old), store.read(owner))
             try {
-                store.save(old.copy(service = TelecomService.Data))
+                store.save(old.copy(service = PurchaseService.Data))
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.Storage, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.Storage, failure.issue)
             }
             val data =
                 old.copy(
                     requestKey = UUID.randomUUID().toString(),
                     quoteId = UUID.randomUUID().toString(),
-                    service = TelecomService.Data,
+                    service = PurchaseService.Data,
                 )
             store.save(data)
             assertEquals(2, JSONObject(file.readText()).getInt("version"))
             assertEquals(
                 listOf(old, data),
-                AtomicTelecomRequestStore(file, Dispatchers.IO).read(owner),
+                AtomicPurchaseRequestStore(file, Dispatchers.IO).read(owner),
             )
             store.acknowledge(old)
             assertEquals(listOf(old.copy(acknowledged = true), data), store.read(owner))
@@ -226,31 +226,31 @@ class TelecomRequestStorageTest {
         val backup = File(file.path + ".bak")
         val staged = File(file.path + ".new")
         try {
-            val owner = TelecomOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
+            val owner = PurchaseOwner(UUID.randomUUID().toString(), "https://api.example.test/v1/")
             val earlier =
-                TelecomRequest(
+                PurchaseRequest(
                     owner,
                     UUID.randomUUID().toString(),
                     UUID.randomUUID().toString(),
                     Instant.now(),
                 )
-            AtomicTelecomRequestStore(file, Dispatchers.IO).save(earlier)
+            AtomicPurchaseRequestStore(file, Dispatchers.IO).save(earlier)
             file.copyTo(backup)
             file.writeText("interrupted legacy base")
             staged.writeText("uncommitted staging bytes")
-            val cold = AtomicTelecomRequestStore(file, Dispatchers.IO)
+            val cold = AtomicPurchaseRequestStore(file, Dispatchers.IO)
             assertEquals(listOf(earlier), cold.read(owner))
             assertFalse(backup.exists())
             val next =
                 earlier.copy(
                     requestKey = UUID.randomUUID().toString(),
                     quoteId = UUID.randomUUID().toString(),
-                    service = TelecomService.Data,
+                    service = PurchaseService.Data,
                 )
             cold.save(next)
             assertEquals(
                 listOf(earlier, next),
-                AtomicTelecomRequestStore(file, Dispatchers.IO).read(owner),
+                AtomicPurchaseRequestStore(file, Dispatchers.IO).read(owner),
             )
             assertFalse(staged.exists())
         } finally {

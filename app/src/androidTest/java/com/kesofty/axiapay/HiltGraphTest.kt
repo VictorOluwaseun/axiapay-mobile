@@ -5,13 +5,13 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.espresso.Espresso
 import com.kesofty.axiapay.domain.ConnectionMode
-import com.kesofty.axiapay.domain.telecom.TelecomService
+import com.kesofty.axiapay.domain.purchases.PurchaseService
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
-import com.kesofty.axiapay.presentation.telecom.TelecomIntent
-import com.kesofty.axiapay.presentation.telecom.TelecomScreen
-import com.kesofty.axiapay.presentation.telecom.TelecomViewModel
+import com.kesofty.axiapay.presentation.purchases.PurchaseIntent
+import com.kesofty.axiapay.presentation.purchases.PurchaseScreen
+import com.kesofty.axiapay.presentation.purchases.PurchaseViewModel
 import org.junit.Assert.*
 import org.junit.Assume
 import org.junit.Rule
@@ -25,11 +25,11 @@ class HiltGraphTest {
     @Test
     fun telecomCapabilityIsSelectedAtTheFlavorCompositionBoundary() {
         compose.runOnIdle {
-            val vm = ViewModelProvider(compose.activity)[TelecomViewModel::class.java]
+            val vm = ViewModelProvider(compose.activity)[PurchaseViewModel::class.java]
             assertEquals(BuildConfig.FLAVOR != "demo", vm.uiState.value.enabled)
-            vm.accept(TelecomIntent.Bind(null, "isolated-test-visit", TelecomService.Data))
+            vm.accept(PurchaseIntent.Bind(null, "isolated-test-visit", PurchaseService.Data))
             assertEquals(
-                if (BuildConfig.FLAVOR == "demo") TelecomScreen.Hidden else TelecomScreen.SignIn,
+                if (BuildConfig.FLAVOR == "demo") PurchaseScreen.Hidden else PurchaseScreen.SignIn,
                 vm.uiState.value.screen,
             )
         }
@@ -39,7 +39,7 @@ class HiltGraphTest {
      * Signed-out non-demo entry must render the live sign-in boundary instead of a demo purchase.
      */
     @Test
-    fun realTelecomEntriesCannotUseTheDemoLedgerWithoutSignIn() {
+    fun realPurchaseEntriesCannotUseTheDemoLedgerWithoutSignIn() {
         Assume.assumeTrue(BuildConfig.FLAVOR != "demo")
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
         for (service in listOf("Airtime", "Data")) {

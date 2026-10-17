@@ -18,12 +18,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.kesofty.axiapay.data.DemoSessionSeed
-import com.kesofty.axiapay.domain.telecom.TelecomService
+import com.kesofty.axiapay.domain.purchases.PurchaseService
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.presentation.auth.AuthIntent
 import com.kesofty.axiapay.presentation.auth.AuthScreen
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
-import com.kesofty.axiapay.presentation.telecom.*
+import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.auth.AuthScreen
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
         )
         val viewModel = ViewModelProvider(this)[AxiaViewModel::class.java]
         val authViewModel = ViewModelProvider(this)[AuthViewModel::class.java]
-        val telecomViewModel = ViewModelProvider(this)[TelecomViewModel::class.java]
+        val purchaseViewModel = ViewModelProvider(this)[PurchaseViewModel::class.java]
         setContent {
             DisposableEffect(lifecycle, authViewModel) {
                 val observer = LifecycleEventObserver { _, event ->
@@ -59,34 +59,34 @@ class MainActivity : ComponentActivity() {
             }
             val authState by authViewModel.uiState.collectAsStateWithLifecycle()
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val telecomState by telecomViewModel.uiState.collectAsStateWithLifecycle()
-            val telecomForm =
+            val purchaseState by purchaseViewModel.uiState.collectAsStateWithLifecycle()
+            val purchaseForm =
                 (state.navigation.sheet as? Sheet.Payment)?.form?.takeIf {
-                    it.isTelecomPurchaseEntry
+                    it.isWalletPurchaseEntry
                 }
-            val telecomService = telecomForm?.telecomService ?: TelecomService.Airtime
-            val telecomRouteId =
-                telecomForm?.requestId.takeIf {
+            val purchaseService = purchaseForm?.purchaseService ?: PurchaseService.Airtime
+            val purchaseRouteId =
+                purchaseForm?.requestId.takeIf {
                     authState.screen == AuthScreen.Dashboard &&
                         !state.isRestoring &&
                         !state.restorationFailed
                 }
-            val telecomAccountId =
+            val purchaseAccountId =
                 authState.account?.id.takeIf { authState.screen == AuthScreen.Dashboard }
-            LaunchedEffect(authState.screen, telecomAccountId, telecomRouteId, telecomService) {
+            LaunchedEffect(authState.screen, purchaseAccountId, purchaseRouteId, purchaseService) {
                 // Foreground verification hides the dashboard but retains its in-memory visit.
                 if (authState.screen in setOf(AuthScreen.Restoring, AuthScreen.SessionRecovery)) {
                     return@LaunchedEffect
                 }
-                telecomViewModel.accept(
-                    TelecomIntent.Bind(telecomAccountId, telecomRouteId, telecomService),
+                purchaseViewModel.accept(
+                    PurchaseIntent.Bind(purchaseAccountId, purchaseRouteId, purchaseService),
                 )
             }
-            LaunchedEffect(lifecycle, telecomViewModel) {
+            LaunchedEffect(lifecycle, purchaseViewModel) {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    telecomViewModel.effects.collect { effect ->
+                    purchaseViewModel.effects.collect { effect ->
                         when (effect) {
-                            is TelecomEffect.RefreshWallet -> {
+                            is PurchaseEffect.RefreshWallet -> {
                                 val ready =
                                     authViewModel.uiState.first {
                                         it.screen != AuthScreen.Restoring &&
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                                     authViewModel.accept(AuthIntent.RetryWallet)
                                 }
                             }
-                            is TelecomEffect.Close -> {
+                            is PurchaseEffect.Close -> {
                                 val route =
                                     (viewModel.uiState.value.navigation.sheet as? Sheet.Payment)
                                         ?.form
@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                                 if (
                                     authViewModel.uiState.value.account?.id == effect.accountId &&
                                         route == effect.routeId &&
-                                        telecomViewModel.isCurrentClose(effect)
+                                        purchaseViewModel.isCurrentClose(effect)
                                 ) {
                                     viewModel.accept(AxiaIntent.CloseSheet)
                                 }
@@ -121,13 +121,13 @@ class MainActivity : ComponentActivity() {
                             viewModel::accept,
                             homeWallet = authState.homeWallet,
                             onRefreshWallet = { authViewModel.accept(AuthIntent.RetryWallet) },
-                            telecom =
-                                telecomState
-                                    .forScope(telecomAccountId, telecomRouteId, telecomService)
+                            purchases =
+                                purchaseState
+                                    .forScope(purchaseAccountId, purchaseRouteId, purchaseService)
                                     .takeIf {
                                         it.enabled
                                     },
-                            onTelecomIntent = telecomViewModel::accept,
+                            onPurchaseIntent = purchaseViewModel::accept,
                             authShortcutLabel =
                                 if (authState.isDemo) null
                                 else

@@ -1,8 +1,8 @@
 package com.kesofty.axiapay
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.telecom.HttpTelecomRepository
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
+import com.kesofty.axiapay.domain.purchases.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -16,7 +16,7 @@ import org.junit.Before
 import org.junit.Test
 
 /** Validates the documented purchase contract over real HTTP with synthetic credentials only. */
-class HttpTelecomRepositoryTest {
+class HttpPurchaseRepositoryTest {
     private val server = MockWebServer()
     private val client =
         OkHttpClient.Builder()
@@ -24,15 +24,15 @@ class HttpTelecomRepositoryTest {
             .followRedirects(false)
             .callTimeout(3, TimeUnit.SECONDS)
             .build()
-    private lateinit var api: HttpTelecomRepository
-    private val f = TelecomFixture()
+    private lateinit var api: HttpPurchaseRepository
+    private val f = PurchaseFixture()
 
     /** Use the same uncached bounded transport as production against a loopback test server. */
     @Before
     fun start() {
         server.start()
         api =
-            HttpTelecomRepository(
+            HttpPurchaseRepository(
                 ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
             )
     }
@@ -82,9 +82,9 @@ class HttpTelecomRepositoryTest {
                 .put("serviceType", "airtime")
                 .put("allowanceLabel", JSONObject.NULL)
                 .put("validitySeconds", JSONObject.NULL)
-                .put("networkCode", q.networkCode)
+                .put("networkCode", q.providerCode)
                 .put("displayName", q.displayName)
-                .put("recipientPhoneNumber", q.recipientPhoneNumber)
+                .put("recipientPhoneNumber", q.recipientIdentifier)
                 .put("currency", q.currency)
                 .put("principalMinorUnits", "10000")
                 .put("feeMinorUnits", "100")
@@ -98,7 +98,7 @@ class HttpTelecomRepositoryTest {
     }
 
     /** Correlate status responses to the original stable key. */
-    private fun payment(request: TelecomRequest, status: String = "pending") =
+    private fun payment(request: PurchaseRequest, status: String = "pending") =
         JSONObject()
             .put("id", "123e4567-e89b-42d3-a456-426614174004")
             .put("requestKey", request.requestKey)
@@ -163,14 +163,14 @@ class HttpTelecomRepositoryTest {
         assertEquals(f.wallets.wallet.id, body.getString("walletId"))
         assertEquals("10000", body.get("amountMinorUnits"))
         val saved =
-            TelecomRequest(
-                TelecomOwner(f.accountId, api.apiIdentity),
+            PurchaseRequest(
+                PurchaseOwner(f.accountId, api.apiIdentity),
                 "123e4567-e89b-42d3-a456-426614174005",
                 quote.id,
                 f.now,
             )
         server.enqueue(response(200, payment(saved).toString()))
-        assertEquals(TelecomPaymentStatus.Pending, api.submit("synthetic-token", saved).status)
+        assertEquals(PurchasePaymentStatus.Pending, api.submit("synthetic-token", saved).status)
         val post = server.takeRequest()
         assertEquals("/v1/payments", post.target)
         val command = JSONObject(post.body!!.utf8())
@@ -184,8 +184,8 @@ class HttpTelecomRepositoryTest {
     @Test
     fun statusReadsAndExplicitReconciliationNeverUseANewSubmission() = runTest {
         val saved =
-            TelecomRequest(
-                TelecomOwner(f.accountId, api.apiIdentity),
+            PurchaseRequest(
+                PurchaseOwner(f.accountId, api.apiIdentity),
                 "123e4567-e89b-42d3-a456-426614174005",
                 f.api.quoted.id,
                 f.now,
@@ -194,7 +194,7 @@ class HttpTelecomRepositoryTest {
         for ((index, status) in statuses.withIndex()) {
             server.enqueue(response(200, payment(saved, status).toString()))
             val observed = requireNotNull(api.findByRequestKey("token", saved.requestKey))
-            assertEquals(TelecomPaymentStatus.entries[index], observed.status)
+            assertEquals(PurchasePaymentStatus.entries[index], observed.status)
             val request = server.takeRequest()
             assertEquals("GET", request.method)
             assertEquals(
@@ -218,10 +218,10 @@ class HttpTelecomRepositoryTest {
     fun safeErrorsAndMalformedMoneyNeverBecomeSuccess() = runTest {
         for ((status, code, issue) in
             listOf(
-                Triple(409, "QUOTE_EXPIRED", TelecomIssue.QuoteExpired),
-                Triple(409, "INSUFFICIENT_FUNDS", TelecomIssue.InsufficientFunds),
-                Triple(401, "UNAUTHORIZED", TelecomIssue.SignInRequired),
-                Triple(503, "PAYMENT_UNAVAILABLE", TelecomIssue.Unavailable),
+                Triple(409, "QUOTE_EXPIRED", PurchaseIssue.QuoteExpired),
+                Triple(409, "INSUFFICIENT_FUNDS", PurchaseIssue.InsufficientFunds),
+                Triple(401, "UNAUTHORIZED", PurchaseIssue.SignInRequired),
+                Triple(503, "PAYMENT_UNAVAILABLE", PurchaseIssue.Unavailable),
             )) {
             server.enqueue(
                 response(
@@ -235,7 +235,7 @@ class HttpTelecomRepositoryTest {
             try {
                 api.quote("secret", f.wallets.wallet.id, f.input)
                 fail()
-            } catch (failure: TelecomFailure) {
+            } catch (failure: PurchaseFailure) {
                 assertEquals(issue, failure.issue)
                 assertFalse(failure.toString().contains("private"))
             }
@@ -250,8 +250,8 @@ class HttpTelecomRepositoryTest {
             try {
                 api.quote("token", f.wallets.wallet.id, f.input)
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
             }
         }
         server.enqueue(response(404, "{}"))
@@ -291,7 +291,7 @@ class HttpTelecomRepositoryTest {
                     .toString(),
             ),
         )
-        val selected = api.products("synthetic-token", "NGN", TelecomService.Data).single()
+        val selected = api.products("synthetic-token", "NGN", PurchaseService.Data).single()
         assertEquals("125050", selected.fixedMinorUnits.toString())
         assertEquals("1 GB", selected.allowanceLabel)
         assertEquals(2592000L, selected.validitySeconds)
@@ -303,7 +303,7 @@ class HttpTelecomRepositoryTest {
         server.enqueue(response(201, review.toString()))
         val prepared =
             requireNotNull(
-                com.kesofty.axiapay.application.telecom.PrepareTelecom()(
+                com.kesofty.axiapay.application.purchases.PreparePurchase()(
                         selected,
                         "08012345678",
                         "ignored",
@@ -311,7 +311,7 @@ class HttpTelecomRepositoryTest {
                     .input,
             )
         val result = api.quote("synthetic-token", f.wallets.wallet.id, prepared)
-        assertEquals(TelecomService.Data, result.service)
+        assertEquals(PurchaseService.Data, result.service)
         assertEquals(2592000L, result.validitySeconds)
         val post = server.takeRequest()
         val body = JSONObject(post.body!!.utf8())
@@ -350,10 +350,10 @@ class HttpTelecomRepositoryTest {
                 ),
             )
             try {
-                api.products("token", "NGN", TelecomService.Data)
+                api.products("token", "NGN", PurchaseService.Data)
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
             }
         }
         assertEquals(9, server.requestCount)
@@ -370,10 +370,14 @@ class HttpTelecomRepositoryTest {
             )) {
             server.enqueue(response(201, invalid.toString()))
             try {
-                api.quote("token", f.wallets.wallet.id, f.input.copy(service = TelecomService.Data))
+                api.quote(
+                    "token",
+                    f.wallets.wallet.id,
+                    f.input.copy(service = PurchaseService.Data),
+                )
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
             }
             invalid.remove("isSubmissionAvailable")
             server.enqueue(
@@ -382,8 +386,8 @@ class HttpTelecomRepositoryTest {
             try {
                 api.findByRequestKey("token", saved.requestKey)
                 fail()
-            } catch (failure: TelecomFailure) {
-                assertEquals(TelecomIssue.InvalidResponse, failure.issue)
+            } catch (failure: PurchaseFailure) {
+                assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
             }
         }
         assertEquals(4, server.requestCount)

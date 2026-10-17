@@ -1,9 +1,9 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.application.telecom.TelecomPurchases
-import com.kesofty.axiapay.data.telecom.AtomicTelecomRequestStore
-import com.kesofty.axiapay.data.telecom.TelecomJournalCommitOperations
-import com.kesofty.axiapay.domain.telecom.*
+import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
+import com.kesofty.axiapay.data.purchases.PurchaseJournalCommitOperations
+import com.kesofty.axiapay.domain.purchases.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -20,7 +20,7 @@ import org.junit.rules.TemporaryFolder
 /**
  * Faults at actual journal commit boundaries must block POST while preserving earlier identities.
  */
-class TelecomJournalCommitTest {
+class PurchaseJournalCommitTest {
     @get:Rule val temporary = TemporaryFolder()
 
     /** Distinct failure points include a rename that succeeded before directory sync failed. */
@@ -34,7 +34,7 @@ class TelecomJournalCommitTest {
      * Use real JVM files, fsync and atomic replacement. Directory durability is verified by device
      * tests; this boundary injects failures and records protocol order without Android stubs.
      */
-    private class CommitOperations : TelecomJournalCommitOperations {
+    private class CommitOperations : PurchaseJournalCommitOperations {
         var failure: CommitStage? = null
         val calls = mutableListOf<CommitStage>()
 
@@ -92,10 +92,10 @@ class TelecomJournalCommitTest {
      * Exercise the real store and purchase workflow through failure, cold read and explicit retry.
      */
     private suspend fun exerciseFailure(stage: CommitStage) {
-        val f = TelecomFixture()
+        val f = PurchaseFixture()
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
-        val store = AtomicTelecomRequestStore(file, Dispatchers.IO, commits)
+        val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
         val review = f.workflow.review(f.accountId, f.input)
         val earlier =
             review.request.copy(
@@ -113,7 +113,7 @@ class TelecomJournalCommitTest {
                 else listOf(earlier)
             assertEquals(
                 expected,
-                AtomicTelecomRequestStore(file, Dispatchers.IO, CommitOperations())
+                AtomicPurchaseRequestStore(file, Dispatchers.IO, CommitOperations())
                     .read(review.request.owner),
             )
             assertFalse(File(file.path + ".new").exists())
@@ -121,7 +121,7 @@ class TelecomJournalCommitTest {
         commits.failure = null
         commits.calls.clear()
         assertEquals(
-            TelecomPaymentStatus.Pending,
+            PurchasePaymentStatus.Pending,
             workflow.submit(f.accountId, review).payment?.status,
         )
         assertEquals(
@@ -137,13 +137,13 @@ class TelecomJournalCommitTest {
      */
     @Test
     fun acknowledgementFailureRetainsReferencesAndRequiresCheckedRetry() = runTest {
-        val f = TelecomFixture()
+        val f = PurchaseFixture()
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
-        val store = AtomicTelecomRequestStore(file, Dispatchers.IO, commits)
+        val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
         val workflow = workflow(f, store)
         val review = workflow.review(f.accountId, f.input)
-        f.api.status = TelecomPaymentStatus.Succeeded
+        f.api.status = PurchasePaymentStatus.Succeeded
         val progress = workflow.submit(f.accountId, review)
         commits.failure = CommitStage.DirectorySync
         repeat(2) {
@@ -164,10 +164,10 @@ class TelecomJournalCommitTest {
      */
     @Test
     fun legacyBackupRecoveryPropagatesCommitFailures() = runTest {
-        val f = TelecomFixture()
+        val f = PurchaseFixture()
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
-        val store = AtomicTelecomRequestStore(file, Dispatchers.IO, commits)
+        val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
         val request = f.workflow.review(f.accountId, f.input).request
         store.save(request)
         val backup = File(file.path + ".bak")
@@ -185,8 +185,8 @@ class TelecomJournalCommitTest {
     }
 
     /** Compose the production workflow with the real journal and isolated remote ports. */
-    private fun workflow(f: TelecomFixture, store: TelecomRequestStore) =
-        TelecomPurchases(f.authentication, f.sessions, f.wallets, f.api, store, f.clock) {
+    private fun workflow(f: PurchaseFixture, store: PurchaseRequestStore) =
+        WalletPurchases(f.authentication, f.sessions, f.wallets, f.api, store, f.clock) {
             UUID.randomUUID().toString()
         }
 
@@ -195,8 +195,8 @@ class TelecomJournalCommitTest {
         try {
             operation()
             fail("Expected storage failure")
-        } catch (failure: TelecomFailure) {
-            assertEquals(TelecomIssue.Storage, failure.issue)
+        } catch (failure: PurchaseFailure) {
+            assertEquals(PurchaseIssue.Storage, failure.issue)
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.ui.telecom
+package com.kesofty.axiapay.ui.purchases
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -20,8 +20,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kesofty.axiapay.R
-import com.kesofty.axiapay.domain.telecom.*
-import com.kesofty.axiapay.presentation.telecom.*
+import com.kesofty.axiapay.domain.purchases.*
+import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.SheetContent
 import com.kesofty.axiapay.ui.SheetHeading
 import com.kesofty.axiapay.ui.components.*
@@ -37,18 +37,18 @@ import java.util.Locale
  * can trigger operations.
  */
 @Composable
-fun TelecomSheet(
-    state: TelecomUiState,
+fun PurchaseSheet(
+    state: PurchaseUiState,
     offline: Boolean,
     balanceHidden: Boolean,
-    onIntent: (TelecomIntent) -> Unit,
+    onIntent: (PurchaseIntent) -> Unit,
     onOpenAccount: () -> Unit,
 ) {
     SheetContent {
         IconTile(Glyph.Phone, tint = Mint)
         SheetHeading(
             stringResource(
-                if (state.service == TelecomService.Data) R.string.telecom_title_data
+                if (state.service == PurchaseService.Data) R.string.telecom_title_data
                 else R.string.telecom_title_airtime,
             ),
             stringResource(R.string.telecom_subtitle),
@@ -66,12 +66,12 @@ fun TelecomSheet(
         }
         state.issue?.let { Notice(it) }
         when (state.screen) {
-            TelecomScreen.Hidden,
-            TelecomScreen.Loading -> {
+            PurchaseScreen.Hidden,
+            PurchaseScreen.Loading -> {
                 Text(stringResource(R.string.telecom_loading), Modifier.testTag("telecom-loading"))
                 LinearProgressIndicator(Modifier.fillMaxWidth(), color = Pine, trackColor = Mint)
             }
-            TelecomScreen.SignIn -> {
+            PurchaseScreen.SignIn -> {
                 Text(stringResource(R.string.telecom_sign_in), Modifier.testTag("telecom-sign-in"))
                 PrimaryButton(
                     stringResource(R.string.telecom_sign_in_button),
@@ -79,18 +79,18 @@ fun TelecomSheet(
                     onClick = onOpenAccount,
                 )
             }
-            TelecomScreen.LoadFailure ->
+            PurchaseScreen.LoadFailure ->
                 PrimaryButton(
                     stringResource(R.string.telecom_retry_load),
                     Modifier.testTag("telecom-reload"),
                     !state.isProcessing,
                 ) {
-                    onIntent(TelecomIntent.Reload)
+                    onIntent(PurchaseIntent.Reload)
                 }
-            TelecomScreen.Form -> TelecomFields(state, offline, balanceHidden, onIntent)
-            TelecomScreen.Review -> TelecomReview(state, offline, onIntent)
-            TelecomScreen.History -> TelecomHistory(state, onIntent)
-            TelecomScreen.Progress -> TelecomProgress(state, offline, onIntent)
+            PurchaseScreen.Form -> PurchaseFields(state, offline, balanceHidden, onIntent)
+            PurchaseScreen.Review -> PurchaseReview(state, offline, onIntent)
+            PurchaseScreen.History -> PurchaseHistory(state, onIntent)
+            PurchaseScreen.Progress -> PurchaseProgress(state, offline, onIntent)
         }
     }
 }
@@ -100,17 +100,17 @@ fun TelecomSheet(
  * demo balances.
  */
 @Composable
-private fun ColumnScope.TelecomFields(
-    state: TelecomUiState,
+private fun ColumnScope.PurchaseFields(
+    state: PurchaseUiState,
     offline: Boolean,
     hidden: Boolean,
-    onIntent: (TelecomIntent) -> Unit,
+    onIntent: (PurchaseIntent) -> Unit,
 ) {
     val context = state.context ?: return
     val wallet = context.wallet
     if (wallet == null) {
         PrimaryButton(stringResource(R.string.telecom_retry_load), enabled = !state.isProcessing) {
-            onIntent(TelecomIntent.Reload)
+            onIntent(PurchaseIntent.Reload)
         }
         SavedPaymentsLink(state, onIntent)
         return
@@ -126,7 +126,7 @@ private fun ColumnScope.TelecomFields(
         style = MaterialTheme.typography.bodySmall,
         color = Muted,
     )
-    if (state.service == TelecomService.Data) {
+    if (state.service == PurchaseService.Data) {
         DataNetworks(state, onIntent)
         Text(stringResource(R.string.telecom_plan), style = MaterialTheme.typography.titleSmall)
     }
@@ -139,7 +139,7 @@ private fun ColumnScope.TelecomFields(
         state.visibleProducts.forEach { product ->
             Surface(
                 Modifier.then(
-                        if (state.service == TelecomService.Data) Modifier.fillMaxWidth()
+                        if (state.service == PurchaseService.Data) Modifier.fillMaxWidth()
                         else Modifier,
                     )
                     .testTag("telecom-product-${product.id}")
@@ -148,7 +148,7 @@ private fun ColumnScope.TelecomFields(
                         enabled = !state.isProcessing,
                         role = Role.RadioButton,
                     ) {
-                        onIntent(TelecomIntent.SelectProduct(product.id))
+                        onIntent(PurchaseIntent.SelectProduct(product.id))
                     },
                 shape = RoundedCornerShape(14.dp),
                 color = if (product.id == state.selectedProductId) Mint else Canvas,
@@ -156,7 +156,7 @@ private fun ColumnScope.TelecomFields(
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text(product.displayName, style = MaterialTheme.typography.bodyLarge)
-                    if (state.service == TelecomService.Data) {
+                    if (state.service == PurchaseService.Data) {
                         DataPlanSummary(product)
                     }
                     if (!product.isSubmissionAvailable) {
@@ -172,13 +172,13 @@ private fun ColumnScope.TelecomFields(
     }
     if (context.products.isEmpty()) {
         Text(stringResource(R.string.telecom_empty), Modifier.testTag("telecom-empty"))
-        TextButton({ onIntent(TelecomIntent.Reload) }, enabled = !state.isProcessing) {
+        TextButton({ onIntent(PurchaseIntent.Reload) }, enabled = !state.isProcessing) {
             Text(stringResource(R.string.telecom_retry_load))
         }
     }
     OutlinedTextField(
         state.recipient,
-        { onIntent(TelecomIntent.EditRecipient(it)) },
+        { onIntent(PurchaseIntent.EditRecipient(it)) },
         Modifier.fillMaxWidth().testTag("telecom-recipient"),
         enabled = !state.isProcessing,
         label = { Text(stringResource(R.string.telecom_phone)) },
@@ -189,12 +189,12 @@ private fun ColumnScope.TelecomFields(
     val product = state.selectedProduct
     val fixed = product?.fixedMinorUnits
     when {
-        product == null && state.service == TelecomService.Data ->
+        product == null && state.service == PurchaseService.Data ->
             Text(stringResource(R.string.telecom_choose_plan))
         fixed == null ->
             OutlinedTextField(
                 state.amount,
-                { onIntent(TelecomIntent.EditAmount(it)) },
+                { onIntent(PurchaseIntent.EditAmount(it)) },
                 Modifier.fillMaxWidth().testTag("telecom-amount"),
                 enabled = !state.isProcessing,
                 label = { Text(stringResource(R.string.telecom_amount)) },
@@ -233,23 +233,23 @@ private fun ColumnScope.TelecomFields(
         Modifier.testTag("telecom-review"),
         state.prepared != null && !state.isProcessing && !offline,
     ) {
-        onIntent(TelecomIntent.Review)
+        onIntent(PurchaseIntent.Review)
     }
     SavedPaymentsLink(state, onIntent)
 }
 
 /** Show immutable server terms and expiry before any explicit wallet authorization. */
 @Composable
-private fun ColumnScope.TelecomReview(
-    state: TelecomUiState,
+private fun ColumnScope.PurchaseReview(
+    state: PurchaseUiState,
     offline: Boolean,
-    onIntent: (TelecomIntent) -> Unit,
+    onIntent: (PurchaseIntent) -> Unit,
 ) {
     val review = state.review ?: return
     val quote = review.quote
     Text(
         stringResource(
-            if (state.service == TelecomService.Data) R.string.telecom_review_title_data
+            if (state.service == PurchaseService.Data) R.string.telecom_review_title_data
             else R.string.telecom_review_title_airtime,
         ),
         style = MaterialTheme.typography.titleLarge,
@@ -265,10 +265,10 @@ private fun ColumnScope.TelecomReview(
         color = Muted,
     )
     if (state.secondsRemaining == 0L) {
-        Notice(TelecomIssue.QuoteExpired)
+        Notice(PurchaseIssue.QuoteExpired)
     }
     if (!quote.isSubmissionAvailable) {
-        Notice(TelecomIssue.ProductUnavailable)
+        Notice(PurchaseIssue.ProductUnavailable)
     }
     Text(stringResource(R.string.telecom_consent), style = MaterialTheme.typography.bodyMedium)
     PrimaryButton(
@@ -282,9 +282,9 @@ private fun ColumnScope.TelecomReview(
             !state.isProcessing &&
             !offline,
     ) {
-        onIntent(TelecomIntent.Confirm)
+        onIntent(PurchaseIntent.Confirm)
     }
-    TextButton({ onIntent(TelecomIntent.Edit) }, enabled = !state.isProcessing) {
+    TextButton({ onIntent(PurchaseIntent.Edit) }, enabled = !state.isProcessing) {
         Text(stringResource(R.string.telecom_edit))
     }
     SavedPaymentsLink(state, onIntent)
@@ -295,7 +295,10 @@ private fun ColumnScope.TelecomReview(
  * request.
  */
 @Composable
-private fun ColumnScope.TelecomHistory(state: TelecomUiState, onIntent: (TelecomIntent) -> Unit) {
+private fun ColumnScope.PurchaseHistory(
+    state: PurchaseUiState,
+    onIntent: (PurchaseIntent) -> Unit,
+) {
     val requests = state.context?.requests.orEmpty().asReversed()
     Text(stringResource(R.string.telecom_history), style = MaterialTheme.typography.titleLarge)
     Text(
@@ -308,7 +311,7 @@ private fun ColumnScope.TelecomHistory(state: TelecomUiState, onIntent: (Telecom
     }
     requests.forEach { request ->
         OutlinedButton(
-            { onIntent(TelecomIntent.CheckSaved(request.requestKey)) },
+            { onIntent(PurchaseIntent.CheckSaved(request.requestKey)) },
             Modifier.fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .testTag("telecom-saved-${request.requestKey}"),
@@ -325,7 +328,7 @@ private fun ColumnScope.TelecomHistory(state: TelecomUiState, onIntent: (Telecom
         Modifier.testTag("telecom-new"),
         !state.isProcessing,
     ) {
-        onIntent(TelecomIntent.NewPurchase)
+        onIntent(PurchaseIntent.NewPurchase)
     }
 }
 
@@ -334,10 +337,10 @@ private fun ColumnScope.TelecomHistory(state: TelecomUiState, onIntent: (Telecom
  * recovery actions.
  */
 @Composable
-private fun ColumnScope.TelecomProgress(
-    state: TelecomUiState,
+private fun ColumnScope.PurchaseProgress(
+    state: PurchaseUiState,
     offline: Boolean,
-    onIntent: (TelecomIntent) -> Unit,
+    onIntent: (PurchaseIntent) -> Unit,
 ) {
     val progress = state.progress ?: return
     val status = progress.payment?.status
@@ -345,7 +348,7 @@ private fun ColumnScope.TelecomProgress(
         stringResource(statusTitle(status, state.service)),
         Modifier.testTag("telecom-status").semantics { liveRegion = LiveRegionMode.Polite },
         style = MaterialTheme.typography.headlineMedium,
-        color = if (status == TelecomPaymentStatus.Failed) Danger else Pine,
+        color = if (status == PurchasePaymentStatus.Failed) Danger else Pine,
     )
     Text(stringResource(statusHelp(status)), style = MaterialTheme.typography.bodyMedium)
     progress.issue?.let { Notice(it) }
@@ -367,7 +370,7 @@ private fun ColumnScope.TelecomProgress(
             Modifier.testTag("telecom-done"),
             !state.isProcessing,
         ) {
-            onIntent(TelecomIntent.Done)
+            onIntent(PurchaseIntent.Done)
         }
         return
     }
@@ -376,34 +379,34 @@ private fun ColumnScope.TelecomProgress(
         Modifier.testTag("telecom-check"),
         !state.isProcessing,
     ) {
-        onIntent(TelecomIntent.CheckStatus)
+        onIntent(PurchaseIntent.CheckStatus)
     }
     when (status) {
-        TelecomPaymentStatus.Pending,
-        TelecomPaymentStatus.Reserved ->
+        PurchasePaymentStatus.Pending,
+        PurchasePaymentStatus.Reserved ->
             OutlinedButton(
-                { onIntent(TelecomIntent.Reconcile) },
+                { onIntent(PurchaseIntent.Reconcile) },
                 Modifier.fillMaxWidth().testTag("telecom-reconcile"),
                 enabled = !state.isProcessing && !offline,
             ) {
                 Text(stringResource(R.string.telecom_reconcile))
             }
         null,
-        TelecomPaymentStatus.AwaitingFunds ->
+        PurchasePaymentStatus.AwaitingFunds ->
             OutlinedButton(
-                { onIntent(TelecomIntent.RetrySubmission) },
+                { onIntent(PurchaseIntent.RetrySubmission) },
                 Modifier.fillMaxWidth().testTag("telecom-retry-original"),
                 enabled = !state.isProcessing && !offline,
             ) {
                 Text(
                     stringResource(
-                        if (status == TelecomPaymentStatus.AwaitingFunds) R.string.telecom_resume
+                        if (status == PurchasePaymentStatus.AwaitingFunds) R.string.telecom_resume
                         else R.string.telecom_retry_original,
                     ),
                 )
             }
-        TelecomPaymentStatus.Succeeded,
-        TelecomPaymentStatus.Failed -> Unit
+        PurchasePaymentStatus.Succeeded,
+        PurchasePaymentStatus.Failed -> Unit
     }
     SavedPaymentsLink(state, onIntent)
 }
@@ -412,21 +415,21 @@ private fun ColumnScope.TelecomProgress(
  * Render the server review's recipient and exact charges without reconstructing price or fee rules.
  */
 @Composable
-private fun QuoteTerms(quote: TelecomQuote) {
+private fun QuoteTerms(quote: PurchaseQuote) {
     Column(
         Modifier.fillMaxWidth().background(Canvas, RoundedCornerShape(20.dp)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        InfoRow(stringResource(R.string.telecom_network), quote.networkCode.uppercase(Locale.ROOT))
+        InfoRow(stringResource(R.string.telecom_network), quote.providerCode.uppercase(Locale.ROOT))
         InfoRow(stringResource(R.string.telecom_product), quote.displayName)
-        if (quote.service == TelecomService.Data) {
+        if (quote.service == PurchaseService.Data) {
             InfoRow(
                 stringResource(R.string.telecom_allowance),
                 quote.allowanceLabel ?: stringResource(R.string.telecom_not_provided),
             )
             InfoRow(stringResource(R.string.telecom_validity), planValidity(quote.validitySeconds))
         }
-        InfoRow(stringResource(R.string.telecom_recipient), quote.recipientPhoneNumber)
+        InfoRow(stringResource(R.string.telecom_recipient), quote.recipientIdentifier)
         InfoRow(
             stringResource(R.string.telecom_principal),
             walletMoney(quote.principalMinorUnits, quote.currency),
@@ -455,14 +458,14 @@ private fun QuoteTerms(quote: TelecomQuote) {
 /** Expose saved receipts and unfinished work without copying it into simulated Activity. */
 @Composable
 private fun ColumnScope.SavedPaymentsLink(
-    state: TelecomUiState,
-    onIntent: (TelecomIntent) -> Unit,
+    state: PurchaseUiState,
+    onIntent: (PurchaseIntent) -> Unit,
 ) {
     if (state.context?.requests.isNullOrEmpty()) {
         return
     }
     TextButton(
-        { onIntent(TelecomIntent.History) },
+        { onIntent(PurchaseIntent.History) },
         Modifier.testTag("telecom-history"),
         enabled = !state.isProcessing,
     ) {
@@ -481,7 +484,7 @@ private fun ColumnScope.SavedPaymentsLink(
  * Resolve only safe classifications to copy; raw API/provider error messages are never rendered.
  */
 @Composable
-private fun Notice(issue: TelecomIssue) {
+private fun Notice(issue: PurchaseIssue) {
     Text(
         stringResource(issueMessage(issue)),
         Modifier.testTag("telecom-error").semantics { liveRegion = LiveRegionMode.Polite },
@@ -492,29 +495,29 @@ private fun Notice(issue: TelecomIssue) {
 
 /** Keep final and non-final status labels explicit and exhaustive. */
 @StringRes
-private fun statusTitle(status: TelecomPaymentStatus?, service: TelecomService): Int =
+private fun statusTitle(status: PurchasePaymentStatus?, service: PurchaseService): Int =
     when (status) {
-        TelecomPaymentStatus.Succeeded ->
-            if (service == TelecomService.Data) R.string.telecom_status_success_data
+        PurchasePaymentStatus.Succeeded ->
+            if (service == PurchaseService.Data) R.string.telecom_status_success_data
             else R.string.telecom_status_success_airtime
-        TelecomPaymentStatus.Failed ->
-            if (service == TelecomService.Data) R.string.telecom_status_failed_data
+        PurchasePaymentStatus.Failed ->
+            if (service == PurchaseService.Data) R.string.telecom_status_failed_data
             else R.string.telecom_status_failed_airtime
-        TelecomPaymentStatus.Pending -> R.string.telecom_status_pending
-        TelecomPaymentStatus.Reserved -> R.string.telecom_status_reserved
-        TelecomPaymentStatus.AwaitingFunds -> R.string.telecom_status_funds
+        PurchasePaymentStatus.Pending -> R.string.telecom_status_pending
+        PurchasePaymentStatus.Reserved -> R.string.telecom_status_reserved
+        PurchasePaymentStatus.AwaitingFunds -> R.string.telecom_status_funds
         null -> R.string.telecom_status_unknown
     }
 
 /** Explain recovery without implying that an acknowledgement or timeout establishes delivery. */
 @StringRes
-private fun statusHelp(status: TelecomPaymentStatus?): Int =
+private fun statusHelp(status: PurchasePaymentStatus?): Int =
     when (status) {
-        TelecomPaymentStatus.Succeeded -> R.string.telecom_success_help
-        TelecomPaymentStatus.Failed -> R.string.telecom_failed_help
-        TelecomPaymentStatus.AwaitingFunds -> R.string.telecom_funds_help
-        TelecomPaymentStatus.Pending,
-        TelecomPaymentStatus.Reserved -> R.string.telecom_pending_help
+        PurchasePaymentStatus.Succeeded -> R.string.telecom_success_help
+        PurchasePaymentStatus.Failed -> R.string.telecom_failed_help
+        PurchasePaymentStatus.AwaitingFunds -> R.string.telecom_funds_help
+        PurchasePaymentStatus.Pending,
+        PurchasePaymentStatus.Reserved -> R.string.telecom_pending_help
         null -> R.string.telecom_unknown_help
     }
 
@@ -523,46 +526,46 @@ private fun statusHelp(status: TelecomPaymentStatus?): Int =
  * advice.
  */
 @StringRes
-private fun issueMessage(issue: TelecomIssue): Int =
+private fun issueMessage(issue: PurchaseIssue): Int =
     when (issue) {
-        TelecomIssue.SignInRequired,
-        TelecomIssue.SessionChanged -> R.string.telecom_error_session
-        TelecomIssue.Configuration -> R.string.telecom_error_configuration
-        TelecomIssue.WalletMissing,
-        TelecomIssue.WalletUnavailable,
-        TelecomIssue.WalletRestricted -> R.string.telecom_error_wallet
-        TelecomIssue.Network -> R.string.telecom_error_network
-        TelecomIssue.Unavailable -> R.string.telecom_error_unavailable
-        TelecomIssue.InvalidResponse -> R.string.telecom_error_response
-        TelecomIssue.SelectProduct,
-        TelecomIssue.ProductUnavailable -> R.string.telecom_error_product
-        TelecomIssue.InvalidRecipient -> R.string.telecom_error_phone
-        TelecomIssue.InvalidAmount -> R.string.telecom_error_amount
-        TelecomIssue.QuoteExpired -> R.string.telecom_error_expired
-        TelecomIssue.PaymentConflict -> R.string.telecom_error_conflict
-        TelecomIssue.InsufficientFunds -> R.string.telecom_error_funds
-        TelecomIssue.Storage -> R.string.telecom_error_storage
-        TelecomIssue.NotFound -> R.string.telecom_error_not_found
+        PurchaseIssue.SignInRequired,
+        PurchaseIssue.SessionChanged -> R.string.telecom_error_session
+        PurchaseIssue.Configuration -> R.string.telecom_error_configuration
+        PurchaseIssue.WalletMissing,
+        PurchaseIssue.WalletUnavailable,
+        PurchaseIssue.WalletRestricted -> R.string.telecom_error_wallet
+        PurchaseIssue.Network -> R.string.telecom_error_network
+        PurchaseIssue.Unavailable -> R.string.telecom_error_unavailable
+        PurchaseIssue.InvalidResponse -> R.string.telecom_error_response
+        PurchaseIssue.SelectProduct,
+        PurchaseIssue.ProductUnavailable -> R.string.telecom_error_product
+        PurchaseIssue.InvalidRecipient -> R.string.telecom_error_phone
+        PurchaseIssue.InvalidAmount -> R.string.telecom_error_amount
+        PurchaseIssue.QuoteExpired -> R.string.telecom_error_expired
+        PurchaseIssue.PaymentConflict -> R.string.telecom_error_conflict
+        PurchaseIssue.InsufficientFunds -> R.string.telecom_error_funds
+        PurchaseIssue.Storage -> R.string.telecom_error_storage
+        PurchaseIssue.NotFound -> R.string.telecom_error_not_found
     }
 
 /** Choose an API network explicitly; changing it clears the previous data plan in the owner. */
 @Composable
-private fun ColumnScope.DataNetworks(state: TelecomUiState, onIntent: (TelecomIntent) -> Unit) {
+private fun ColumnScope.DataNetworks(state: PurchaseUiState, onIntent: (PurchaseIntent) -> Unit) {
     FlowRow(
         Modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        state.networks.forEach { network ->
+        state.providers.forEach { network ->
             Surface(
                 Modifier.testTag("telecom-network-$network").selectable(
-                    network == state.selectedNetworkCode,
+                    network == state.selectedProviderCode,
                     enabled = !state.isProcessing,
                     role = Role.RadioButton,
                 ) {
-                    onIntent(TelecomIntent.SelectNetwork(network))
+                    onIntent(PurchaseIntent.SelectProvider(network))
                 },
-                color = if (network == state.selectedNetworkCode) Mint else Canvas,
+                color = if (network == state.selectedProviderCode) Mint else Canvas,
                 shape = RoundedCornerShape(14.dp),
                 border = controlBorder(),
             ) {
@@ -574,10 +577,10 @@ private fun ColumnScope.DataNetworks(state: TelecomUiState, onIntent: (TelecomIn
             }
         }
     }
-    if (state.selectedNetworkCode == null) {
+    if (state.selectedProviderCode == null) {
         Text(stringResource(R.string.telecom_choose_network), color = Muted)
     }
-    if (state.selectedNetworkCode != null && state.visibleProducts.isEmpty()) {
+    if (state.selectedProviderCode != null && state.visibleProducts.isEmpty()) {
         Text(stringResource(R.string.telecom_no_plans), color = Muted)
     }
 }
@@ -586,7 +589,7 @@ private fun ColumnScope.DataNetworks(state: TelecomUiState, onIntent: (TelecomIn
  * Display only published plan terms; omitted metadata never acquires a sample allowance/validity.
  */
 @Composable
-private fun DataPlanSummary(product: TelecomProduct) {
+private fun DataPlanSummary(product: PurchaseProduct) {
     product.fixedMinorUnits?.let {
         Text(
             stringResource(R.string.telecom_plan_price, walletMoney(it, product.currency)),
