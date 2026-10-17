@@ -38,6 +38,6 @@ internal fun accountInputIssue(
         return null
     }
     val length = input.password.codePointCount(0, input.password.length)
-    val minimum = if (input.isCreatingAccount) 15 else 1
+    val minimum = if (input.isCreatingAccount) 8 else 1
     return if (length !in minimum..128) AccountAccessIssue.Password else null
 }

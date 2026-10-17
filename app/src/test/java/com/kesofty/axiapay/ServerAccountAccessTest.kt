@@ -103,7 +103,7 @@ class ServerAccountAccessTest {
                 AuthContactType.Phone,
                 "+2348012345678",
                 AuthMethod.Password,
-                "😀".repeat(14),
+                "😀".repeat(7),
                 isCreatingAccount = true,
             )
         assertEquals(
@@ -111,14 +111,46 @@ class ServerAccountAccessTest {
             access.begin(signup),
         )
         assertTrue(
-            access.begin(signup.copy(password = "😀".repeat(15)))
+            access.begin(signup.copy(password = "😀".repeat(8)))
                 is AccountAccessResult.CodeRequired,
         )
-        assertEquals("😀".repeat(15), api.password)
+        assertEquals("😀".repeat(8), api.password)
         assertEquals(
             AccountAccessResult.Rejected(AccountAccessIssue.Password),
             access.begin(signup.copy(password = "a".repeat(129))),
         )
+    }
+
+    /** Eight-character signup passwords reach the API exactly; seven characters stop before IO. */
+    @Test
+    fun signupAcceptsEightCharactersWithoutChangingWhitespace() = runTest {
+        val api = RecordingAuthenticationRepository(now)
+        val access =
+            ServerAccountAccess(
+                api,
+                MemoryAuthenticationSessionStore(),
+                clock,
+                RecordingWalletRepository(),
+            )
+        val signup =
+            AccountAccessInput(
+                AuthContactType.Email,
+                "ada@example.test",
+                AuthMethod.Password,
+                "1234567",
+                isCreatingAccount = true,
+            )
+        assertEquals(
+            AccountAccessResult.Rejected(AccountAccessIssue.Password),
+            access.begin(signup),
+        )
+        assertEquals(0, api.codeRequests)
+        for (password in listOf("12345678", " 123456 ")) {
+            assertTrue(
+                access.begin(signup.copy(password = password)) is AccountAccessResult.CodeRequired,
+            )
+            assertEquals(password, api.password)
+        }
     }
 
     /**
