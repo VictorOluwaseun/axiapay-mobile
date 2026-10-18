@@ -5,8 +5,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kesofty.axiapay.application.auth.AccountAccess
+import com.kesofty.axiapay.application.config.LoadRemoteConfiguration
+import com.kesofty.axiapay.application.config.RemoteConfigurationUpdate
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.config.RemoteConfiguration
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.Duration
@@ -31,10 +34,12 @@ constructor(
     private val handle: SavedStateHandle,
     private val access: AccountAccess,
     private val clock: Clock,
+    private val loadRemoteConfiguration: LoadRemoteConfiguration,
 ) : ViewModel() {
     private val mutableState =
         MutableStateFlow(
-            freshState(
+            AuthUiState(
+                mode = access.mode,
                 screen =
                     if (handle.get<Boolean>(DASHBOARD_ENTERED) == true) AuthScreen.Dashboard
                     else AuthScreen.Welcome,
@@ -42,6 +47,7 @@ constructor(
         )
     val uiState = mutableState.asStateFlow()
     private var pendingAction: Job? = null
+    private var configRefresh: Job? = null
     private var ticker: Job? = null
     private var visit = 0L
     private var retryUntil: Instant? = null
@@ -49,6 +55,7 @@ constructor(
     init {
         if (access.mode == AccountAccessMode.Server) {
             restoreSession()
+            refreshConfiguration()
         }
     }
 
@@ -56,9 +63,9 @@ constructor(
     @MainThread
     fun accept(intent: AuthIntent) {
         when (intent) {
-            AuthIntent.SignIn -> navigate(freshState(AuthScreen.SignIn))
-            AuthIntent.CreateAccount ->
-                navigate(freshState(AuthScreen.CreateAccount).copy(isCreatingAccount = true))
+            AuthIntent.SignIn -> openForm(false)
+            AuthIntent.CreateAccount -> openForm(true)
+            AuthIntent.RetryConfiguration -> refreshConfiguration()
             AuthIntent.Back -> goBack()
             AuthIntent.ExploreDemo -> {
                 handle[DASHBOARD_ENTERED] = true
@@ -143,7 +150,108 @@ constructor(
      * Creates route state with capabilities from DI while excluding credentials and challenge IDs.
      */
     private fun freshState(screen: AuthScreen = AuthScreen.Welcome) =
-        AuthUiState(screen = screen, mode = access.mode)
+        AuthUiState(
+            screen = screen,
+            mode = access.mode,
+            configuration = mutableState.value.configuration,
+            isConfigRefreshing = mutableState.value.isConfigRefreshing,
+            isConfigUnavailable = mutableState.value.isConfigUnavailable,
+        )
+
+    /** Revalidate each new form without resetting its independent signup/login configuration. */
+    private fun openForm(creating: Boolean) {
+        val state =
+            freshState(if (creating) AuthScreen.CreateAccount else AuthScreen.SignIn)
+                .copy(isCreatingAccount = creating)
+        navigate(selectInitialChoices(state))
+        refreshConfiguration()
+    }
+
+    /**
+     * Select safe initial contact and credential choices without replacing entered secrets or
+     * proof.
+     */
+    private fun selectInitialChoices(state: AuthUiState): AuthUiState =
+        selectInitialMethod(selectInitialContact(state))
+
+    /**
+     * Keep in-flight and entered credential choices stable until the user explicitly changes them.
+     */
+    private fun selectInitialMethod(state: AuthUiState): AuthUiState {
+        if (
+            state.isProcessing ||
+                state.password.isNotEmpty() ||
+                state.code.isNotEmpty() ||
+                state.challenge != null ||
+                state.isMethodEnabled(state.method)
+        ) {
+            return state
+        }
+        return state.availableMethods.firstOrNull()?.let {
+            state.copy(
+                method = it,
+                isPasswordVisible = false,
+                error = null,
+                failureCause = null,
+                isCodeResent = false,
+            )
+        } ?: state
+    }
+
+    /** Choose an enabled initial contact only while the form has no user-entered draft or proof. */
+    private fun selectInitialContact(state: AuthUiState): AuthUiState {
+        if (
+            state.contact.isNotEmpty() ||
+                state.password.isNotEmpty() ||
+                state.challenge != null ||
+                state.isContactEnabled(state.contactType)
+        ) {
+            return state
+        }
+        return state.availableContacts.firstOrNull()?.let { state.copy(contactType = it) } ?: state
+    }
+
+    /**
+     * Restore committed policy first, then refresh without replacing drafts or replaying requests.
+     */
+    private fun refreshConfiguration() {
+        if (mutableState.value.isDemo || configRefresh?.isActive == true) {
+            return
+        }
+        mutableState.value =
+            mutableState.value.copy(isConfigRefreshing = true, isConfigUnavailable = false)
+        configRefresh = viewModelScope.launch {
+            loadRemoteConfiguration().collect { update ->
+                when (update) {
+                    is RemoteConfigurationUpdate.Cached ->
+                        publishConfiguration(update.configuration, refreshing = true)
+                    is RemoteConfigurationUpdate.Refreshed ->
+                        publishConfiguration(update.configuration, refreshing = false)
+                    is RemoteConfigurationUpdate.Failed ->
+                        mutableState.value =
+                            mutableState.value.copy(
+                                isConfigRefreshing = false,
+                                isConfigUnavailable = true,
+                            )
+                }
+            }
+        }
+    }
+
+    /** Apply availability to current navigation; existing drafts and proof are never replaced. */
+    private fun publishConfiguration(
+        configuration: RemoteConfiguration,
+        refreshing: Boolean,
+    ) {
+        mutableState.value =
+            selectInitialChoices(
+                mutableState.value.copy(
+                    configuration = configuration,
+                    isConfigRefreshing = refreshing,
+                    isConfigUnavailable = false,
+                ),
+            )
+    }
 
     /**
      * Keeps form inputs stable during a request and excludes edits from verification/account
@@ -162,7 +270,10 @@ constructor(
 
     /** Drops credentials belonging to the previous contact format without making a request. */
     private fun selectContactType(contactType: AuthContactType) {
-        if (contactType == mutableState.value.contactType) {
+        if (
+            contactType == mutableState.value.contactType ||
+                !mutableState.value.isContactEnabled(contactType)
+        ) {
             return
         }
         editForm {
@@ -181,7 +292,7 @@ constructor(
 
     /** Clears hidden credentials when changing methods without submitting either choice. */
     private fun selectMethod(method: AuthMethod) {
-        if (method == mutableState.value.method) {
+        if (method == mutableState.value.method || !mutableState.value.isMethodEnabled(method)) {
             return
         }
         editForm {
@@ -199,7 +310,10 @@ constructor(
 
     /** Preserves exact password characters and accepts edits only on a password form. */
     private fun editPassword(password: String) {
-        if (mutableState.value.method != AuthMethod.Password) {
+        if (
+            mutableState.value.method != AuthMethod.Password ||
+                !mutableState.value.isMethodEnabled(AuthMethod.Password)
+        ) {
             return
         }
         editForm { copy(password = password, error = null, failureCause = null) }
@@ -274,7 +388,7 @@ constructor(
     /** Explicitly submits an eligible form or proof, with no duplicate work during cooldowns. */
     private fun submit() {
         val state = mutableState.value
-        if (state.retryAfterSeconds > 0) {
+        if (state.retryAfterSeconds > 0 || !state.isSelectedAuthenticationEnabled) {
             return
         }
         when (state.screen) {
@@ -290,6 +404,7 @@ constructor(
         val state = mutableState.value
         if (
             state.screen != AuthScreen.Verification ||
+                !state.isSelectedAuthenticationEnabled ||
                 state.resendSecondsRemaining > 0 ||
                 state.retryAfterSeconds > 0
         ) {
@@ -301,7 +416,11 @@ constructor(
     /** Revalidates only stable account routes; foregrounding preserves drafts and code entry. */
     private fun refreshIfIdle() {
         val state = mutableState.value
-        if (state.isDemo || state.isProcessing || state.account == null) {
+        if (state.isDemo || state.isProcessing) {
+            return
+        }
+        refreshConfiguration()
+        if (state.account == null) {
             return
         }
         if (state.screen !in setOf(AuthScreen.Complete, AuthScreen.Dashboard)) {
@@ -462,6 +581,7 @@ constructor(
                 AccountAccessIssue.SecureStorage -> AuthError.SecureStorage
                 AccountAccessIssue.InvalidRequest -> AuthError.InvalidRequest
                 AccountAccessIssue.SignupPasswordRequired -> AuthError.PasswordAgain
+                AccountAccessIssue.MethodDisabled -> AuthError.MethodDisabled
                 AccountAccessIssue.Unavailable,
                 AccountAccessIssue.InvalidResponse -> AuthError.Unavailable
             }
@@ -492,6 +612,9 @@ constructor(
                 retryAfterSeconds = retryAfterSeconds,
             )
         startTicker()
+        if (issue == AccountAccessIssue.MethodDisabled) {
+            refreshConfiguration()
+        }
     }
 
     /** Updates presentation countdowns only; timing never submits or confirms an operation. */

@@ -274,3 +274,24 @@ The shared feature is now named `purchases` (`WalletPurchases`, `PurchaseViewMod
 Every non-demo API call sends one new `X-Request-Id` in the format `Manufacturer-model-timestampMs-UUID`, including repeated reads and explicit retries. Hilt supplies Android's actual `Build.MANUFACTURER` and `Build.MODEL`; each public label is normalized to at most 24 ASCII characters, with `Android`/`Unknown` fallbacks. The timestamp is Unix epoch milliseconds. No device serial, contact or credential is included. The API validates and echoes the reference on success and errors; missing or unsafe values receive a server UUID. IDs correlate diagnostics and never replace payment request keys or authorize an operation.
 
 Dev HTTP log prefixes use that same ID, and safe echoed references remain available through error mapping. Credential/body redaction and the separate demo bindings remain in place. `ApiRequestIdGeneratorTest`, `ApiHttpClientRequestIdTest` and logging tests cover bounds, unknown/unsafe build labels, concurrent uniqueness, repeated reads, response references and preservation of the original payment key.
+
+## API remote configuration
+
+Dev, staging and prod consume eight independent authentication switches: email, phone, password and passwordless OTP for signup and login from `GET /v1/config`. Android needs no Firebase SDK or credentials. The app refreshes in the background on account-form entry and foregrounding. Before its first successful config read, email with password or one-time code remains available for signup and login. Config loading/failure never replaces the form with an options error. Once settings have been fetched, the UI keeps those switches during refresh failures, including explicitly disabled methods. A disabled-method rejection refreshes the options without replaying authentication. Demo retains its independent all-enabled simulation.
+
+For each operation, `authentication.signup` and `authentication.login` expose `emailEnabled`, `phoneEnabled`, `passwordEnabled` and `otpEnabled`. An enabled contact and an enabled credential are both required. A selector appears only when it offers two choices; no contact or no credential choice shows explicit unavailability. Password signup always needs its contact-verification code, even if passwordless OTP signup is disabled. Policy refresh preserves entered passwords and issued proof; an affected draft requires an explicit method change, and re-enabling never submits automatically. Older contact-only snapshots preserve their contact settings and both original credential choices; partially supplied new credential fields are rejected.
+
+The settings and version are saved together per API environment. On cold start, `LoadRemoteConfiguration` publishes a validated saved snapshot before making its conditional network request. Saved switches remain available across offline restarts, including explicit disabled values. A matching `304` keeps the snapshot; a valid `200` atomically replaces it. Refresh failures preserve the last saved policy and remain explicit in state. Missing, corrupt or foreign cache records use the email-only client default until a valid online response is persisted. Client defaults never receive a remote version or enter that cache. Saved settings control display choices; every authentication operation still requires the API and its current policy. See [ARCHITECTURE.md](ARCHITECTURE.md#api-remote-configuration) for ownership and failure rules.
+
+Run `./gradlew verifyAllFlavors --max-workers=1`. `RemoteConfigRepositoryTest` and `AuthenticationConfigTest` cover conditional requests, atomic writes, cache recovery/isolation, disabled contacts, failures, cancellation and stale completion. `RemoteConfigUiTest` checks both palettes, large text and accessible retry.
+
+The local API smoke check is read-only and uses a unique temporary config cache. With the dev APKs installed and the local API running, select the connected phone explicitly; use an emulator only when no phone is connected:
+
+```bash
+adb -s <device-serial> shell am instrument -w -r \
+  -e runLocalRemoteConfig true \
+  -e class com.kesofty.axiapay.RemoteConfigDeviceTest,com.kesofty.axiapay.RemoteConfigUiTest \
+  com.kesofty.axiapay.dev.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`RemoteConfigDeviceTest` checks real Android atomic-file recovery and the live API's `200` then empty `304` flow without modifying Firebase, authenticating a customer, or creating an account.

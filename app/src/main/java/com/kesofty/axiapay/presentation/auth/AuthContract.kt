@@ -5,6 +5,8 @@ import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.domain.auth.AccountAccessMode
 import com.kesofty.axiapay.domain.auth.AccountIdentity
 import com.kesofty.axiapay.domain.auth.AuthenticationChallenge
+import com.kesofty.axiapay.domain.config.AuthenticationMethods
+import com.kesofty.axiapay.domain.config.RemoteConfiguration
 import com.kesofty.axiapay.domain.wallet.WalletLookupResult
 import com.kesofty.axiapay.presentation.HomeWalletState
 
@@ -37,6 +39,7 @@ enum class AuthError {
     InvalidRequest,
     SecureStorage,
     PasswordAgain,
+    MethodDisabled,
 }
 
 /**
@@ -51,12 +54,17 @@ data class AuthUiState(
     val account: AccountIdentity? = null,
     val wallet: WalletLookupResult? = null,
     val challenge: AuthenticationChallenge? = null,
+    val configuration: RemoteConfiguration? = null,
+    val isConfigRefreshing: Boolean = false,
+    val isConfigUnavailable: Boolean = false,
     val codeSecondsRemaining: Long = 0,
     val resendSecondsRemaining: Long = 0,
     val retryAfterSeconds: Long = 0,
     val requestReference: String? = null,
     val isCreatingAccount: Boolean = false,
-    val contactType: AuthContactType = AuthContactType.Phone,
+    val contactType: AuthContactType =
+        if (mode == AccountAccessMode.Server && configuration == null) AuthContactType.Email
+        else AuthContactType.Phone,
     val contact: String = "",
     val method: AuthMethod = AuthMethod.OneTimeCode,
     val password: String = "",
@@ -69,6 +77,40 @@ data class AuthUiState(
     val failureCause: Exception? = null,
     val isCodeResent: Boolean = false,
 ) {
+    /** Project separate signup/login switches into the caller-owned contact selector. */
+    val availableContacts: List<AuthContactType>
+        get() = AuthContactType.entries.filter { isContactEnabled(it) }
+
+    /** Project separate signup/login password and passwordless-code switches. */
+    val availableMethods: List<AuthMethod>
+        get() = AuthMethod.entries.filter { isMethodEnabled(it) }
+
+    /** A usable form needs at least one contact and one credential choice. */
+    val hasAvailableAuthentication: Boolean
+        get() = availableContacts.isNotEmpty() && availableMethods.isNotEmpty()
+
+    /** Both selected choices must still be available before submitting or resending proof. */
+    val isSelectedAuthenticationEnabled: Boolean
+        get() = isContactEnabled(contactType) && isMethodEnabled(method)
+
+    /**
+     * Keep saved switches during failures; initial client defaults allow email with either method.
+     */
+    private val authenticationMethods: AuthenticationMethods
+        get() =
+            (if (isCreatingAccount) configuration?.signup else configuration?.login)
+                ?: AuthenticationMethods.EmailOnly
+
+    /**
+     * Demo always exposes its fixture; real contact choices follow the operation's saved policy.
+     */
+    fun isContactEnabled(contact: AuthContactType): Boolean =
+        isDemo || authenticationMethods.allows(contact)
+
+    /** Password signup's proof remains usable when only the passwordless OTP option is disabled. */
+    fun isMethodEnabled(method: AuthMethod): Boolean =
+        isDemo || authenticationMethods.allows(method)
+
     /** Copy and controls follow the injected workflow, never a flavor check inside a View. */
     val isDemo: Boolean
         get() = mode == AccountAccessMode.Demo
@@ -101,6 +143,9 @@ sealed interface AuthIntent {
     /** Rechecks a stored session after foregrounding without replaying pending form operations. */
     data object RefreshSession : AuthIntent
 
+    /** Explicitly retry availability reads without replaying account creation or login. */
+    data object RetryConfiguration : AuthIntent
+
     /** Explicitly retries a failed startup/foreground session check. */
     data object RetrySession : AuthIntent
 
@@ -116,7 +161,10 @@ sealed interface AuthIntent {
     /** Opens the form for an existing account. */
     data object SignIn : AuthIntent
 
-    /** Opens signup with the default phone/code method; only demo collects a preview name. */
+    /**
+     * Opens signup with configured choices or the email/code default; only demo collects a preview
+     * name.
+     */
     data object CreateAccount : AuthIntent
 
     /** Selects phone or email and clears the previous contact and credentials. */

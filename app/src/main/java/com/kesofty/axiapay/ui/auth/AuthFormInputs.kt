@@ -38,6 +38,7 @@ private data class AuthChoice<T>(
 internal fun AuthContactSelector(
     selected: AuthContactType,
     enabled: Boolean,
+    availableContacts: List<AuthContactType> = AuthContactType.entries,
     onSelect: (AuthContactType) -> Unit,
 ) {
     val choices =
@@ -49,16 +50,18 @@ internal fun AuthContactSelector(
         Modifier.widthIn(max = 260.dp).fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        choices.forEach { choice ->
-            SelectionChip(
-                label = stringResource(choice.label),
-                selected = selected == choice.value,
-                onSelect = { onSelect(choice.value) },
-                modifier = Modifier.weight(1f).fillMaxHeight().testTag(choice.testTag),
-                enabled = enabled,
-                textStyle = MaterialTheme.typography.labelLarge,
-            )
-        }
+        choices
+            .filter { it.value in availableContacts }
+            .forEach { choice ->
+                SelectionChip(
+                    label = stringResource(choice.label),
+                    selected = selected == choice.value,
+                    onSelect = { onSelect(choice.value) },
+                    modifier = Modifier.weight(1f).fillMaxHeight().testTag(choice.testTag),
+                    enabled = enabled,
+                    textStyle = MaterialTheme.typography.labelLarge,
+                )
+            }
     }
 }
 

@@ -40,6 +40,9 @@ enum class ApiFailureKind {
     Http,
 }
 
+/** Adapter-only conditional HTTP result; a 304 has no JSON body to decode. */
+data class ApiJsonResponse(val status: Int, val body: JSONObject?, val etag: String?)
+
 /** Shared bounded JSON transport; feature adapters own DTOs and map safe failure metadata. */
 class ApiHttpClient(
     private val baseUrl: String,
@@ -105,48 +108,73 @@ class ApiHttpClient(
             if (bearer != null) {
                 builder.header("Authorization", "Bearer $bearer")
             }
-            try {
-                executeJson(builder.build(), expected)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: ApiRequestFailure) {
-                throw failure
-            } catch (failure: IOException) {
-                throw ApiRequestFailure(ApiFailureKind.Network)
-            } catch (failure: Exception) {
-                throw ApiRequestFailure(ApiFailureKind.InvalidResponse)
-            }
+            performRequest(builder.build(), expected).body
         }
+
+    /** Revalidate public JSON without an auth token; keep 304 distinct from a decoded 200 body. */
+    suspend fun conditionalGet(path: String, etag: String?): ApiJsonResponse =
+        withContext(io) {
+            val builder =
+                Request.Builder()
+                    .url(endpoint().newBuilder().addPathSegments(path).build())
+                    .header("Cache-Control", "no-store")
+                    .header("Accept", "application/json")
+                    .header("X-Request-Id", requestIds.next())
+            if (etag != null) {
+                builder.header("If-None-Match", etag)
+            }
+            performRequest(builder.build(), 200, allowNotModified = true)
+        }
+
+    /** Preserve cancellation and safe error mapping for both ordinary and conditional reads. */
+    private suspend fun performRequest(
+        request: Request,
+        expected: Int,
+        allowNotModified: Boolean = false,
+    ): ApiJsonResponse {
+        try {
+            return executeJson(request, expected, allowNotModified)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: ApiRequestFailure) {
+            throw failure
+        } catch (failure: IOException) {
+            throw ApiRequestFailure(ApiFailureKind.Network)
+        } catch (failure: Exception) {
+            throw ApiRequestFailure(ApiFailureKind.InvalidResponse)
+        }
+    }
 
     /**
      * Keep cancellation registered until the bounded body is consumed and closed, not just until
      * response headers arrive. OkHttp's callback thread owns blocking response reads.
      */
-    private suspend fun executeJson(request: Request, expected: Int): JSONObject? =
-        suspendCancellableCoroutine { continuation ->
-            val call = client.newCall(request)
-            continuation.invokeOnCancellation { call.cancel() }
-            call.enqueue(
-                object : Callback {
-                    /** Propagate transport failure to the owning coroutine for safe mapping. */
-                    override fun onFailure(call: Call, e: IOException) {
-                        continuation.resumeWithException(e)
-                    }
+    private suspend fun executeJson(
+        request: Request,
+        expected: Int,
+        allowNotModified: Boolean,
+    ): ApiJsonResponse = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(
+            object : Callback {
+                /** Propagate transport failure to the owning coroutine for safe mapping. */
+                override fun onFailure(call: Call, e: IOException) {
+                    continuation.resumeWithException(e)
+                }
 
-                    /**
-                     * Close the response before publishing JSON; cancellation interrupts body IO.
-                     */
-                    override fun onResponse(call: Call, response: Response) {
-                        try {
-                            val result = response.use { readJson(it, expected) }
-                            continuation.resume(result)
-                        } catch (failure: Exception) {
-                            continuation.resumeWithException(failure)
-                        }
+                /** Close the response before publishing JSON; cancellation interrupts body IO. */
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val result = response.use { readJson(it, expected, allowNotModified) }
+                        continuation.resume(result)
+                    } catch (failure: Exception) {
+                        continuation.resumeWithException(failure)
                     }
-                },
-            )
-        }
+                }
+            },
+        )
+    }
 
     /**
      * Read only a bounded machine code from an error response; never return upstream messages or
@@ -165,7 +193,14 @@ class ApiHttpClient(
     }
 
     /** Validate HTTP metadata and read at most 64 KiB; never expose response bodies in errors. */
-    private fun readJson(response: Response, expected: Int): JSONObject? {
+    private fun readJson(
+        response: Response,
+        expected: Int,
+        allowNotModified: Boolean,
+    ): ApiJsonResponse {
+        if (allowNotModified && response.code == 304) {
+            return ApiJsonResponse(304, null, response.header("ETag"))
+        }
         if (response.code != expected) {
             val retry =
                 if (response.code == 429)
@@ -183,10 +218,8 @@ class ApiHttpClient(
                 errorCode(response),
             )
         }
-        if (expected == 204) {
-            return null
-        }
-        return boundedJson(response)
+        val body = if (expected == 204) null else boundedJson(response)
+        return ApiJsonResponse(response.code, body, response.header("ETag"))
     }
 
     /** Consume a JSON body under the same cancellation registration and fixed size limit. */

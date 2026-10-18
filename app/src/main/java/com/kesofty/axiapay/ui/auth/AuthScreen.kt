@@ -145,12 +145,28 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
     AccountHeading(
         if (state.isCreatingAccount) R.string.auth_create_title else R.string.auth_sign_in_title,
         when {
-            !state.isCreatingAccount -> R.string.auth_sign_in_body
-            state.isDemo -> R.string.auth_create_body
-            else -> R.string.auth_live_create_body
+            !state.hasAvailableAuthentication -> R.string.auth_access_unavailable_body
+            state.isDemo && state.isCreatingAccount -> R.string.auth_create_body
+            state.isCreatingAccount ->
+                when (state.availableContacts.singleOrNull()) {
+                    AuthContactType.Email -> R.string.auth_live_create_email_body
+                    AuthContactType.Phone -> R.string.auth_live_create_phone_body
+                    null -> R.string.auth_live_create_body
+                }
+            else ->
+                when (state.availableContacts.singleOrNull()) {
+                    AuthContactType.Email -> R.string.auth_sign_in_email_body
+                    AuthContactType.Phone -> R.string.auth_sign_in_phone_body
+                    null -> R.string.auth_sign_in_body
+                }
         },
     )
     Spacer(Modifier.height(28.dp))
+    if (!state.hasAvailableAuthentication) {
+        AuthenticationAvailabilityNotice(state, onIntent)
+        AccountFooter(state.isCreatingAccount, onIntent)
+        return
+    }
     if (state.isCreatingAccount && state.isDemo) {
         AuthTextField(
             state.name,
@@ -165,11 +181,36 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         )
         Spacer(Modifier.height(20.dp))
     }
-    AuthContactSelector(state.contactType, !state.isProcessing) {
-        focus.clearFocus()
-        onIntent(AuthIntent.SelectContactType(it))
+    if (state.availableContacts.size > 1) {
+        AuthContactSelector(state.contactType, !state.isProcessing, state.availableContacts) {
+            focus.clearFocus()
+            onIntent(AuthIntent.SelectContactType(it))
+        }
+        Spacer(Modifier.height(8.dp))
     }
-    Spacer(Modifier.height(8.dp))
+    if (!state.isContactEnabled(state.contactType)) {
+        AuthNotice(R.string.auth_contact_unavailable, Glyph.Help)
+        val availableContact = state.availableContacts.first()
+        TextButton(
+            {
+                focus.clearFocus()
+                onIntent(AuthIntent.SelectContactType(availableContact))
+            },
+            enabled = !state.isProcessing,
+            modifier = Modifier.testTag("auth-contact-switch"),
+        ) {
+            Text(
+                stringResource(
+                    when (availableContact) {
+                        AuthContactType.Email -> R.string.auth_use_email
+                        AuthContactType.Phone -> R.string.auth_use_phone
+                    },
+                ),
+            )
+        }
+        AccountFooter(state.isCreatingAccount, onIntent)
+        return
+    }
     AuthTextField(
         state.contact,
         if (isPhone) R.string.auth_phone else R.string.auth_email,
@@ -190,22 +231,57 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    Spacer(Modifier.height(22.dp))
-    Text(
-        stringResource(
-            if (state.isCreatingAccount) R.string.auth_signup_method
-            else R.string.auth_signin_method,
-        ),
-        color = Muted,
-        style = MaterialTheme.typography.bodyMedium,
-    )
-    Spacer(Modifier.height(4.dp))
-    AuthMethodSelector(state.method, !state.isProcessing) {
-        focus.clearFocus()
-        onIntent(AuthIntent.SelectMethod(it))
+    if (state.availableMethods.size > 1) {
+        Spacer(Modifier.height(22.dp))
+        Text(
+            stringResource(
+                when (state.isCreatingAccount) {
+                    true -> R.string.auth_signup_method
+                    false -> R.string.auth_signin_method
+                },
+            ),
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+        AuthMethodSelector(state.method, !state.isProcessing) {
+            focus.clearFocus()
+            onIntent(AuthIntent.SelectMethod(it))
+        }
+    }
+    if (!state.isMethodEnabled(state.method)) {
+        Spacer(Modifier.height(16.dp))
+        AuthNotice(R.string.auth_credential_unavailable, Glyph.Help)
+        val availableMethod = state.availableMethods.first()
+        TextButton(
+            {
+                focus.clearFocus()
+                onIntent(AuthIntent.SelectMethod(availableMethod))
+            },
+            enabled = !state.isProcessing,
+            modifier = Modifier.testTag("auth-method-switch"),
+        ) {
+            Text(
+                stringResource(
+                    when (availableMethod) {
+                        AuthMethod.Password -> R.string.auth_use_password
+                        AuthMethod.OneTimeCode -> R.string.auth_use_code
+                    },
+                ),
+            )
+        }
+        AccountFooter(state.isCreatingAccount, onIntent)
+        return
     }
     if (usesPassword) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(
+            Modifier.height(
+                when {
+                    state.availableMethods.size > 1 -> 8.dp
+                    else -> 20.dp
+                },
+            ),
+        )
         AuthTextField(
             state.password,
             R.string.auth_password,
@@ -241,18 +317,53 @@ private fun AccountForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
         else R.string.auth_continue,
         state.isProcessing,
         submit,
-        available = state.retryAfterSeconds == 0L,
+        available = state.retryAfterSeconds == 0L && state.isSelectedAuthenticationEnabled,
     )
     Spacer(Modifier.height(18.dp))
     Text(
         stringResource(
-            if (state.isDemo) R.string.auth_preview_notice else R.string.auth_live_notice,
+            when {
+                state.isDemo -> R.string.auth_preview_notice
+                else ->
+                    when (state.availableContacts.singleOrNull()) {
+                        AuthContactType.Email -> R.string.auth_live_email_notice
+                        AuthContactType.Phone -> R.string.auth_live_phone_notice
+                        null -> R.string.auth_live_notice
+                    }
+            },
         ),
         style = MaterialTheme.typography.bodyMedium,
         color = Muted,
     )
     Spacer(Modifier.height(18.dp))
     AccountFooter(state.isCreatingAccount, onIntent)
+}
+
+/** Explain explicitly disabled methods with a read-only refresh action. */
+@Composable
+private fun AuthenticationAvailabilityNotice(state: AuthUiState, onIntent: (AuthIntent) -> Unit) {
+    val message =
+        when {
+            state.hasAvailableAuthentication -> R.string.auth_method_disabled
+            state.isCreatingAccount -> R.string.auth_signup_disabled
+            else -> R.string.auth_login_disabled
+        }
+    Column(
+        Modifier.fillMaxWidth().testTag("auth-config-notice").semantics {
+            liveRegion = LiveRegionMode.Polite
+        },
+    ) {
+        AuthNotice(message, Glyph.Help)
+        if (state.isConfigRefreshing) {
+            CircularProgressIndicator(Modifier.padding(vertical = 16.dp).size(24.dp), color = Pine)
+        }
+        TextButton(
+            { onIntent(AuthIntent.RetryConfiguration) },
+            enabled = !state.isConfigRefreshing && !state.isProcessing,
+        ) {
+            Text(stringResource(R.string.auth_config_retry))
+        }
+    }
 }
 
 /**
@@ -321,7 +432,11 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
     AuthHeading(
         R.string.auth_verify_title,
         when {
-            !state.isDemo -> R.string.auth_live_verify_body
+            !state.isDemo ->
+                when (state.contactType) {
+                    AuthContactType.Email -> R.string.auth_live_verify_email_body
+                    AuthContactType.Phone -> R.string.auth_live_verify_phone_body
+                }
             state.isCreatingAccount -> R.string.auth_verify_signup_body
             else -> R.string.auth_verify_body
         },
@@ -358,13 +473,18 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
         testTag = "auth-code",
     )
     AuthErrorMessage(state)
+    if (!state.isSelectedAuthenticationEnabled) {
+        AuthenticationAvailabilityNotice(state, onIntent)
+    }
     Spacer(Modifier.height(24.dp))
     AuthSubmitButton(
         if (state.isDemo) R.string.auth_verify else R.string.auth_live_verify,
         state.isProcessing,
         submit,
         available =
-            state.retryAfterSeconds == 0L && (state.isDemo || state.codeSecondsRemaining > 0),
+            state.isSelectedAuthenticationEnabled &&
+                state.retryAfterSeconds == 0L &&
+                (state.isDemo || state.codeSecondsRemaining > 0),
     )
     Spacer(Modifier.height(18.dp))
     AuthNotice(
@@ -386,6 +506,7 @@ private fun VerificationForm(state: AuthUiState, onIntent: (AuthIntent) -> Unit)
         },
         enabled =
             !state.isProcessing &&
+                state.isSelectedAuthenticationEnabled &&
                 state.resendSecondsRemaining == 0L &&
                 state.retryAfterSeconds == 0L,
         contentPadding = PaddingValues(vertical = 16.dp),
@@ -492,6 +613,7 @@ private fun AuthErrorMessage(state: AuthUiState) {
             AuthError.InvalidRequest -> R.string.auth_invalid_request
             AuthError.SecureStorage -> R.string.auth_storage_error
             AuthError.PasswordAgain -> R.string.auth_signup_password_again
+            AuthError.MethodDisabled -> R.string.auth_method_disabled
         }
     Text(
         stringResource(message),

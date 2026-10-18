@@ -125,6 +125,8 @@ class HttpAuthenticationRepository(
                 failure.kind == ApiFailureKind.Configuration -> AccountAccessIssue.Configuration
                 failure.kind == ApiFailureKind.Network -> AccountAccessIssue.Network
                 failure.kind == ApiFailureKind.InvalidResponse -> AccountAccessIssue.InvalidResponse
+                failure.status == 403 && failure.code == "AUTHENTICATION_METHOD_DISABLED" ->
+                    AccountAccessIssue.MethodDisabled
                 failure.status == 400 -> AccountAccessIssue.InvalidRequest
                 failure.status == 401 -> AccountAccessIssue.InvalidCredentials
                 failure.status == 429 -> AccountAccessIssue.RateLimited

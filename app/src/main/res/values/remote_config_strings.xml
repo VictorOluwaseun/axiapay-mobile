@@ -1,0 +1,12 @@
+<resources>
+    <string name="auth_config_retry">Refresh available options</string>
+    <string name="auth_signup_disabled">Account creation is temporarily unavailable. Please try again later.</string>
+    <string name="auth_login_disabled">Sign-in is temporarily unavailable. Please try again later.</string>
+    <string name="auth_method_disabled">This option is no longer available. Go back and choose an available option.</string>
+    <string name="auth_contact_unavailable">This contact method is no longer available.</string>
+    <string name="auth_use_email">Use email</string>
+    <string name="auth_use_phone">Use phone number</string>
+    <string name="auth_credential_unavailable">This option is no longer available.</string>
+    <string name="auth_use_password">Use password</string>
+    <string name="auth_use_code">Use one-time code</string>
+</resources>

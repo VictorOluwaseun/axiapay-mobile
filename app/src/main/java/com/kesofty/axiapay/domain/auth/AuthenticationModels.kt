@@ -101,6 +101,7 @@ enum class AccountAccessIssue {
     Configuration,
     SecureStorage,
     SignupPasswordRequired,
+    MethodDisabled,
 }
 
 /** Carries only allowlisted failure information; never include response bodies or credentials. */

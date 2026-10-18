@@ -46,6 +46,7 @@ class AuthViewModelTest {
                     ResendDemoAccessCode(repository),
                 ),
                 java.time.Clock.systemUTC(),
+                enabledRemoteConfiguration(),
             )
             .also {
                 owner.put("auth", it)

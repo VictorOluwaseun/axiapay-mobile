@@ -63,6 +63,21 @@ class HttpAuthenticationRepositoryTest {
         client.dispatcher.executorService.shutdown()
     }
 
+    /**
+     * A policy rejection remains distinct from credentials and can trigger a read-only config
+     * refresh.
+     */
+    @Test
+    fun disabledAuthenticationMethodHasAnExplicitFailure() = runTest {
+        server.enqueue(response(403, """{"code":"AUTHENTICATION_METHOD_DISABLED"}"""))
+        try {
+            repository.loginWithPassword(contact, "password")
+            fail("Expected policy rejection")
+        } catch (failure: AuthenticationFailure) {
+            assertEquals(AccountAccessIssue.MethodDisabled, failure.issue)
+        }
+    }
+
     /** Supplies the same JSON media type as the Nest controller. */
     private fun response(status: Int, body: String) =
         MockResponse.Builder()

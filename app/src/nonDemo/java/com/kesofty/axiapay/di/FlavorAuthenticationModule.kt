@@ -6,12 +6,15 @@ import android.util.Log
 import com.kesofty.axiapay.BuildConfig
 import com.kesofty.axiapay.application.auth.AccountAccess
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
+import com.kesofty.axiapay.data.AtomicTextCheckpoint
 import com.kesofty.axiapay.data.auth.*
+import com.kesofty.axiapay.data.config.RemoteConfigRepositoryImpl
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.http.ApiHttpLoggingInterceptor
 import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
 import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.config.RemoteConfigRepository
 import com.kesofty.axiapay.domain.wallet.WalletRepository
 import dagger.Module
 import dagger.Provides
@@ -20,6 +23,7 @@ import dagger.hilt.android.components.ViewModelComponent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ViewModelScoped
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import java.time.Clock
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -72,6 +76,23 @@ internal object AuthenticationInfrastructureModule {
             ApiRequestIdGenerator(Build.MANUFACTURER, Build.MODEL, clock),
         )
     }
+
+    /**
+     * Keep one atomic public-config record per installed flavor, validating the API scope on read.
+     */
+    @Provides
+    @Singleton
+    fun provideRemoteConfigRepository(
+        http: ApiHttpClient,
+        @ApplicationContext context: Context,
+    ): RemoteConfigRepository =
+        RemoteConfigRepositoryImpl(
+            http,
+            AtomicTextCheckpoint(
+                File(context.noBackupFilesDir, "remote-config/snapshot.json"),
+                Dispatchers.IO,
+            ),
+        )
 
     /** Shares the bounded transport while keeping auth DTO mapping inside its repository. */
     @Provides

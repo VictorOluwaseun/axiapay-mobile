@@ -169,7 +169,10 @@ class AccountWalletTest {
         try {
             wallets.failure = WalletFailure(WalletIssue.Network)
             val handle = SavedStateHandle()
-            val vm = AuthViewModel(handle, access, clock).also { owner.put("auth", it) }
+            val vm =
+                AuthViewModel(handle, access, clock, enabledRemoteConfiguration()).also {
+                    owner.put("auth", it)
+                }
             vm.accept(AuthIntent.SignIn)
             vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
             vm.accept(AuthIntent.EditContact("ada@example.test"))
@@ -244,7 +247,12 @@ class AccountWalletTest {
             access.begin(login)
             wallets.gate = CompletableDeferred()
             val vm =
-                AuthViewModel(SavedStateHandle(mapOf("auth.demoEntered" to true)), access, clock)
+                AuthViewModel(
+                        SavedStateHandle(mapOf("auth.demoEntered" to true)),
+                        access,
+                        clock,
+                        enabledRemoteConfiguration(),
+                    )
                     .also { owner.put("auth", it) }
             assertFalse(vm.uiState.value.homeWallet is HomeWalletState.Demo)
             assertFalse(vm.uiState.value.homeWallet is HomeWalletState.Loaded)
@@ -296,7 +304,10 @@ class AccountWalletTest {
      * Build an owned server ViewModel and enter the verified account through public login intents.
      */
     private fun signedInViewModel(): AuthViewModel {
-        val vm = AuthViewModel(SavedStateHandle(), access, clock).also { owner.put("auth", it) }
+        val vm =
+            AuthViewModel(SavedStateHandle(), access, clock, enabledRemoteConfiguration()).also {
+                owner.put("auth", it)
+            }
         passwordLogin(vm)
         return vm
     }
@@ -318,7 +329,9 @@ class AccountWalletTest {
     @Test
     fun lateWalletResponsesCannotReplaceNavigation() = runTest {
         try {
-            val vm = AuthViewModel(SavedStateHandle(), access, clock).also { owner.put("auth", it) }
+            val vm =
+                AuthViewModel(SavedStateHandle(), access, clock, enabledRemoteConfiguration())
+                    .also { owner.put("auth", it) }
             vm.accept(AuthIntent.SignIn)
             vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
             vm.accept(AuthIntent.EditContact("ada@example.test"))

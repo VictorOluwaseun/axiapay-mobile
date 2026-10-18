@@ -55,6 +55,7 @@ class ServerAuthViewModelTest {
                 handle,
                 ServerAccountAccess(api, store, clock, RecordingWalletRepository()),
                 clock,
+                enabledRemoteConfiguration(),
             )
             .also {
                 owner.put("auth", it)

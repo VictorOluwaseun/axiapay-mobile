@@ -1,13 +1,21 @@
 <resources>
     <string name="auth_account_label">Account</string>
+    <string name="auth_live_create_email_body">Start with your email address.</string>
+    <string name="auth_live_create_phone_body">Start with your phone number.</string>
+    <string name="auth_sign_in_email_body">Sign in with your email address.</string>
+    <string name="auth_sign_in_phone_body">Sign in with your phone number.</string>
+    <string name="auth_access_unavailable_body">Please try again later.</string>
     <string name="auth_live_create_body">Start with your phone number or email.</string>
     <string name="auth_live_password_hint">Enter your password</string>
     <string name="auth_live_signup_password_hint">8–128 characters. A memorable passphrase works well.</string>
     <string name="auth_live_login_password_hint">Use the password registered with this contact.</string>
     <string name="auth_live_signup_password_error">Use between 8 and 128 characters for your password.</string>
     <string name="auth_live_login_password_error">Enter your password using 1–128 characters.</string>
+    <string name="auth_live_email_notice">Your account is verified through your email address.</string>
+    <string name="auth_live_phone_notice">Your account is verified through your phone number.</string>
     <string name="auth_live_notice">Your account is verified through your phone number or email.</string>
-    <string name="auth_live_verify_body">Enter the code sent to your phone number or email.</string>
+    <string name="auth_live_verify_email_body">Enter the code sent to your email address.</string>
+    <string name="auth_live_verify_phone_body">Enter the code sent to your phone number.</string>
     <string name="auth_live_verify">Verify and continue</string>
     <string name="auth_live_code_notice">Use the latest code sent to your contact. Codes expire and can only be used once.</string>
     <plurals name="auth_code_expires_in">
