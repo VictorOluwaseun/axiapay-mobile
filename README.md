@@ -125,6 +125,8 @@ Start the existing local API and its development services from the backend repos
 
 Local email and phone codes are captured in **Mailpit at http://127.0.0.1:58025**. Phone delivery appears as mail to `sms+<international digits>@sms.axiapay.test`; no SMS is sent to a handset. Use the latest code for the corresponding challenge.
 
+`BuildConfig.API_BASE_URL` configures the shared API transport for authentication, wallets, purchases and public configuration. `BuildConfig.API_ALLOW_LOCAL_HTTP` permits the existing loopback/emulator HTTP policy in dev only. Demo retains separate simulated bindings.
+
 Override a base URL, including the `/v1/` prefix and trailing slash, through untracked user Gradle properties or `-P`:
 
 ```sh
