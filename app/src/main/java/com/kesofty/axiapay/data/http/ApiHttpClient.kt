@@ -46,6 +46,7 @@ class ApiHttpClient(
     private val allowLocalHttp: Boolean,
     private val client: OkHttpClient,
     private val io: CoroutineDispatcher,
+    private val requestIds: ApiRequestIdGenerator = ApiRequestIdGenerator(),
 ) {
     /** Stable API scope used by protected credential storage and all authenticated adapters. */
     val apiIdentity: String
@@ -93,6 +94,7 @@ class ApiHttpClient(
                     .cacheControl(CacheControl.FORCE_NETWORK)
                     .header("Cache-Control", "no-store")
                     .header("Accept", "application/json")
+                    .header("X-Request-Id", requestIds.next())
             if (payload != null) {
                 builder.post(
                     payload
@@ -171,7 +173,7 @@ class ApiHttpClient(
                 else 0
             val reference =
                 response.header("X-Request-Id")?.takeIf {
-                    Regex("[A-Za-z0-9_-]{1,80}").matches(it)
+                    isValidApiRequestId(it)
                 }
             throw ApiRequestFailure(
                 ApiFailureKind.Http,

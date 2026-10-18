@@ -1,11 +1,13 @@
 package com.kesofty.axiapay.di
 
 import android.content.Context
+import android.os.Build
 import com.kesofty.axiapay.BuildConfig
 import com.kesofty.axiapay.application.auth.AccountAccess
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.data.auth.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
+import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
 import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.wallet.WalletRepository
@@ -44,7 +46,7 @@ internal object AuthenticationInfrastructureModule {
     /** Auth calls are bounded, uncached and never replayed or redirected with credentials. */
     @Provides
     @Singleton
-    fun provideApiHttpClient(): ApiHttpClient {
+    fun provideApiHttpClient(clock: Clock): ApiHttpClient {
         val client =
             OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -60,6 +62,7 @@ internal object AuthenticationInfrastructureModule {
             BuildConfig.AUTH_ALLOW_LOCAL_HTTP,
             client,
             Dispatchers.IO,
+            ApiRequestIdGenerator(Build.MANUFACTURER, Build.MODEL, clock),
         )
     }
 
