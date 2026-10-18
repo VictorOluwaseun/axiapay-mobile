@@ -4,7 +4,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
+
+// Export reviewed schemas so later versions can migrate durable dashboard snapshots.
+room { schemaDirectory("$projectDir/schemas") }
 
 android {
     namespace = "com.kesofty.axiapay"
@@ -106,6 +110,8 @@ dependencies {
     // Reuse one BOM declaration to align the app and instrumentation-test Compose dependencies.
     val composeBom = platform(libs.androidx.compose.bom)
 
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.okhttp.coroutines)
     testImplementation(libs.okhttp.mockwebserver)
