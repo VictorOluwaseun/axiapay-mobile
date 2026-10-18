@@ -2,11 +2,13 @@ package com.kesofty.axiapay.di
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import com.kesofty.axiapay.BuildConfig
 import com.kesofty.axiapay.application.auth.AccountAccess
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.data.auth.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
+import com.kesofty.axiapay.data.http.ApiHttpLoggingInterceptor
 import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
 import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.auth.*
@@ -56,6 +58,11 @@ internal object AuthenticationInfrastructureModule {
                 .retryOnConnectionFailure(false)
                 .followRedirects(false)
                 .followSslRedirects(false)
+                .apply {
+                    if (BuildConfig.DEBUG && BuildConfig.FLAVOR == "dev") {
+                        addInterceptor(ApiHttpLoggingInterceptor { Log.d("AxiaHttp", it) })
+                    }
+                }
                 .build()
         return ApiHttpClient(
             BuildConfig.AUTH_API_BASE_URL,
