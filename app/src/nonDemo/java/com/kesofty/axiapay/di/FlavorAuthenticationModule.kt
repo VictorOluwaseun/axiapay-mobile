@@ -3,12 +3,14 @@ package com.kesofty.axiapay.di
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.room.Room
 import com.kesofty.axiapay.BuildConfig
 import com.kesofty.axiapay.application.auth.AccountAccess
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.data.AtomicTextCheckpoint
 import com.kesofty.axiapay.data.auth.*
 import com.kesofty.axiapay.data.config.RemoteConfigRepositoryImpl
+import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.http.ApiHttpLoggingInterceptor
 import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
@@ -85,14 +87,34 @@ internal object AuthenticationInfrastructureModule {
     fun provideRemoteConfigRepository(
         http: ApiHttpClient,
         @ApplicationContext context: Context,
+        database: AxiaDatabase,
+        clock: Clock,
     ): RemoteConfigRepository =
         RemoteConfigRepositoryImpl(
             http,
-            AtomicTextCheckpoint(
-                File(context.noBackupFilesDir, "remote-config/snapshot.json"),
-                Dispatchers.IO,
-            ),
+            database.configuration(),
+            clock,
+            legacyCheckpoint =
+                AtomicTextCheckpoint(
+                    File(context.noBackupFilesDir, "remote-config/snapshot.json"),
+                    Dispatchers.IO,
+                ),
         )
+
+    /**
+     * Keep durable snapshots outside OS backup and isolate records by the configured API identity.
+     */
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AxiaDatabase =
+        Room.databaseBuilder(
+                context,
+                AxiaDatabase::class.java,
+                File(context.noBackupFilesDir, "dashboard/snapshots.db")
+                    .apply { parentFile?.mkdirs() }
+                    .absolutePath,
+            )
+            .build()
 
     /** Shares the bounded transport while keeping auth DTO mapping inside its repository. */
     @Provides

@@ -1,25 +1,28 @@
 package com.kesofty.axiapay.data.config
 
+import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.*
 import com.kesofty.axiapay.domain.TextCheckpoint
 import com.kesofty.axiapay.domain.config.*
+import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 /**
- * Owns local-first reads and one atomic, API-scoped cache record. Cached display reads never wait
- * for network revalidation. Online failures remain explicit and preserve the committed snapshot;
- * client defaults are never persisted as remotely fetched or versioned settings.
+ * Owns local-first Room reads and atomic, API-scoped policy replacement. Cached display reads never
+ * wait for network revalidation. Online failures remain explicit and preserve the committed
+ * snapshot; client defaults are never persisted as remotely fetched or versioned settings.
  */
 class RemoteConfigRepositoryImpl(
     private val http: ApiHttpClient,
-    private val checkpoint: TextCheckpoint,
+    private val configurationDao: ConfigurationDao,
+    private val clock: Clock = Clock.systemUTC(),
+    private val legacyCheckpoint: TextCheckpoint? = null,
 ) : RemoteConfigRepository {
     private val cacheMutex = Mutex()
     private val refreshMutex = Mutex()
-    private var cached: RemoteConfiguration? = null
 
     /** Read a validated committed snapshot without waiting for a network refresh in progress. */
     override suspend fun readCached(): RemoteConfiguration? = cacheMutex.withLock {
@@ -29,7 +32,7 @@ class RemoteConfigRepositoryImpl(
             } catch (_: ApiRequestFailure) {
                 throw RemoteConfigFailure(RemoteConfigIssue.Configuration)
             }
-        loadCached(identity)
+        loadCached(identity)?.toConfiguration()
     }
 
     /** Serialize online refreshes; publish a replacement only after successful persistence. */
@@ -54,48 +57,63 @@ class RemoteConfigRepositoryImpl(
         }
     }
 
-    /** A 304 is usable only with the exact cached representation and matching quoted ETag. */
+    /** A 304 is usable only with a cached representation and a weakly matching HTTP validator. */
     private suspend fun refreshLocked(): RemoteConfiguration {
         val identity = http.apiIdentity
         val previous = cacheMutex.withLock { loadCached(identity) }
-        val response = http.conditionalGet("config", previous?.let { etag(it) })
-        if (response.status == 304 && previous != null && response.etag == etag(previous)) {
-            return previous
+        val response = http.conditionalGet("config", previous?.etag)
+        if (
+            response.status == 304 &&
+                previous != null &&
+                matchesEntityTag(response.etag, previous.etag)
+        ) {
+            val updated =
+                try {
+                    configurationDao.markChecked(identity, previous.etag, clock.millis())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    throw RemoteConfigFailure(RemoteConfigIssue.Storage)
+                }
+            if (updated != 1) {
+                throw RemoteConfigFailure(RemoteConfigIssue.InvalidResponse)
+            }
+            return previous.toConfiguration()
         }
         if (response.status == 304) {
             throw RemoteConfigFailure(RemoteConfigIssue.InvalidResponse)
         }
         val body = requireNotNull(response.body)
         val configuration = decode(body)
-        if (response.etag != etag(configuration)) {
+        if (!matchesEntityTag(response.etag, etag(configuration))) {
             throw RemoteConfigFailure(RemoteConfigIssue.InvalidResponse)
         }
-        val record = JSONObject().put("apiIdentity", identity).put("configuration", body).toString()
+        val record =
+            AppConfigurationEntity.fromConfiguration(
+                identity,
+                configuration,
+                response.etag!!,
+                clock.millis(),
+            )
         cacheMutex.withLock {
             try {
-                checkpoint.write(record)
+                configurationDao.save(record)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 throw RemoteConfigFailure(RemoteConfigIssue.Storage)
             }
-            cached = configuration
         }
         return configuration
     }
 
-    /** Keep memory hits fast; retry local misses so transient disk failures can recover offline. */
-    private suspend fun loadCached(identity: String): RemoteConfiguration? {
-        if (cached == null) {
-            cached = readCache(identity)
-        }
-        return cached
-    }
-
-    /** Corrupt, missing or differently scoped records cannot seed display or HTTP validators. */
-    private suspend fun readCache(identity: String): RemoteConfiguration? {
+    /** Load the committed Room row; import an old atomic-file snapshot only when no row exists. */
+    private suspend fun loadCached(identity: String): AppConfigurationEntity? {
         try {
-            val content = checkpoint.read() ?: return null
+            configurationDao.read(identity)?.let {
+                return it
+            }
+            val content = legacyCheckpoint?.read() ?: return null
             if (content.length > 65536) {
                 return null
             }
@@ -103,7 +121,16 @@ class RemoteConfigRepositoryImpl(
             if (record.opt("apiIdentity") != identity) {
                 return null
             }
-            return decode(record.getJSONObject("configuration"))
+            val configuration = decode(record.getJSONObject("configuration"))
+            val imported =
+                AppConfigurationEntity.fromConfiguration(
+                    identity,
+                    configuration,
+                    etag(configuration),
+                    0,
+                )
+            configurationDao.save(imported)
+            return imported
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -111,7 +138,10 @@ class RemoteConfigRepositoryImpl(
         }
     }
 
-    /** Validate untrusted HTTP/disk values once; JSON string booleans never count as booleans. */
+    /**
+     * Validate untrusted HTTP and legacy-file values once; JSON string booleans never count as
+     * booleans.
+     */
     private fun decode(body: JSONObject): RemoteConfiguration {
         val version =
             body.opt("version") as? String
@@ -186,6 +216,10 @@ class RemoteConfigRepositoryImpl(
                 ?: throw RemoteConfigFailure(RemoteConfigIssue.InvalidResponse),
         )
     }
+
+    /** Compression proxies can weaken validators without changing the versioned settings. */
+    private fun matchesEntityTag(actual: String?, expected: String): Boolean =
+        actual != null && actual.removePrefix("W/") == expected.removePrefix("W/")
 
     /**
      * Keep HTTP validators paired with their validated body rather than independent preferences.

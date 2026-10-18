@@ -1,10 +1,12 @@
 package com.kesofty.axiapay
 
+import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.application.config.LoadRemoteConfiguration
 import com.kesofty.axiapay.application.config.RemoteConfigurationUpdate
 import com.kesofty.axiapay.data.AtomicTextCheckpoint
 import com.kesofty.axiapay.data.config.RemoteConfigRepositoryImpl
+import com.kesofty.axiapay.data.database.AxiaDatabase
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.domain.config.PaymentFeature
 import com.kesofty.axiapay.domain.config.RemoteConfigIssue
@@ -24,12 +26,19 @@ import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Exercise real Android atomic files and conditional HTTP without accounts or Firebase mutations.
- */
+/** Exercise real Room persistence and conditional HTTP without accounts or Firebase mutations. */
 class RemoteConfigDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val directory = File(context.noBackupFilesDir, "config-tests/${UUID.randomUUID()}")
+    private val database by lazy {
+        directory.mkdirs()
+        Room.databaseBuilder(
+                context,
+                AxiaDatabase::class.java,
+                File(directory, "snapshots.db").absolutePath,
+            )
+            .build()
+    }
     private val statuses = mutableListOf<Int>()
     private val client =
         OkHttpClient.Builder()
@@ -56,14 +65,17 @@ class RemoteConfigDeviceTest {
         client.dispatcher.cancelAll()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
+        database.close()
         directory.deleteRecursively()
     }
 
-    /** Use the same whole-record AtomicFile adapter and conditional repository as production. */
+    /** Use the production Room repository with an isolated legacy-file import source. */
     private fun repository(baseUrl: String) =
         RemoteConfigRepositoryImpl(
             ApiHttpClient(baseUrl, true, client, Dispatchers.IO),
-            AtomicTextCheckpoint(File(directory, "snapshot.json"), Dispatchers.IO),
+            database.configuration(),
+            legacyCheckpoint =
+                AtomicTextCheckpoint(File(directory, "snapshot.json"), Dispatchers.IO),
         )
 
     /**

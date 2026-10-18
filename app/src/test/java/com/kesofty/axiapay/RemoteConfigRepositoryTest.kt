@@ -3,6 +3,7 @@ package com.kesofty.axiapay
 import com.kesofty.axiapay.application.config.LoadRemoteConfiguration
 import com.kesofty.axiapay.application.config.RemoteConfigurationUpdate
 import com.kesofty.axiapay.data.config.RemoteConfigRepositoryImpl
+import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.domain.TextCheckpoint
 import com.kesofty.axiapay.domain.config.*
@@ -84,7 +85,7 @@ class RemoteConfigRepositoryTest {
     @Test
     fun persistedSnapshotRevalidatesAcrossRepositoryRecreation() = runTest {
         enqueue(body(signupPhone = false, loginEmail = false))
-        val first = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val first = configurationRepository(http, checkpoint).refresh()
         val request = server.takeRequest()
         assertEquals("/api/v1/config", request.target)
         assertNull(request.headers["If-None-Match"])
@@ -92,7 +93,7 @@ class RemoteConfigRepositoryTest {
         assertFalse(first.signup.phoneEnabled)
         assertFalse(first.login.emailEnabled)
         server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", "\"v1\"").build())
-        assertEquals(first, RemoteConfigRepositoryImpl(http, checkpoint).refresh())
+        assertEquals(first, configurationRepository(http, checkpoint).refresh())
         assertEquals("\"v1\"", server.takeRequest().headers["If-None-Match"])
         assertEquals(1, checkpoint.writes)
     }
@@ -101,9 +102,9 @@ class RemoteConfigRepositoryTest {
     @Test
     fun cachedReadsRestoreTheCompletePolicyWithoutNetworkIo() = runTest {
         enqueue(body(signupEmail = false, loginEmail = false, loginPhone = false))
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         server.takeRequest()
-        val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+        val restored = configurationRepository(http, checkpoint)
         assertEquals(saved, restored.readCached())
         assertEquals(saved, restored.readCached())
         assertEquals(AuthenticationMethods(false, false), restored.readCached()!!.login)
@@ -115,7 +116,7 @@ class RemoteConfigRepositoryTest {
     @Test
     fun cacheHitsRemainAvailableDuringAnInFlightRefresh() = runTest {
         enqueue()
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         server.takeRequest()
         val enteredNetwork = CompletableDeferred<Unit>()
         val releaseNetwork = CompletableDeferred<Unit>()
@@ -129,7 +130,7 @@ class RemoteConfigRepositoryTest {
                 }
                 .build()
         val repository =
-            RemoteConfigRepositoryImpl(
+            configurationRepository(
                 ApiHttpClient(server.url("/api/v1/").toString(), true, gatedClient, Dispatchers.IO),
                 checkpoint,
             )
@@ -151,9 +152,9 @@ class RemoteConfigRepositoryTest {
     @Test
     fun localStorageReadCanRecoverWithoutAnyNetworkRequest() = runTest {
         enqueue(body(loginEmail = false))
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         server.takeRequest()
-        val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+        val restored = configurationRepository(http, checkpoint)
         checkpoint.failRead = true
         assertNull(restored.readCached())
         checkpoint.failRead = false
@@ -168,9 +169,9 @@ class RemoteConfigRepositoryTest {
     @Test
     fun offlineFirstLoadingRetainsSavedPolicyThenRecoversWithTheOriginalValidator() = runTest {
         enqueue(body(loginEmail = false))
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         server.takeRequest()
-        val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+        val restored = configurationRepository(http, checkpoint)
         server.enqueue(MockResponse.Builder().code(503).build())
         val offline = LoadRemoteConfiguration(restored)().toList()
         assertEquals(
@@ -189,7 +190,7 @@ class RemoteConfigRepositoryTest {
         assertEquals("v2", updated.version)
         assertEquals(AuthenticationMethods(false, false), updated.login)
         assertEquals("\"v1\"", server.takeRequest().headers["If-None-Match"])
-        assertEquals(updated, RemoteConfigRepositoryImpl(http, checkpoint).readCached())
+        assertEquals(updated, configurationRepository(http, checkpoint).readCached())
     }
 
     /**
@@ -198,7 +199,7 @@ class RemoteConfigRepositoryTest {
      */
     @Test
     fun updatedVersionReplacesAllEightAuthenticationSwitchesAtomically() = runTest {
-        val repository = RemoteConfigRepositoryImpl(http, checkpoint)
+        val repository = configurationRepository(http, checkpoint)
         enqueue()
         repository.refresh()
         server.takeRequest()
@@ -209,7 +210,7 @@ class RemoteConfigRepositoryTest {
         assertEquals(AuthenticationMethods(false, false, false, false), updated.login)
         assertEquals(
             "v2",
-            JSONObject(checkpoint.value!!).getJSONObject("configuration").getString("version"),
+            checkpoint.row!!.version,
         )
     }
 
@@ -226,13 +227,13 @@ class RemoteConfigRepositoryTest {
             }
         }
         enqueue(legacy.toString(), "legacy")
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         server.takeRequest()
         assertFalse(saved.signup.phoneEnabled)
         assertFalse(saved.login.emailEnabled)
         assertTrue(saved.signup.passwordEnabled && saved.signup.otpEnabled)
         assertTrue(saved.login.passwordEnabled && saved.login.otpEnabled)
-        val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+        val restored = configurationRepository(http, checkpoint)
         assertEquals(saved, restored.readCached())
         server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", "\"legacy\"").build())
         assertEquals(saved, restored.refresh())
@@ -248,7 +249,7 @@ class RemoteConfigRepositoryTest {
                 val changed = JSONObject(body(version))
                 changed.getJSONObject("authentication").getJSONObject(operation).put(field, false)
                 enqueue(changed.toString(), version)
-                val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+                val saved = configurationRepository(http, checkpoint).refresh()
                 server.takeRequest()
                 val expected =
                     AuthenticationMethods(
@@ -258,7 +259,7 @@ class RemoteConfigRepositoryTest {
                         field != "otpEnabled",
                     )
                 assertEquals(expected, if (operation == "signup") saved.signup else saved.login)
-                val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+                val restored = configurationRepository(http, checkpoint)
                 assertEquals(saved, restored.readCached())
                 server.enqueue(MockResponse.Builder().code(503).build())
                 expectFailure(RemoteConfigIssue.Unavailable) { restored.refresh() }
@@ -273,7 +274,7 @@ class RemoteConfigRepositoryTest {
      */
     @Test
     fun partialCredentialPoliciesNeverOverwriteTheSavedSnapshot() = runTest {
-        val repository = RemoteConfigRepositoryImpl(http, checkpoint)
+        val repository = configurationRepository(http, checkpoint)
         enqueue(body(signupPassword = false, loginOtp = false))
         val saved = repository.refresh()
         server.takeRequest()
@@ -314,7 +315,7 @@ class RemoteConfigRepositoryTest {
     fun malformedResponsesNeverBecomeUsableOrPersistent() = runTest {
         server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", "\"v1\"").build())
         expectFailure(RemoteConfigIssue.InvalidResponse) {
-            RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+            configurationRepository(http, checkpoint).refresh()
         }
         server.takeRequest()
         for (invalid in
@@ -325,16 +326,16 @@ class RemoteConfigRepositoryTest {
             )) {
             enqueue(invalid)
             expectFailure(RemoteConfigIssue.InvalidResponse) {
-                RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+                configurationRepository(http, checkpoint).refresh()
             }
             server.takeRequest()
         }
         enqueue(version = "wrong")
         expectFailure(RemoteConfigIssue.InvalidResponse) {
-            RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+            configurationRepository(http, checkpoint).refresh()
         }
         server.takeRequest()
-        assertNull(checkpoint.value)
+        assertNull(checkpoint.row)
     }
 
     /**
@@ -348,10 +349,11 @@ class RemoteConfigRepositoryTest {
                 "broken",
                 """{"apiIdentity":"https://another.example/api/v1/","configuration":${body()}}""",
             )) {
+            checkpoint.row = null
             checkpoint.value = stored
-            assertNull(RemoteConfigRepositoryImpl(http, checkpoint).readCached())
+            assertNull(configurationRepository(http, checkpoint).readCached())
             enqueue()
-            RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+            configurationRepository(http, checkpoint).refresh()
             assertNull(server.takeRequest().headers["If-None-Match"])
         }
     }
@@ -362,18 +364,19 @@ class RemoteConfigRepositoryTest {
      */
     @Test
     fun failedPersistenceRetainsPreviousVersion() = runTest {
-        val repository = RemoteConfigRepositoryImpl(http, checkpoint)
+        val repository = configurationRepository(http, checkpoint)
         enqueue()
         val original = repository.refresh()
         server.takeRequest()
-        val stored = checkpoint.value
+        val stored = checkpoint.row
         checkpoint.failWrite = true
         enqueue(body("v2", false), "v2")
         expectFailure(RemoteConfigIssue.Storage) { repository.refresh() }
         server.takeRequest()
-        assertEquals(stored, checkpoint.value)
+        assertEquals(stored, checkpoint.row)
         assertEquals(original, repository.readCached())
-        assertEquals(original, RemoteConfigRepositoryImpl(http, checkpoint).readCached())
+        assertEquals(original, configurationRepository(http, checkpoint).readCached())
+        checkpoint.failWrite = false
         server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", "\"v1\"").build())
         assertEquals(original, repository.refresh())
         assertEquals("\"v1\"", server.takeRequest().headers["If-None-Match"])
@@ -385,7 +388,7 @@ class RemoteConfigRepositoryTest {
      */
     @Test
     fun unavailableRefreshFailsThenRecoversWithSavedVersion() = runTest {
-        val repository = RemoteConfigRepositoryImpl(http, checkpoint)
+        val repository = configurationRepository(http, checkpoint)
         enqueue()
         val original = repository.refresh()
         server.takeRequest()
@@ -394,6 +397,7 @@ class RemoteConfigRepositoryTest {
         )
         expectFailure(RemoteConfigIssue.Unavailable) { repository.refresh() }
         server.takeRequest()
+        checkpoint.failWrite = false
         server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", "\"v1\"").build())
         assertEquals(original, repository.refresh())
         assertEquals("\"v1\"", server.takeRequest().headers["If-None-Match"])
@@ -412,11 +416,11 @@ class RemoteConfigRepositoryTest {
                 .build(),
         )
         val action =
-            launch(Dispatchers.Default) { RemoteConfigRepositoryImpl(http, checkpoint).refresh() }
+            launch(Dispatchers.Default) { configurationRepository(http, checkpoint).refresh() }
         withContext(Dispatchers.IO) { server.takeRequest() }
         action.cancelAndJoin()
         assertTrue(action.isCancelled)
-        assertNull(checkpoint.value)
+        assertNull(checkpoint.row)
     }
 
     /**
@@ -435,13 +439,13 @@ class RemoteConfigRepositoryTest {
         for (feature in PaymentFeature.entries) {
             val version = "feature-${feature.name}"
             enqueue(withFeatures(version, feature), version)
-            val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+            val saved = configurationRepository(http, checkpoint).refresh()
             server.takeRequest()
             for (other in PaymentFeature.entries) assertEquals(
                 other != feature,
                 saved.features.isEnabled(other),
             )
-            val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+            val restored = configurationRepository(http, checkpoint)
             val requests = server.requestCount
             assertEquals(saved, restored.readCached())
             assertEquals(requests, server.requestCount)
@@ -450,7 +454,7 @@ class RemoteConfigRepositoryTest {
             server.takeRequest()
             assertEquals(saved, restored.readCached())
         }
-        val restored = RemoteConfigRepositoryImpl(http, checkpoint)
+        val restored = configurationRepository(http, checkpoint)
         val invalid =
             JSONObject(withFeatures("broken")).apply {
                 getJSONObject("features").getJSONObject("airtime").put("enabled", "true")
@@ -471,9 +475,63 @@ class RemoteConfigRepositoryTest {
     @Test
     fun legacySnapshotDoesNotInventFeatureAvailability() = runTest {
         enqueue()
-        val saved = RemoteConfigRepositoryImpl(http, checkpoint).refresh()
+        val saved = configurationRepository(http, checkpoint).refresh()
         assertEquals(PaymentFeatures.Disabled, saved.features)
         assertEquals(AuthenticationMethods(true, true), saved.login)
+    }
+
+    /**
+     * Preserve the received validator while accepting equivalent gzip/identity forms across
+     * recreation.
+     */
+    @Test
+    fun weakValidatorsSurviveStorageAndRevalidateAcrossEncodingChanges() = runTest {
+        for ((received, revalidated) in
+            listOf("W/\"v1\"" to "\"v1\"", "\"v1\"" to "W/\"v1\"", "W/\"v1\"" to "W/\"v1\"")) {
+            checkpoint.row = null
+            server.enqueue(
+                MockResponse.Builder()
+                    .code(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setHeader("ETag", received)
+                    .body(body())
+                    .build(),
+            )
+            val saved = configurationRepository(http, checkpoint).refresh()
+            server.takeRequest()
+            assertEquals(received, checkpoint.row!!.etag)
+            val restored = configurationRepository(http, checkpoint)
+            assertEquals(saved, restored.readCached())
+            server.enqueue(MockResponse.Builder().code(304).setHeader("ETag", revalidated).build())
+            assertEquals(saved, restored.refresh())
+            assertEquals(received, server.takeRequest().headers["If-None-Match"])
+            server.enqueue(
+                MockResponse.Builder().code(304).setHeader("ETag", "W/\"different\"").build(),
+            )
+            expectFailure(RemoteConfigIssue.InvalidResponse) { restored.refresh() }
+            server.takeRequest()
+            assertEquals(saved, restored.readCached())
+        }
+    }
+
+    /** A weak prefix never permits a body/version mismatch or an unquoted tag. */
+    @Test
+    fun malformedOrMismatchedWeakValidatorsCannotSeedTheCache() = runTest {
+        for (validator in listOf("W/\"other\"", "W/v1", "v1")) {
+            server.enqueue(
+                MockResponse.Builder()
+                    .code(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setHeader("ETag", validator)
+                    .body(body())
+                    .build(),
+            )
+            expectFailure(RemoteConfigIssue.InvalidResponse) {
+                configurationRepository(http, checkpoint).refresh()
+            }
+            server.takeRequest()
+            assertNull(checkpoint.row)
+        }
     }
 
     /** Assert only safe public failure metadata; raw provider diagnostics must never escape. */
@@ -491,11 +549,37 @@ class RemoteConfigRepositoryTest {
 /**
  * Atomic checkpoint fixture with an injectable failed commit and no Android filesystem dependency.
  */
-private class ConfigCheckpoint : TextCheckpoint {
+private class ConfigCheckpoint : TextCheckpoint, ConfigurationDao {
+    var row: AppConfigurationEntity? = null
     var value: String? = null
     var writes = 0
     var failWrite = false
     var failRead = false
+
+    /** Simulate a Room read with API isolation and independently injectable IO failure. */
+    override suspend fun read(apiIdentity: String): AppConfigurationEntity? {
+        if (failRead) throw java.io.IOException("fixture")
+        return row?.takeIf { it.apiIdentity == apiIdentity }
+    }
+
+    /** Failed commits leave the entire old typed row intact. */
+    override suspend fun save(configuration: AppConfigurationEntity) {
+        if (failWrite) throw java.io.IOException("fixture")
+        row = configuration
+        writes++
+    }
+
+    /** Revalidation changes receipt time without counting as replacement of policy content. */
+    override suspend fun markChecked(
+        apiIdentity: String,
+        etag: String,
+        checkedAtEpochMs: Long,
+    ): Int {
+        if (failWrite) throw java.io.IOException("fixture")
+        val current = row?.takeIf { it.apiIdentity == apiIdentity && it.etag == etag } ?: return 0
+        row = current.copy(checkedAtEpochMs = checkedAtEpochMs)
+        return 1
+    }
 
     /** Read the last committed snapshot only. */
     override suspend fun read(): String? {
@@ -514,3 +598,7 @@ private class ConfigCheckpoint : TextCheckpoint {
         writes++
     }
 }
+
+/** Share typed persistence while retaining coverage for legacy file import. */
+private fun configurationRepository(http: ApiHttpClient, checkpoint: ConfigCheckpoint) =
+    RemoteConfigRepositoryImpl(http, checkpoint, legacyCheckpoint = checkpoint)
