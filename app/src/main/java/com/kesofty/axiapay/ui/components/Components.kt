@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,16 +70,46 @@ fun RoundIconButton(
     }
 }
 
+/** Shares section typography and keeps actions readable when titles need more space. */
 @Composable
-fun SectionHeading(title: String, action: String? = null, onClick: () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-        if (action != null)
-            TextButton(onClick, contentPadding = PaddingValues(start = 12.dp)) {
-                Text(action, style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.width(4.dp))
-                AxiaIcon(Glyph.Chevron, Modifier.size(13.dp), Pine)
+fun SectionHeading(
+    title: String,
+    action: String? = null,
+    badge: String? = null,
+    onClick: () -> Unit = {},
+) {
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stackAction = maxWidth.value / fontScale < 280f
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                if (badge != null) {
+                    Text(
+                        badge,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                if (!stackAction && action != null) SectionAction(action, onClick)
             }
+            if (stackAction && action != null) SectionAction(action, onClick)
+        }
+    }
+}
+
+/** Retains the established section link's label, chevron and accessible touch target. */
+@Composable
+private fun SectionAction(label: String, onClick: () -> Unit) {
+    TextButton(onClick, contentPadding = PaddingValues(start = 12.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.width(4.dp))
+        AxiaIcon(Glyph.Chevron, Modifier.size(13.dp), Pine)
     }
 }
 
@@ -120,37 +151,49 @@ fun StatusPill(status: PaymentStatus) {
     )
 }
 
+/** Keeps the demo activity row while moving details below the title when text needs more room. */
 @Composable
 fun PaymentRow(payment: Payment, hidden: Boolean = false, onClick: () -> Unit) {
     val sign = if (payment.amount > 0) "+" else "−"
     val amountLabel = if (hidden) "••••" else sign + money(abs(payment.amount))
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconTile(payment.icon)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                payment.title,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(payment.time, color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                amountLabel,
-                color = if (payment.amount > 0) Pine else Ink,
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Spacer(Modifier.height(4.dp))
-            StatusPill(payment.status)
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stackDetails = maxWidth.value / fontScale < 300f
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconTile(payment.icon)
+            Spacer(Modifier.width(12.dp))
+            FlowRow(
+                Modifier.weight(1f),
+                maxItemsInEachRow = if (stackDetails) 1 else 2,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        payment.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = if (stackDetails) Int.MAX_VALUE else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(payment.time, color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Column(horizontalAlignment = if (stackDetails) Alignment.Start else Alignment.End) {
+                    Text(
+                        amountLabel,
+                        color = if (payment.amount > 0) Pine else Ink,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    StatusPill(payment.status)
+                }
+            }
         }
     }
 }
@@ -195,7 +238,7 @@ fun EmptyState(title: String, description: String) {
     }
 }
 
-/** Keep the entire amount legible even when demo funding adds more digits. */
+/** Keep exact wallet amounts legible as their digits or the user's font scale increase. */
 @Composable
 fun MoneyAmount(text: String, modifier: Modifier = Modifier, color: Color = Ink) {
     BasicText(

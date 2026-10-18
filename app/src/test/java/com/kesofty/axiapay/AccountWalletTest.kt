@@ -176,7 +176,7 @@ class AccountWalletTest {
             vm.accept(AuthIntent.SelectMethod(AuthMethod.Password))
             vm.accept(AuthIntent.EditPassword("private password"))
             vm.accept(AuthIntent.Continue)
-            assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+            assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
             assertEquals(WalletLookupResult.Failed(WalletIssue.Network), vm.uiState.value.wallet)
             assertEquals("", vm.uiState.value.password)
             wallets.failure = null
@@ -196,6 +196,7 @@ class AccountWalletTest {
             assertTrue(
                 handle.keys().none { it.contains("wallet", true) || it.contains("token", true) },
             )
+            vm.accept(AuthIntent.OpenAccount)
             vm.accept(AuthIntent.SignOut)
             assertNull(vm.uiState.value.wallet)
             assertNull(vm.uiState.value.account)

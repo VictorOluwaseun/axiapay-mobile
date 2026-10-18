@@ -198,7 +198,16 @@ private fun AppSheet(
                             }
                     Sheet.Notifications ->
                         NotificationsSheet(state, addMoney) { onIntent(AxiaIntent.SelectTab(3)) }
-                    Sheet.Profile -> ProfileSheet(state, onIntent, onOpenAccount, authShortcutLabel)
+                    Sheet.Profile ->
+                        ProfileSheet(
+                            state,
+                            onIntent,
+                            {
+                                close()
+                                onOpenAccount()
+                            },
+                            authShortcutLabel,
+                        )
                     Sheet.Offline -> OfflineSheet(state, draft, onIntent)
                     is Sheet.Sms ->
                         state.smsOutbox
@@ -236,49 +245,72 @@ private fun AppSheet(
     }
 }
 
+/** Keeps the demo navigation appearance and gives large text two comfortably sized columns. */
 @Composable
 private fun BottomNavigation(selectedTab: Int, onSelect: (Int) -> Unit) {
+    val tabs =
+        listOf(
+            R.string.dashboard_tab_home to Glyph.Home,
+            R.string.dashboard_tab_payments to Glyph.Grid,
+            R.string.dashboard_tab_activity to Glyph.Activity,
+            R.string.dashboard_tab_plans to Glyph.Calendar,
+        )
+    val fontScale = LocalDensity.current.fontScale
     Surface(color = Color.White, shadowElevation = 12.dp) {
-        Row(
-            Modifier.fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-        ) {
-            listOf(
-                    "Home" to Glyph.Home,
-                    "Payments" to Glyph.Grid,
-                    "Activity" to Glyph.Activity,
-                    "Plans" to Glyph.Calendar,
-                )
-                .forEachIndexed { index, (label, icon) ->
-                    val active = selectedTab == index
-                    Column(
-                        Modifier.weight(1f)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable(role = Role.Tab) { onSelect(index) }
-                            .semantics { selected = active }
-                            .padding(vertical = 5.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            Modifier.size(width = 54.dp, height = 32.dp)
-                                .background(
-                                    if (active) Mint else Color.Transparent,
-                                    RoundedCornerShape(12.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            AxiaIcon(icon, Modifier.size(21.dp), if (active) Pine else Muted)
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            BoxWithConstraints(
+                Modifier.widthIn(max = 600.dp)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+            ) {
+                val columns = if (maxWidth.value / fontScale < 260f) 2 else 4
+                Column(Modifier.selectableGroup()) {
+                    tabs.chunked(columns).forEachIndexed { rowIndex, row ->
+                        Row(Modifier.fillMaxWidth()) {
+                            row.forEachIndexed { columnIndex, (labelResource, icon) ->
+                                val index = rowIndex * columns + columnIndex
+                                val active = selectedTab == index
+                                Column(
+                                    Modifier.weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .clickable(role = Role.Tab) { onSelect(index) }
+                                        .semantics { selected = active }
+                                        .testTag("dashboard-tab-$index")
+                                        .padding(vertical = 5.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Box(
+                                        Modifier.size(width = 54.dp, height = 32.dp)
+                                            .background(
+                                                if (active) Mint else Color.Transparent,
+                                                RoundedCornerShape(12.dp),
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        AxiaIcon(
+                                            icon,
+                                            Modifier.size(21.dp),
+                                            if (active) Pine else Muted,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        stringResource(labelResource),
+                                        color = if (active) Pine else Muted,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        textAlign = TextAlign.Center,
+                                        modifier =
+                                            Modifier.fillMaxWidth()
+                                                .testTag("dashboard-tab-label-$index"),
+                                    )
+                                }
+                            }
                         }
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            label,
-                            color = if (active) Pine else Muted,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
                     }
                 }
+            }
         }
     }
 }
@@ -346,18 +378,11 @@ private fun HomeScreen(
                         state.hidden,
                         state.offline,
                         { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
+                        { open("Add money") },
+                        { open("Send money") },
                         onRefreshWallet,
                         onOpenAccount,
                     )
-            }
-        }
-        if (homeWallet != HomeWalletState.Demo) {
-            item {
-                Text(
-                    stringResource(R.string.home_payment_preview_notice),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Muted,
-                )
             }
         }
         item {
@@ -369,14 +394,26 @@ private fun HomeScreen(
         }
         item {
             Column {
-                SectionHeading("A little ahead", "All plans") { onTab(3) }
+                SectionHeading(
+                    "A little ahead",
+                    "All plans",
+                    stringResource(R.string.dashboard_preview),
+                ) {
+                    onTab(3)
+                }
                 Spacer(Modifier.height(8.dp))
                 UpcomingCard(state, onTab)
             }
         }
         item {
             Column {
-                SectionHeading("Recent activity", "View all") { onTab(2) }
+                SectionHeading(
+                    "Recent activity",
+                    "View all",
+                    stringResource(R.string.dashboard_preview),
+                ) {
+                    onTab(2)
+                }
                 state.payments.take(3).forEach { payment ->
                     PaymentRow(payment, state.hidden) { onReceipt(payment.id) }
                 }
@@ -394,97 +431,43 @@ private fun HomeScreen(
                     "  /  Everyday, taken care of.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
             }
         }
     }
 }
 
-/** Render the isolated demo ledger and its simulated funding/transfer actions. */
+/** Supplies isolated sample funds and preview navigation to the shared dashboard card. */
 @Composable
 private fun WalletCard(state: DemoSession, open: (String) -> Unit, onIntent: (AxiaIntent) -> Unit) {
-    WalletCardSurface {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (state.offline) "Cached balance" else "Available balance",
-                color = Color(0xFFBDD7CF).modeColor(),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            IconButton(
-                { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
-                Modifier.size(48.dp).padding(start = 2.dp),
-            ) {
-                AxiaIcon(
-                    if (state.hidden) Glyph.EyeOff else Glyph.Eye,
-                    Modifier.size(17.dp),
-                    Color(0xFFBDD7CF).modeColor(),
-                    if (state.hidden) "Show balance" else "Hide balance",
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Demo",
-                color = Mint,
-                style = MaterialTheme.typography.labelSmall,
-                modifier =
-                    Modifier.background(
-                            Color.White.copy(alpha = .08f),
-                            RoundedCornerShape(20.dp),
-                        )
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-            )
-        }
+    DashboardWalletCard(
+        title =
+            stringResource(
+                if (state.offline) R.string.home_wallet_cached else R.string.wallet_available,
+            ),
+        badge = stringResource(R.string.home_wallet_demo_badge),
+        hidden = state.hidden,
+        onToggleHidden = { onIntent(AxiaIntent.HideBalance(!state.hidden)) },
+        onAddMoney = { open("Add money") },
+        onSendMoney = { open("Send money") },
+    ) {
         MoneyAmount(
-            if (state.hidden) "₦ ••••••" else money(state.balance, true),
+            if (state.hidden) stringResource(R.string.home_wallet_hidden)
+            else money(state.balance, true),
             color = Color.White,
             modifier = Modifier.fillMaxWidth().padding(bottom = 5.dp),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(5.dp).background(Mint, CircleShape))
-            Text(
-                if (state.offline) "  Last seen ${state.cachedTime} • Not live"
-                else "  Your everyday possibilities.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFBDD7CF).modeColor(),
-            )
-        }
-        Spacer(Modifier.height(22.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                { open("Add money") },
-                Modifier.weight(1f).heightIn(min = 48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors =
-                    ButtonDefaults.buttonColors(containerColor = Mint, contentColor = DeepPine),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-            ) {
-                AxiaIcon(Glyph.Plus, Modifier.size(18.dp), DeepPine)
-                Spacer(Modifier.width(7.dp))
-                Text("Add money", style = MaterialTheme.typography.labelMedium)
-            }
-            Button(
-                { open("Send money") },
-                Modifier.weight(1f).heightIn(min = 48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = .10f),
-                        contentColor = Color.White,
-                    ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-            ) {
-                AxiaIcon(Glyph.ArrowUp, Modifier.size(17.dp), Color.White)
-                Spacer(Modifier.width(7.dp))
-                Text(
-                    "Send money",
-                    style = MaterialTheme.typography.labelMedium,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
+        WalletCardCaption(
+            if (state.offline)
+                stringResource(R.string.home_wallet_demo_cached_caption, state.cachedTime)
+            else stringResource(R.string.home_wallet_everyday),
+        )
     }
 }
 
+/** Keeps the demo shortcut spacing shared across dashboard wallet sources. */
 @Composable
 private fun ServiceGrid(onSelect: (String) -> Unit) {
     val quickServices = services.take(7) + Service("More", Glyph.More, "")
@@ -499,6 +482,7 @@ private fun ServiceGrid(onSelect: (String) -> Unit) {
                             Modifier.weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable(role = Role.Button) { onSelect(service.name) }
+                                .testTag("dashboard-service-${service.name}")
                                 .padding(vertical = 3.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
@@ -736,45 +720,52 @@ private fun ActivityScreen(
     ) {
         item { PageHeader("Your money, in view.", "Every payment has a story.", Glyph.Activity) }
         item {
-            Row(
+            BoxWithConstraints(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(Pine)
                     .padding(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Money in", color = Mint, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        if (state.hidden) "••••"
-                        else
-                            money(
-                                state.payments
-                                    .filter {
-                                        it.amount > 0 && it.status == PaymentStatus.Successful
-                                    }
-                                    .sumOf { it.amount },
-                            ),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("Money out", color = Mint, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        if (state.hidden) "••••"
-                        else
-                            money(
-                                state.batches.sumOf { it.paidMinorUnits } -
-                                    individualPayments
+                val fontScale = LocalDensity.current.fontScale
+                FlowRow(
+                    maxItemsInEachRow = if (maxWidth.value / fontScale < 240f) 1 else 2,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Money in", color = Mint, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            if (state.hidden) "••••"
+                            else
+                                money(
+                                    state.payments
                                         .filter {
-                                            it.amount < 0 && it.status == PaymentStatus.Successful
+                                            it.amount > 0 && it.status == PaymentStatus.Successful
                                         }
                                         .sumOf { it.amount },
-                            ),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
-                    )
+                                ),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Money out", color = Mint, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            if (state.hidden) "••••"
+                            else
+                                money(
+                                    state.batches.sumOf { it.paidMinorUnits } -
+                                        individualPayments
+                                            .filter {
+                                                it.amount < 0 &&
+                                                    it.status == PaymentStatus.Successful
+                                            }
+                                            .sumOf { it.amount },
+                                ),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
         }
@@ -891,7 +882,11 @@ private fun PlansScreen(
                     )
                 }
                 HorizontalDivider(Modifier.padding(vertical = 16.dp), color = Line)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Column {
                         Text(
                             if (state.hidden) "••••" else money(plan.amount),

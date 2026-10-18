@@ -116,11 +116,64 @@ class ServerAuthViewModelTest {
         advanceTimeBy(1000)
         runCurrent()
         vm.accept(AuthIntent.Continue)
-        assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+        assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
         assertNotNull(vm.uiState.value.account)
         assertEquals("", vm.uiState.value.code)
         assertEquals("", vm.uiState.value.contact)
         assertFalse(vm.uiState.value.isDemo)
+    }
+
+    /** Every successful real entry opens Home directly and clears transient credentials. */
+    @Test
+    fun passwordAndVerifiedEntryOpenDashboardWithoutAnAccountInterstitial() = withViewModelTest {
+        for (creating in listOf(false, true)) {
+            for (method in AuthMethod.entries) {
+                val vm = viewModel()
+                vm.accept(if (creating) AuthIntent.CreateAccount else AuthIntent.SignIn)
+                vm.accept(AuthIntent.SelectContactType(AuthContactType.Email))
+                vm.accept(AuthIntent.EditContact("ada@example.test"))
+                vm.accept(AuthIntent.SelectMethod(method))
+                vm.accept(AuthIntent.EditPassword("private passphrase"))
+                vm.accept(AuthIntent.Continue)
+                if (creating || method == AuthMethod.OneTimeCode) {
+                    assertEquals(AuthScreen.Verification, vm.uiState.value.screen)
+                    vm.accept(AuthIntent.EditCode("001234"))
+                    vm.accept(AuthIntent.Continue)
+                }
+                assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
+                assertEquals(api.session.account, vm.uiState.value.account)
+                assertEquals("", vm.uiState.value.password)
+                assertEquals("", vm.uiState.value.code)
+                assertNull(vm.uiState.value.challenge)
+                vm.accept(AuthIntent.OpenAccount)
+                assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+                vm.accept(AuthIntent.SignOut)
+                assertEquals(AuthScreen.Welcome, vm.uiState.value.screen)
+            }
+        }
+    }
+
+    /** Foreground validation keeps Home or explicitly selected account details on their route. */
+    @Test
+    fun foregroundChecksAndAccountBackPreserveTheVerifiedDashboard() = withViewModelTest {
+        store.value =
+            StoredAuthenticationSession(
+                api.session.accessToken,
+                now.plusSeconds(3600),
+                api.apiIdentity,
+            )
+        val vm = viewModel()
+        assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
+        vm.accept(AuthIntent.RefreshSession)
+        assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
+        vm.accept(AuthIntent.OpenAccount)
+        vm.accept(AuthIntent.RefreshSession)
+        assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+        vm.accept(AuthIntent.Back)
+        assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
+        assertEquals(api.session.account, vm.uiState.value.account)
+        assertNotNull(vm.uiState.value.wallet)
+        assertNotNull(store.value)
     }
 
     /**
@@ -163,7 +216,8 @@ class ServerAuthViewModelTest {
         assertNotNull(store.value)
         api.failure = null
         vm.accept(AuthIntent.RetrySession)
-        assertEquals(AuthScreen.Complete, vm.uiState.value.screen)
+        assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
+        vm.accept(AuthIntent.OpenAccount)
         api.failure = AuthenticationFailure(AccountAccessIssue.Network)
         vm.accept(AuthIntent.SignOut)
         assertEquals(AuthScreen.Complete, vm.uiState.value.screen)

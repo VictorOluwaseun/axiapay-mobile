@@ -1,0 +1,7 @@
+<resources>
+    <string name="dashboard_tab_home">Home</string>
+    <string name="dashboard_tab_payments">Payments</string>
+    <string name="dashboard_tab_activity">Activity</string>
+    <string name="dashboard_tab_plans">Plans</string>
+    <string name="dashboard_preview">Preview</string>
+</resources>

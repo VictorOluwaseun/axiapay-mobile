@@ -12,6 +12,7 @@ import com.kesofty.axiapay.presentation.auth.AuthScreen
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
 import com.kesofty.axiapay.ui.walletMoney
 import java.time.Clock
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -113,13 +114,13 @@ class ServerAuthFlowUiTest {
                 val code = readLocalCode(account, challenge.id)
                 compose.onNodeWithTag("auth-code").performScrollTo().performTextInput(code)
                 compose.onNodeWithTag("auth-submit").performScrollTo().performClick()
-                waitForScreen(AuthScreen.Complete)
+                waitForScreen(AuthScreen.Dashboard)
                 assertAccount(account)
                 if (accounts.isEmpty()) {
                     assertNewOwnerRestoresSession(account)
                 }
                 compose.activityRule.scenario.recreate()
-                waitForScreen(AuthScreen.Complete)
+                waitForScreen(AuthScreen.Dashboard)
                 assertAccount(account)
                 signOutAndVerifyRevocation()
                 accounts += account
@@ -129,7 +130,7 @@ class ServerAuthFlowUiTest {
             openSignIn(account)
             chooseMethodAndPassword(account)
             compose.onNodeWithTag("auth-submit").performScrollTo().performClick()
-            waitForScreen(AuthScreen.Complete)
+            waitForScreen(AuthScreen.Dashboard)
             assertAccount(account)
             signOutAndVerifyRevocation()
         }
@@ -148,7 +149,7 @@ class ServerAuthFlowUiTest {
                 .performScrollTo()
                 .performTextInput(readLocalCode(account, challenge.id))
             compose.onNodeWithTag("auth-submit").performScrollTo().performClick()
-            waitForScreen(AuthScreen.Complete)
+            waitForScreen(AuthScreen.Dashboard)
             assertAccount(account)
             signOutAndVerifyRevocation()
         }
@@ -192,46 +193,62 @@ class ServerAuthFlowUiTest {
             restored.uiState.value.account != null && !restored.uiState.value.isProcessing
         }
         assertEquals(account.canonicalContact, restored.uiState.value.account?.contact?.value)
-        assertEquals(AuthScreen.Complete, restored.uiState.value.screen)
+        assertEquals(AuthScreen.Dashboard, restored.uiState.value.screen)
         assertEquals("", restored.uiState.value.password)
-        compose.onNodeWithText("Open dashboard").performScrollTo().performClick()
-        waitForScreen(AuthScreen.Dashboard)
+        compose.onNodeWithText("You’re signed in.").assertDoesNotExist()
         compose.activityRule.scenario.recreate()
         waitForScreen(AuthScreen.Dashboard)
         compose.onNodeWithTag("home-wallet-balance").assertExists()
-        compose.onNodeWithTag("home-wallet-account").performClick()
-        waitForScreen(AuthScreen.Complete)
     }
 
-    /** Checks a visible verified identity, not merely the presence of a dashboard route. */
+    /** Home opens directly with the verified wallet; account details remain an explicit action. */
     private fun assertAccount(account: LocalTestAccount) {
-        compose.onNodeWithText("You’re signed in.").assertIsDisplayed()
-        compose.onNodeWithTag("auth-account-contact").assertTextEquals(account.canonicalContact)
+        compose.onNodeWithTag("home-dashboard").assertIsDisplayed()
+        compose.onNodeWithText("You’re signed in.").assertDoesNotExist()
+        compose.onNodeWithText("Open dashboard").assertDoesNotExist()
+        assertEquals(account.canonicalContact, viewModel().uiState.value.account?.contact?.value)
         assertFalse(viewModel().uiState.value.isDemo)
         assertEquals("", viewModel().uiState.value.password)
         assertEquals("", viewModel().uiState.value.code)
         val loaded = viewModel().uiState.value.wallet as WalletLookupResult.Loaded
         assertEquals("NGN", loaded.wallet.currency)
         assertEquals(java.math.BigInteger.ZERO, loaded.wallet.availableMinorUnits)
-        compose.onNodeWithTag("account-wallet").assertExists()
+        compose
+            .onNodeWithTag("home-wallet-balance")
+            .assertTextEquals(
+                walletMoney(
+                    loaded.wallet.availableMinorUnits,
+                    loaded.wallet.currency,
+                    Locale.forLanguageTag("en-NG"),
+                ),
+            )
+        compose.onNodeWithText("₦128,450.00").assertDoesNotExist()
+        openAccountDetails()
+        compose.onNodeWithTag("auth-account-contact").assertTextEquals(account.canonicalContact)
         compose
             .onNodeWithTag("wallet-id")
             .performScrollTo()
             .assertTextContains(loaded.wallet.id, substring = true)
-        compose.onNodeWithText("Open dashboard").performScrollTo().performClick()
-        waitForScreen(AuthScreen.Dashboard)
         compose
-            .onNodeWithTag("home-wallet-balance")
-            .assertTextEquals(
-                walletMoney(loaded.wallet.availableMinorUnits, loaded.wallet.currency),
-            )
-        compose.onNodeWithText("₦128,450.00").assertDoesNotExist()
-        compose.onNodeWithTag("home-wallet-account").performClick()
+            .onNodeWithContentDescription(context.getString(R.string.auth_back))
+            .performScrollTo()
+            .performClick()
+        waitForScreen(AuthScreen.Dashboard)
+    }
+
+    /** Use the persistent Profile entry instead of replacing the dashboard's wallet actions. */
+    private fun openAccountDetails() {
+        compose.onNodeWithContentDescription("Open profile").performClick()
+        compose
+            .onNodeWithText(context.getString(R.string.auth_account_shortcut))
+            .performScrollTo()
+            .performClick()
         waitForScreen(AuthScreen.Complete)
     }
 
     /** Verifies that the server actually revoked the opaque session and local storage is empty. */
     private fun signOutAndVerifyRevocation() {
+        openAccountDetails()
         val token = runBlocking { requireNotNull(sessions.read()).accessToken }
         compose.onNodeWithText("Sign out").performScrollTo().performClick()
         waitForScreen(AuthScreen.Welcome)

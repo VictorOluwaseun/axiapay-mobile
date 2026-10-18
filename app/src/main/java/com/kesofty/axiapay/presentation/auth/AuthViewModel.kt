@@ -219,7 +219,7 @@ constructor(
             )
     }
 
-    /** Invalidates old work and clears verification proof before returning to the account form. */
+    /** Clears abandoned proof and returns real account details to the authenticated dashboard. */
     private fun goBack() {
         val state = mutableState.value
         val previous =
@@ -239,6 +239,11 @@ constructor(
                         codeSecondsRemaining = 0,
                         resendSecondsRemaining = 0,
                     )
+                AuthScreen.Complete ->
+                    if (state.isDemo) freshState()
+                    else
+                        freshState(AuthScreen.Dashboard)
+                            .copy(account = state.account, wallet = state.wallet)
                 else -> freshState()
             }
         navigate(previous)
@@ -305,19 +310,17 @@ constructor(
         restoreSession()
     }
 
-    /** Loads protected credentials and checks /me before displaying a real signed-in identity. */
+    /**
+     * Revalidates protected access, opening Home unless account details are explicitly selected.
+     */
     private fun restoreSession(requestedDestination: AuthScreen? = null) {
         if (mutableState.value.isDemo || mutableState.value.isProcessing) {
             return
         }
         val destination =
             requestedDestination
-                ?: if (
-                    mutableState.value.screen == AuthScreen.Dashboard ||
-                        handle.get<Boolean>(DASHBOARD_ENTERED) == true
-                )
-                    AuthScreen.Dashboard
-                else AuthScreen.Complete
+                ?: if (mutableState.value.screen == AuthScreen.Complete) AuthScreen.Complete
+                else AuthScreen.Dashboard
         navigate(freshState(AuthScreen.Restoring))
         execute(restoring = true, restoredDestination = destination) { access.restore() }
     }
@@ -407,7 +410,7 @@ constructor(
             }
             is AccountAccessResult.SignedIn -> {
                 mutableState.value =
-                    freshState(if (restoring) restoredDestination else AuthScreen.Complete)
+                    freshState(if (restoring) restoredDestination else AuthScreen.Dashboard)
                         .copy(account = result.account, wallet = result.wallet)
                 ticker?.cancel()
             }

@@ -15,7 +15,6 @@ import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.money
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
-import com.kesofty.axiapay.ui.walletMoney
 import java.io.File
 import java.math.BigInteger
 import java.time.LocalDate
@@ -51,6 +50,7 @@ class HomeWalletUiTest {
         onAccount: () -> Unit = {},
         offline: Boolean = false,
         largeFont: Boolean = false,
+        onService: (String) -> Unit = {},
     ) {
         compose.setContent {
             var uiState by remember {
@@ -65,14 +65,31 @@ class HomeWalletUiTest {
                     AxiaApp(
                         uiState,
                         { intent ->
-                            if (intent is AxiaIntent.HideBalance) {
-                                uiState =
-                                    uiState.copy(
-                                        session = uiState.session.copy(hidden = intent.hidden),
-                                    )
+                            when (intent) {
+                                is AxiaIntent.HideBalance ->
+                                    uiState =
+                                        uiState.copy(
+                                            session = uiState.session.copy(hidden = intent.hidden),
+                                        )
+                                is AxiaIntent.OpenService -> {
+                                    onService(intent.route)
+                                    when (intent.route) {
+                                        "profile" ->
+                                            uiState =
+                                                uiState.copy(
+                                                    navigation =
+                                                        NavigationState(sheet = Sheet.Profile),
+                                                )
+                                        else -> Unit
+                                    }
+                                }
+                                AxiaIntent.CloseSheet ->
+                                    uiState = uiState.copy(navigation = NavigationState())
+                                else -> Unit
                             }
                         },
                         homeWallet = state,
+                        authShortcutLabel = "Account & sign out",
                         onRefreshWallet = onRefresh,
                         onOpenAccount = onAccount,
                     )
@@ -87,24 +104,42 @@ class HomeWalletUiTest {
      */
     @Test
     fun realBalanceAndVisibilityIgnoreDemoFunds() {
-        var refreshed = 0
-        var opened = 0
-        show(HomeWalletState.Loaded(wallet), { refreshed++ }, { opened++ })
-        compose
-            .onNodeWithTag("home-wallet-balance")
-            .assertTextEquals(walletMoney(wallet.availableMinorUnits, "NGN"))
+        val routes = mutableListOf<String>()
+        show(HomeWalletState.Loaded(wallet), onService = { routes += it })
+        saveScreenshot("dashboard-wallet-api.png")
+        compose.onNodeWithTag("home-wallet-balance").assertTextEquals("₦125.00")
         compose.onNodeWithText(money(demo.balance, true)).assertDoesNotExist()
         compose.onNodeWithContentDescription("Hide balance").performClick()
         compose.onNodeWithTag("home-wallet-balance").assertTextEquals("₦ ••••••")
         compose.onNodeWithContentDescription("Show balance").performClick()
-        compose
-            .onNodeWithTag("home-wallet-balance")
-            .assertTextEquals(walletMoney(wallet.availableMinorUnits, "NGN"))
-        assertEquals(0, refreshed)
-        compose.onNodeWithTag("home-wallet-refresh").performClick()
-        compose.onNodeWithTag("home-wallet-account").performClick()
-        assertEquals(1, refreshed)
+        compose.onNodeWithTag("home-wallet-balance").assertTextEquals("₦125.00")
+        compose.onNodeWithTag("home-wallet-add-money").performClick()
+        compose.onNodeWithTag("home-wallet-send-money").performClick()
+        assertEquals(listOf("Add money", "Send money"), routes)
+        compose.onNodeWithTag("home-wallet-balance").assertTextEquals("₦125.00")
+        compose.onNodeWithTag("home-wallet-refresh").assertDoesNotExist()
+        compose.onNodeWithTag("home-wallet-account").assertDoesNotExist()
+    }
+
+    /** Account details remain accessible from Profile after replacing the card's account button. */
+    @Test
+    fun profileAccountEntryClosesTheSheetBeforeOpeningAccountDetails() {
+        var opened = 0
+        show(HomeWalletState.Loaded(wallet), onAccount = { opened++ })
+        compose.onNodeWithContentDescription("Open profile").performClick()
+        compose.onNodeWithText("Account & sign out").performScrollTo().performClick()
         assertEquals(1, opened)
+        compose.onNodeWithText("A space for you.").assertDoesNotExist()
+        compose.onNodeWithTag("home-wallet-add-money").assertIsDisplayed()
+    }
+
+    /** Capture isolated fixture UI for visual comparison without accessing the phone's session. */
+    private fun saveScreenshot(name: String) {
+        val image = compose.onRoot().captureToImage()
+        val file = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, name)
+        file.outputStream().use {
+            image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
 
     /** Missing wallets display a recoverable failure and never substitute sample money or zero. */
@@ -115,20 +150,23 @@ class HomeWalletUiTest {
         compose.onNodeWithTag("home-wallet-error").assertIsDisplayed()
         compose.onNodeWithTag("home-wallet-balance").assertDoesNotExist()
         compose.onNodeWithText(money(demo.balance, true)).assertDoesNotExist()
+        compose.onNodeWithTag("home-wallet-add-money").assertIsNotEnabled()
+        compose.onNodeWithTag("home-wallet-send-money").assertIsNotEnabled()
         compose.onNodeWithTag("home-wallet-refresh").performClick()
         assertEquals(1, retries)
     }
 
     /**
-     * Loading prevents duplicate refresh and exposes neither previous real amounts nor sample
+     * Loading keeps wallet actions disabled and exposes neither previous real amounts nor sample
      * funds.
      */
     @Test
-    fun loadingIsExplicitAndRefreshIsDisabled() {
+    fun loadingIsExplicitAndWalletActionsAreDisabled() {
         show(HomeWalletState.Loading)
         compose.onNodeWithTag("home-wallet-loading").assertIsDisplayed()
         compose.onNodeWithTag("home-wallet-balance").assertDoesNotExist()
-        compose.onNodeWithTag("home-wallet-refresh").assertIsNotEnabled()
+        compose.onNodeWithTag("home-wallet-add-money").assertIsNotEnabled()
+        compose.onNodeWithTag("home-wallet-send-money").assertIsNotEnabled()
         compose.onNodeWithText(money(demo.balance, true)).assertDoesNotExist()
     }
 
@@ -143,6 +181,8 @@ class HomeWalletUiTest {
         compose.onNodeWithTag("home-wallet-signed-out").assertIsDisplayed()
         compose.onNodeWithTag("home-wallet-balance").assertDoesNotExist()
         compose.onNodeWithTag("home-wallet-refresh").assertDoesNotExist()
+        compose.onNodeWithTag("home-wallet-add-money").assertIsNotEnabled()
+        compose.onNodeWithTag("home-wallet-send-money").assertIsNotEnabled()
         compose.onNodeWithTag("home-wallet-account").performClick()
         assertEquals(1, opened)
     }
@@ -153,8 +193,10 @@ class HomeWalletUiTest {
         show(HomeWalletState.Demo)
         compose.onNodeWithText(money(demo.balance, true)).assertIsDisplayed()
         compose.onNodeWithText("Demo").assertIsDisplayed()
-        compose.onNodeWithText("Add money").assertIsDisplayed()
+        compose.onNodeWithTag("home-wallet-add-money").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("home-wallet-send-money").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithTag("home-wallet-balance").assertDoesNotExist()
+        saveScreenshot("dashboard-wallet-demo.png")
     }
 
     /**
@@ -164,10 +206,9 @@ class HomeWalletUiTest {
     @Test
     fun realWalletSupportsOfflinePaletteAndLargeFonts() {
         show(HomeWalletState.Loaded(wallet), offline = true, largeFont = true)
-        compose
-            .onNodeWithTag("home-wallet-balance")
-            .assertTextEquals(walletMoney(wallet.availableMinorUnits, "NGN"))
-        compose.onNodeWithTag("home-wallet-refresh").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("home-wallet-balance").assertTextEquals("₦125.00")
+        compose.onNodeWithTag("home-wallet-add-money").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("home-wallet-send-money").assertIsDisplayed()
         val image = compose.onRoot().captureToImage()
         val pixels = image.toPixelMap()
         for (row in 0 until pixels.height step 18) {

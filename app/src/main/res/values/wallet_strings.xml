@@ -21,5 +21,11 @@
     <string name="home_wallet_show">Show balance</string>
     <string name="home_wallet_hide">Hide balance</string>
     <string name="home_wallet_hidden">₦ ••••••</string>
-    <string name="home_payment_preview_notice">Airtime, data and electricity payments use your wallet. Other payment tools, plans and activity below are previews.</string>
+    <string name="home_wallet_add_money">Add money</string>
+    <string name="home_wallet_send_money">Send money</string>
+    <string name="home_wallet_everyday">Your everyday possibilities.</string>
+    <string name="home_wallet_demo_badge">Demo</string>
+    <string name="home_wallet_cached">Cached balance</string>
+    <string name="home_wallet_demo_cached_caption">Last seen %1$s • Not live</string>
+    <string name="home_wallet_offline_caption">Last received • Not live</string>
 </resources>

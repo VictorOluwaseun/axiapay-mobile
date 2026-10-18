@@ -10,9 +10,16 @@ import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
-/** Format NGN minor units exactly for account/Home views without floating-point conversion. */
-internal fun walletMoney(minorUnits: BigInteger, currencyCode: String): String {
-    val formatter = NumberFormat.getCurrencyInstance(Locale.getDefault())
+/**
+ * Format exact minor units with caller-selected presentation locale and no floating-point
+ * conversion.
+ */
+internal fun walletMoney(
+    minorUnits: BigInteger,
+    currencyCode: String,
+    locale: Locale = Locale.getDefault(),
+): String {
+    val formatter = NumberFormat.getCurrencyInstance(locale)
     formatter.currency = Currency.getInstance(currencyCode)
     formatter.minimumFractionDigits = 2
     formatter.maximumFractionDigits = 2
