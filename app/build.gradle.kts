@@ -31,21 +31,21 @@ android {
             versionNameSuffix = "-dev"
             buildConfigField(
                 "String",
-                "AUTH_API_BASE_URL",
+                "API_BASE_URL",
                 providers
                     .gradleProperty("axiapay.dev.apiBaseUrl")
                     .orElse("http://10.0.2.2:4000/v1/")
                     .get()
                     .let { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" },
             )
-            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "true")
+            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "true")
         }
         create("demo") {
             dimension = "environment"
             applicationIdSuffix = ".demo"
             versionNameSuffix = "-demo"
-            buildConfigField("String", "AUTH_API_BASE_URL", "\"\"")
-            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
+            buildConfigField("String", "API_BASE_URL", "\"\"")
+            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
         }
         create("staging") {
             dimension = "environment"
@@ -53,23 +53,23 @@ android {
             versionNameSuffix = "-staging"
             buildConfigField(
                 "String",
-                "AUTH_API_BASE_URL",
+                "API_BASE_URL",
                 providers.gradleProperty("axiapay.staging.apiBaseUrl").orElse("").get().let {
                     "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
                 },
             )
-            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
+            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
         }
         create("prod") {
             dimension = "environment"
             buildConfigField(
                 "String",
-                "AUTH_API_BASE_URL",
+                "API_BASE_URL",
                 providers.gradleProperty("axiapay.prod.apiBaseUrl").orElse("").get().let {
                     "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
                 },
             )
-            buildConfigField("boolean", "AUTH_ALLOW_LOCAL_HTTP", "false")
+            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
         }
     }
 

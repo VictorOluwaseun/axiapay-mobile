@@ -48,7 +48,7 @@ class ServerAuthFlowUiTest {
     private val api
         get() =
             HttpAuthenticationRepository(
-                BuildConfig.AUTH_API_BASE_URL,
+                BuildConfig.API_BASE_URL,
                 true,
                 client,
                 Dispatchers.IO,
@@ -63,7 +63,7 @@ class ServerAuthFlowUiTest {
                 InstrumentationRegistry.getArguments().getString("runLocalAuth") == "true",
         )
         Assume.assumeTrue(
-            BuildConfig.AUTH_API_BASE_URL.toHttpUrl().host in
+            BuildConfig.API_BASE_URL.toHttpUrl().host in
                 setOf("10.0.2.2", "127.0.0.1", "localhost"),
         )
         Assume.assumeTrue(

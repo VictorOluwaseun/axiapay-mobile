@@ -45,7 +45,7 @@ internal object FlavorAuthenticationModule {
 @Module
 @InstallIn(SingletonComponent::class)
 internal object AuthenticationInfrastructureModule {
-    /** Auth calls are bounded, uncached and never replayed or redirected with credentials. */
+    /** API calls are bounded, uncached and never replayed or redirected with credentials. */
     @Provides
     @Singleton
     fun provideApiHttpClient(clock: Clock): ApiHttpClient {
@@ -65,8 +65,8 @@ internal object AuthenticationInfrastructureModule {
                 }
                 .build()
         return ApiHttpClient(
-            BuildConfig.AUTH_API_BASE_URL,
-            BuildConfig.AUTH_ALLOW_LOCAL_HTTP,
+            BuildConfig.API_BASE_URL,
+            BuildConfig.API_ALLOW_LOCAL_HTTP,
             client,
             Dispatchers.IO,
             ApiRequestIdGenerator(Build.MANUFACTURER, Build.MODEL, clock),
