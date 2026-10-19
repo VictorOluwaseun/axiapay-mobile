@@ -34,10 +34,23 @@ internal class AuthenticationJsonCodec(private val clock: Clock) {
         val token = string(json, "accessToken")
         require(Regex("[A-Za-z0-9_-]{43}").matches(token))
         val expires = integer(json, "expiresInSeconds", 1..86400)
+        val receivedAt = clock.instant()
+        val refreshFields = listOf("refreshToken", "refreshExpiresInSeconds", "sessionId")
+        val refresh =
+            if (refreshFields.any(json::has)) {
+                val proof = string(json, "refreshToken")
+                require(Regex("[A-Za-z0-9_-]{43}").matches(proof) && proof != token)
+                RefreshCredentials(
+                    proof,
+                    receivedAt.plusSeconds(integer(json, "refreshExpiresInSeconds", 1..2592000)),
+                    uuid(json, "sessionId"),
+                )
+            } else null
         return AuthenticatedSession(
             token,
-            clock.instant().plusSeconds(expires),
+            receivedAt.plusSeconds(expires),
             account(json.getJSONObject("account")),
+            refresh,
         )
     }
 

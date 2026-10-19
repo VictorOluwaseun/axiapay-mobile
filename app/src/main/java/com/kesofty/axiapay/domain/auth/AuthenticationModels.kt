@@ -68,9 +68,16 @@ data class AuthenticatedSession(
     val accessToken: String,
     val expiresAt: Instant,
     val account: AccountIdentity,
+    val refreshCredentials: RefreshCredentials? = null,
 ) {
     /** Redacts all identifying or credential-bearing fields from diagnostic interpolation. */
     override fun toString() = "AuthenticatedSession(credentials=redacted)"
+}
+
+/** Rotating proof and fixed family deadline; secrets never enter diagnostics or saved UI state. */
+data class RefreshCredentials(val token: String, val expiresAt: Instant, val sessionId: String) {
+    /** Redact proof material even when the value is interpolated accidentally. */
+    override fun toString() = "RefreshCredentials(credentials=redacted)"
 }
 
 /** One protected record scoped to the configured API, never a saved-state or backup payload. */
@@ -79,9 +86,27 @@ data class StoredAuthenticationSession(
     val expiresAt: Instant,
     val apiIdentity: String,
     val accountId: String? = null,
+    val refreshCredentials: RefreshCredentials? = null,
 ) {
     /** Redacts all identifying or credential-bearing fields from diagnostic interpolation. */
     override fun toString() = "StoredAuthenticationSession(credentials=redacted)"
+
+    /** Cached display may outlive access expiry; the API still authorizes every operation. */
+    fun isUsableAt(now: Instant): Boolean = now.isBefore(refreshCredentials?.expiresAt ?: expiresAt)
+
+    /** Rotation preserves a family; another login or API can never inherit an earlier request. */
+    fun belongsToSameSession(other: StoredAuthenticationSession?): Boolean {
+        if (other == null || apiIdentity != other.apiIdentity) {
+            return false
+        }
+        if (accountId != null && other.accountId != null && accountId != other.accountId) {
+            return false
+        }
+        val family = refreshCredentials?.sessionId
+        val otherFamily = other.refreshCredentials?.sessionId
+        return if (family != null && otherFamily != null) family == otherFamily
+        else family == otherFamily && accessToken == other.accessToken
+    }
 }
 
 /** Safe client feedback; generic credential errors must not disclose whether an account exists. */

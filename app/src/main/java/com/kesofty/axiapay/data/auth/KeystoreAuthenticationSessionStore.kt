@@ -41,45 +41,64 @@ class KeystoreAuthenticationSessionStore(context: Context, private val io: Corou
             lock.withLock { readRecord() }
         }
 
-    /** Commits an encrypted record atomically before the application can publish new access. */
+    /** Commits an encrypted token pair before application access is published. */
     override suspend fun write(session: StoredAuthenticationSession) =
         withContext(io) {
+            lock.withLock { writeRecord(session) }
+        }
+
+    /** Serialize compare-and-replace with login and logout using the same Keystore storage lock. */
+    override suspend fun replace(
+        expected: StoredAuthenticationSession,
+        replacement: StoredAuthenticationSession,
+    ): Boolean =
+        withContext(io) {
             lock.withLock {
-                try {
-                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                    cipher.init(Cipher.ENCRYPT_MODE, key())
-                    cipher.updateAAD(associatedData)
-                    val payload =
-                        JSONObject()
-                            .put("accessToken", session.accessToken)
-                            .put("expiresAt", session.expiresAt.toString())
-                            .put("apiIdentity", session.apiIdentity)
-                            .put("accountId", session.accountId)
-                            .toString()
-                            .toByteArray(Charsets.UTF_8)
-                    val encrypted = cipher.doFinal(payload)
-                    require(cipher.iv.size == 12)
-                    val bytes = byteArrayOf(1, 12) + cipher.iv + encrypted
-                    currentCoroutineContext().ensureActive()
-                    val stream = file.startWrite()
-                    try {
-                        stream.write(bytes)
-                        currentCoroutineContext().ensureActive()
-                        file.finishWrite(stream)
-                        check(readRecord() == session)
-                    } catch (failure: Exception) {
-                        file.failWrite(stream)
-                        throw failure
-                    } finally {
-                        payload.fill(0)
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    throw AuthenticationFailure(AccountAccessIssue.SecureStorage)
-                }
+                if (readRecord() != expected) return@withLock false
+                writeRecord(replacement)
+                true
             }
         }
+
+    /** Persist the whole pair in one authenticated atomic file; callers own the storage mutex. */
+    private suspend fun writeRecord(session: StoredAuthenticationSession) {
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key())
+            cipher.updateAAD(associatedData)
+            val payload =
+                JSONObject()
+                    .put("accessToken", session.accessToken)
+                    .put("expiresAt", session.expiresAt.toString())
+                    .put("apiIdentity", session.apiIdentity)
+                    .put("accountId", session.accountId)
+                    .put("refreshToken", session.refreshCredentials?.token)
+                    .put("refreshExpiresAt", session.refreshCredentials?.expiresAt?.toString())
+                    .put("sessionId", session.refreshCredentials?.sessionId)
+                    .toString()
+                    .toByteArray(Charsets.UTF_8)
+            val encrypted = cipher.doFinal(payload)
+            require(cipher.iv.size == 12)
+            val bytes = byteArrayOf(1, 12) + cipher.iv + encrypted
+            currentCoroutineContext().ensureActive()
+            val stream = file.startWrite()
+            try {
+                stream.write(bytes)
+                currentCoroutineContext().ensureActive()
+                file.finishWrite(stream)
+                check(readRecord() == session)
+            } catch (failure: Exception) {
+                file.failWrite(stream)
+                throw failure
+            } finally {
+                payload.fill(0)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw AuthenticationFailure(AccountAccessIssue.SecureStorage)
+        }
+    }
 
     /** Atomically removes only the read session, preserving credentials from a newer login. */
     override suspend fun clear(expected: StoredAuthenticationSession) =
@@ -122,11 +141,25 @@ class KeystoreAuthenticationSessionStore(context: Context, private val io: Corou
                 )
             val token = json.get("accessToken") as String
             require(Regex("[A-Za-z0-9_-]{43}").matches(token))
+            val hasRefresh = listOf("refreshToken", "refreshExpiresAt", "sessionId").any(json::has)
+            val refresh =
+                if (hasRefresh) {
+                    val proof = json.get("refreshToken") as String
+                    val family = json.get("sessionId") as String
+                    require(Regex("[A-Za-z0-9_-]{43}").matches(proof) && proof != token)
+                    require(java.util.UUID.fromString(family).toString() == family)
+                    RefreshCredentials(
+                        proof,
+                        Instant.parse(json.get("refreshExpiresAt") as String),
+                        family,
+                    )
+                } else null
             return StoredAuthenticationSession(
                 token,
                 Instant.parse(json.get("expiresAt") as String),
                 json.get("apiIdentity") as String,
                 json.opt("accountId") as? String,
+                refresh,
             )
         } catch (missing: FileNotFoundException) {
             val hasCommittedFile =

@@ -78,6 +78,40 @@ class HttpAuthenticationRepositoryTest {
         }
     }
 
+    /**
+     * The complete rotated-credential contract is typed together; token-only records remain
+     * compatible.
+     */
+    @Test
+    fun refreshCredentialsDecodeAtomicallyAndPartialPairsAreRejected() = runTest {
+        val body =
+            JSONObject(sessionJson)
+                .put("expiresInSeconds", 900)
+                .put("refreshToken", "r".repeat(43))
+                .put("refreshExpiresInSeconds", 2592000)
+                .put("sessionId", id)
+        server.enqueue(response(200, body.toString()))
+        val received = repository.loginWithPassword(contact, "password")
+        server.takeRequest()
+        assertEquals(
+            RefreshCredentials("r".repeat(43), now.plusSeconds(2592000), id),
+            received.refreshCredentials,
+        )
+        for (key in listOf("refreshToken", "refreshExpiresInSeconds", "sessionId")) {
+            val invalid = JSONObject(body.toString()).apply { remove(key) }
+            server.enqueue(response(200, invalid.toString()))
+            try {
+                repository.loginWithPassword(contact, "password")
+                fail("Expected incomplete credential rejection")
+            } catch (failure: AuthenticationFailure) {
+                assertEquals(AccountAccessIssue.InvalidResponse, failure.issue)
+            }
+            server.takeRequest()
+        }
+        server.enqueue(response(200, sessionJson))
+        assertNull(repository.loginWithPassword(contact, "password").refreshCredentials)
+    }
+
     /** Supplies the same JSON media type as the Nest controller. */
     private fun response(status: Int, body: String) =
         MockResponse.Builder()

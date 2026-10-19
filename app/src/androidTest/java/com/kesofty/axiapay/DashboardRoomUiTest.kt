@@ -144,6 +144,16 @@ class DashboardRoomUiTest {
                     value = session
                 }
 
+                /** Match the captured fixture record before publishing a replacement pair. */
+                override suspend fun replace(
+                    expected: StoredAuthenticationSession,
+                    replacement: StoredAuthenticationSession,
+                ): Boolean {
+                    if (value != expected) return false
+                    write(replacement)
+                    return true
+                }
+
                 /** Preserve a newer test session during compare-and-clear. */
                 override suspend fun clear(expected: StoredAuthenticationSession) {
                     if (value == expected) value = null

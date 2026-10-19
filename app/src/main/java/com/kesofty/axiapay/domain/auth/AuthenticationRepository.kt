@@ -42,6 +42,15 @@ interface AuthenticationSessionStore {
     suspend fun write(session: StoredAuthenticationSession)
 
     /**
+     * Atomically replace only captured credentials; logout or a newer login must win a late
+     * renewal.
+     */
+    suspend fun replace(
+        expected: StoredAuthenticationSession,
+        replacement: StoredAuthenticationSession,
+    ): Boolean
+
+    /**
      * Removes only the matching record after revocation/invalidation; a newer login must survive.
      */
     suspend fun clear(expected: StoredAuthenticationSession)

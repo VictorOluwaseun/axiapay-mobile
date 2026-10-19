@@ -4,6 +4,7 @@ import android.content.ContextWrapper
 import android.security.NetworkSecurityPolicy
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.data.auth.KeystoreAuthenticationSessionStore
+import com.kesofty.axiapay.domain.auth.RefreshCredentials
 import com.kesofty.axiapay.domain.auth.StoredAuthenticationSession
 import java.io.File
 import java.security.KeyStore
@@ -39,6 +40,11 @@ class AuthenticationSessionStorageTest {
                 Instant.parse("2026-10-17T12:00:00Z"),
                 "https://api.example.test/v1/",
                 "123e4567-e89b-42d3-a456-426614174000",
+                RefreshCredentials(
+                    "r".repeat(43),
+                    Instant.parse("2030-01-01T00:00:00Z"),
+                    "946a98d5-246f-41d5-93c6-cf052fb10769",
+                ),
             )
         try {
             val first = KeystoreAuthenticationSessionStore(isolated, Dispatchers.IO)
@@ -46,13 +52,18 @@ class AuthenticationSessionStorageTest {
             val ciphertext = File(directory, "authentication/session.v1").readBytes()
             val bytesAsText = String(ciphertext, Charsets.ISO_8859_1)
             assertFalse(bytesAsText.contains(record.accessToken))
+            assertFalse(bytesAsText.contains(record.refreshCredentials!!.token))
             assertFalse(bytesAsText.contains(record.apiIdentity))
             val restored = KeystoreAuthenticationSessionStore(isolated, Dispatchers.IO)
             assertEquals(record, restored.read())
             val newer = record.copy(accessToken = "y".repeat(43))
-            restored.write(newer)
+            assertTrue(restored.replace(record, newer))
+            assertFalse(first.replace(record, record.copy(accessToken = "x".repeat(43))))
             first.clear(record)
             assertEquals(newer, restored.read())
+            val legacy = record.copy(refreshCredentials = null)
+            restored.write(legacy)
+            assertEquals(legacy, first.read())
             restored.write(record)
             File(directory, "authentication/session.v1")
                 .writeBytes(
