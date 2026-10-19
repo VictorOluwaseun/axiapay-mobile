@@ -294,4 +294,11 @@ adb -s <device-serial> shell am instrument -w -r \
   com.kesofty.axiapay.dev.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-`RemoteConfigDeviceTest` checks real Android atomic-file recovery and the live API's `200` then empty `304` flow without modifying Firebase, authenticating a customer, or creating an account.
+`RemoteConfigDeviceTest` checks real Room persistence recovery and the live API's `200` then empty `304` flow without modifying Firebase, authenticating a customer, or creating an account.
+
+
+Payment features now arrive in the same offline-first `GET /api/v1/config` snapshot: airtime, data, electricity, TV, education, insurance, bank transfers, merchant payments and airtime conversion. Example: `features.airtime.enabled`. The API reads these switches from explicit `feature_*_enabled` Firebase server parameters. Absent server feature parameters default to disabled while existing authentication configuration remains usable. Publish explicit values to enable the intended services; no database migration or mobile Firebase SDK is needed.
+
+The home/payment grids show disabled services as temporarily unavailable. Refreshing policy also gates new review, meter verification and confirmation within an open live purchase; it preserves drafts, original request keys, history and status/reconciliation. Re-enabling does not replay consent. These cached flags only control display/preparation; the API authorizes new spending independently. Missing config, or an older authentication-only cache, leaves payment features unavailable. Demo uses its own all-enabled flavor fixture.
+
+Remote configuration reads Room before HTTP revalidation. A 200 atomically replaces policy and its quoted ETag; a matching 304 updates only the checked timestamp. Failed requests and commits preserve the last record. Existing API-scoped JSON configuration is imported once on a Room miss, with unknown receipt time represented by zero rather than claiming a new fetch. Client defaults are never persisted as a remote response.
