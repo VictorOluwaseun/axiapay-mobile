@@ -27,7 +27,8 @@ class AccountWalletTest {
     private val api = RecordingAuthenticationRepository(now)
     private val sessions = MemoryAuthenticationSessionStore()
     private val wallets = RecordingWalletRepository()
-    private val access = ServerAccountAccess(api, sessions, clock, wallets)
+    private val snapshots = InMemoryDashboardRepository()
+    private val access = ServerAccountAccess(api, sessions, clock, wallets, dashboard = snapshots)
     private val owner = ViewModelStore()
     private val login =
         AccountAccessInput(
@@ -119,6 +120,7 @@ class AccountWalletTest {
                 WalletIssue.Unavailable,
                 WalletIssue.InvalidResponse,
             )) {
+            snapshots.clear(api.apiIdentity, api.session.account.id)
             wallets.failure = WalletFailure(issue)
             val result = access.begin(login) as AccountAccessResult.SignedIn
             assertEquals(WalletLookupResult.Failed(issue), result.wallet)
@@ -265,16 +267,18 @@ class AccountWalletTest {
         }
     }
 
-    /** Failed refreshes and a later account never inherit the previous customer's balance. */
+    /**
+     * Failed refreshes keep this account's snapshot; a later account never inherits its balance.
+     */
     @Test
-    fun dashboardFailureAndAccountChangesClearEarlierAmounts() = runTest {
+    fun dashboardFailureKeepsOwnedSnapshotAndAccountChangesClearEarlierAmounts() = runTest {
         try {
             val vm = signedInViewModel()
             vm.accept(AuthIntent.OpenDashboard)
             wallets.failure = WalletFailure(WalletIssue.Network)
             vm.accept(AuthIntent.RetryWallet)
             assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
-            assertEquals(HomeWalletState.Failed(WalletIssue.Network), vm.uiState.value.homeWallet)
+            assertEquals(HomeWalletState.Loaded(wallets.wallet), vm.uiState.value.homeWallet)
             vm.accept(AuthIntent.OpenAccount)
             vm.accept(AuthIntent.SignOut)
             wallets.failure = null

@@ -32,7 +32,7 @@ interface AuthenticationRepository {
 /**
  * Protected local credential persistence. Implementations perform atomic IO off the main thread,
  * exclude records from backup, and fail closed on corruption/key loss. No cache or payment data
- * belongs here; a read record still requires server validation before entering an account.
+ * belongs here; cached account display does not establish current server authorization.
  */
 interface AuthenticationSessionStore {
     /** Reads one encrypted record; unreadable or lost-key records require a fresh sign-in. */

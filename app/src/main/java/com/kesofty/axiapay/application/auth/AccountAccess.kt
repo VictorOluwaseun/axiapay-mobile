@@ -22,6 +22,9 @@ interface AccountAccess {
         input: AccountAccessInput,
     ): AccountAccessResult
 
+    /** Read saved display records bound to an unexpired protected session, without network IO. */
+    suspend fun cached(): AccountAccessResult.SignedIn? = null
+
     /** Revalidates a protected session; a connectivity failure must not become demo access. */
     suspend fun restore(): AccountAccessResult
 

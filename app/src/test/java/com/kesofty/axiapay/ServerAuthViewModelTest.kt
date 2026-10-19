@@ -53,7 +53,13 @@ class ServerAuthViewModelTest {
     private fun viewModel() =
         AuthViewModel(
                 handle,
-                ServerAccountAccess(api, store, clock, RecordingWalletRepository()),
+                ServerAccountAccess(
+                    api,
+                    store,
+                    clock,
+                    RecordingWalletRepository(),
+                    dashboard = InMemoryDashboardRepository(),
+                ),
                 clock,
                 enabledRemoteConfiguration(),
             )

@@ -2,6 +2,7 @@ package com.kesofty.axiapay.application.auth
 
 import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.domain.wallet.*
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
@@ -10,14 +11,16 @@ import kotlinx.coroutines.ensureActive
 
 /**
  * Coordinates explicit backend auth operations and protected session persistence. It owns client
- * validation/recovery only; the API authenticates identities and authorizes protected requests.
- * Cancellation and ambiguous redemption outcomes never trigger automatic retries or demo fallback.
+ * validation/recovery and committed dashboard display; the API authenticates identities and
+ * authorizes protected requests. Cancellation and ambiguous redemption outcomes never trigger
+ * automatic retries or demo fallback.
  */
 class ServerAccountAccess(
     private val repository: AuthenticationRepository,
     private val sessions: AuthenticationSessionStore,
     private val clock: Clock,
     private val wallets: WalletRepository,
+    private val dashboard: DashboardRepository,
 ) : AccountAccess {
     override val mode = AccountAccessMode.Server
 
@@ -74,6 +77,29 @@ class ServerAccountAccess(
     }
 
     /**
+     * Restore committed display data only for the exact, still-owned and locally unexpired session.
+     */
+    override suspend fun cached(): AccountAccessResult.SignedIn? {
+        val stored = sessions.read() ?: return null
+        if (
+            stored.apiIdentity != repository.apiIdentity ||
+                !clock.instant().isBefore(stored.expiresAt)
+        ) {
+            return null
+        }
+        val accountId = stored.accountId ?: return null
+        val snapshot = dashboard.read(stored.apiIdentity, accountId) ?: return null
+        if (sessions.read() != stored) {
+            return null
+        }
+        return AccountAccessResult.SignedIn(
+            snapshot.account,
+            snapshot.wallet?.let { WalletLookupResult.Loaded(it) }
+                ?: WalletLookupResult.Failed(WalletIssue.Unavailable),
+        )
+    }
+
+    /**
      * Rechecks scoped stored credentials; only authoritative invalidation removes valid-shaped
      * access.
      */
@@ -83,19 +109,29 @@ class ServerAccountAccess(
             stored.apiIdentity != repository.apiIdentity ||
                 !clock.instant().isBefore(stored.expiresAt)
         ) {
-            sessions.clear(stored)
+            clearSession(stored)
             return AccountAccessResult.SignedOut
         }
         return try {
             val account = repository.currentAccount(stored.accessToken)
             currentCoroutineContext().ensureActive()
-            signedInWithWallet(account, stored)
+            if (stored.accountId != null && account.id != stored.accountId) {
+                throw AuthenticationFailure(AccountAccessIssue.InvalidResponse)
+            }
+            val bound = stored.copy(accountId = account.id)
+            if (sessions.read() != stored) {
+                return AccountAccessResult.SignedOut
+            }
+            if (bound != stored) {
+                sessions.write(bound)
+            }
+            signedInWithWallet(account, bound)
         } catch (failure: AuthenticationFailure) {
             if (failure.issue != AccountAccessIssue.InvalidCredentials) {
                 throw failure
             }
             currentCoroutineContext().ensureActive()
-            sessions.clear(stored)
+            clearSession(stored)
             AccountAccessResult.SignedOut
         }
     }
@@ -109,7 +145,7 @@ class ServerAccountAccess(
         if (stored.apiIdentity == repository.apiIdentity) {
             repository.logout(stored.accessToken)
         }
-        sessions.clear(stored)
+        clearSession(stored)
         return AccountAccessResult.SignedOut
     }
 
@@ -124,6 +160,7 @@ class ServerAccountAccess(
                 session.accessToken,
                 session.expiresAt,
                 repository.apiIdentity,
+                session.account.id,
             )
         sessions.write(stored)
         currentCoroutineContext().ensureActive()
@@ -131,8 +168,8 @@ class ServerAccountAccess(
     }
 
     /**
-     * Fetch only after persisted authentication; failures remain wallet-specific and never redeem
-     * credentials again.
+     * Commit identity and wallet responses before publishing their stored display snapshot.
+     * Transient wallet failures retain this account's earlier record without redeeming credentials.
      */
     private suspend fun signedInWithWallet(
         account: AccountIdentity,
@@ -141,16 +178,30 @@ class ServerAccountAccess(
         if (sessions.read() != stored) {
             return AccountAccessResult.SignedOut
         }
+        dashboard.saveAccount(stored.apiIdentity, account)
         val wallet = loadWallet(stored)
         currentCoroutineContext().ensureActive()
         if (sessions.read() != stored) {
             return AccountAccessResult.SignedOut
         }
         if (wallet == WalletLookupResult.Failed(WalletIssue.InvalidSession)) {
-            sessions.clear(stored)
+            clearSession(stored)
             return AccountAccessResult.SignedOut
         }
-        return AccountAccessResult.SignedIn(account, wallet)
+        if (wallet == WalletLookupResult.Failed(WalletIssue.Missing)) {
+            dashboard.clearWallet(stored.apiIdentity, account.id, "NGN")
+        }
+        if (wallet is WalletLookupResult.Loaded) {
+            dashboard.saveWallet(stored.apiIdentity, account.id, wallet.wallet)
+        }
+        if (sessions.read() != stored) {
+            return AccountAccessResult.SignedOut
+        }
+        val saved =
+            dashboard.read(stored.apiIdentity, account.id)
+                ?: throw AuthenticationFailure(AccountAccessIssue.SecureStorage)
+        val displayedWallet = saved.wallet?.let { WalletLookupResult.Loaded(it) } ?: wallet
+        return AccountAccessResult.SignedIn(saved.account, displayedWallet)
     }
 
     /**
@@ -170,6 +221,18 @@ class ServerAccountAccess(
         } catch (failure: Exception) {
             return WalletLookupResult.Failed(WalletIssue.Unavailable)
         }
+    }
+
+    /**
+     * Clear only the captured session; a newer login keeps both its credential and its dashboard
+     * records.
+     */
+    private suspend fun clearSession(stored: StoredAuthenticationSession) {
+        sessions.clear(stored)
+        if (sessions.read() != null) {
+            return
+        }
+        stored.accountId?.let { dashboard.clear(stored.apiIdentity, it) }
     }
 
     /**

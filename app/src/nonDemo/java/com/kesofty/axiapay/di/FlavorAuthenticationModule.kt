@@ -10,6 +10,7 @@ import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.data.AtomicTextCheckpoint
 import com.kesofty.axiapay.data.auth.*
 import com.kesofty.axiapay.data.config.RemoteConfigRepositoryImpl
+import com.kesofty.axiapay.data.dashboard.DashboardRepositoryImpl
 import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.http.ApiHttpLoggingInterceptor
@@ -17,6 +18,7 @@ import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
 import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.config.RemoteConfigRepository
+import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.domain.wallet.WalletRepository
 import dagger.Module
 import dagger.Provides
@@ -44,7 +46,8 @@ internal object FlavorAuthenticationModule {
         sessions: AuthenticationSessionStore,
         clock: Clock,
         wallets: WalletRepository,
-    ): AccountAccess = ServerAccountAccess(repository, sessions, clock, wallets)
+        dashboard: DashboardRepository,
+    ): AccountAccess = ServerAccountAccess(repository, sessions, clock, wallets, dashboard)
 }
 
 /** Owns the application-wide HTTP pool and protected auth session, never demo payment snapshots. */
@@ -115,6 +118,12 @@ internal object AuthenticationInfrastructureModule {
                     .absolutePath,
             )
             .build()
+
+    /** Cache policy and typed storage stay behind the dashboard repository contract. */
+    @Provides
+    @Singleton
+    fun provideDashboardRepository(database: AxiaDatabase, clock: Clock): DashboardRepository =
+        DashboardRepositoryImpl(database, clock)
 
     /** Shares the bounded transport while keeping auth DTO mapping inside its repository. */
     @Provides

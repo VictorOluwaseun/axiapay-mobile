@@ -25,7 +25,14 @@ class ServerAccountAccessTest {
             for (method in AuthMethod.entries) {
                 val api = RecordingAuthenticationRepository(now)
                 val store = MemoryAuthenticationSessionStore()
-                val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+                val access =
+                    ServerAccountAccess(
+                        api,
+                        store,
+                        clock,
+                        RecordingWalletRepository(),
+                        dashboard = InMemoryDashboardRepository(),
+                    )
                 val value =
                     if (kind == AuthContactType.Phone) "0801 234 5678" else " Ada+tag@Example.test "
                 val input =
@@ -63,6 +70,7 @@ class ServerAccountAccessTest {
                 MemoryAuthenticationSessionStore(),
                 clock,
                 RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
             )
         val result =
             access.begin(
@@ -85,7 +93,14 @@ class ServerAccountAccessTest {
     fun passwordSigninIsDirectAndSignupUsesCodePointLength() = runTest {
         val api = RecordingAuthenticationRepository(now)
         val store = MemoryAuthenticationSessionStore()
-        val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+        val access =
+            ServerAccountAccess(
+                api,
+                store,
+                clock,
+                RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
+            )
         assertTrue(
             access.begin(
                 AccountAccessInput(
@@ -131,6 +146,7 @@ class ServerAccountAccessTest {
                 MemoryAuthenticationSessionStore(),
                 clock,
                 RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
             )
         val signup =
             AccountAccessInput(
@@ -165,6 +181,7 @@ class ServerAccountAccessTest {
                 MemoryAuthenticationSessionStore(),
                 clock,
                 RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
             )
         val input =
             AccountAccessInput(
@@ -222,7 +239,14 @@ class ServerAccountAccessTest {
                     api.apiIdentity,
                 ),
             )
-        val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+        val access =
+            ServerAccountAccess(
+                api,
+                store,
+                clock,
+                RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
+            )
         api.failure = AuthenticationFailure(AccountAccessIssue.Network)
         try {
             access.restore()
@@ -263,7 +287,14 @@ class ServerAccountAccessTest {
     fun securePersistenceAndRevocationMustCompleteBeforeSuccess() = runTest {
         val api = RecordingAuthenticationRepository(now)
         val store = MemoryAuthenticationSessionStore().apply { writeFailure = true }
-        val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+        val access =
+            ServerAccountAccess(
+                api,
+                store,
+                clock,
+                RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
+            )
         try {
             access.begin(
                 AccountAccessInput(
@@ -311,7 +342,14 @@ class ServerAccountAccessTest {
             StoredAuthenticationSession("a".repeat(43), now.plusSeconds(3600), api.apiIdentity)
         val newer = old.copy(accessToken = "b".repeat(43))
         val store = MemoryAuthenticationSessionStore(old)
-        val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+        val access =
+            ServerAccountAccess(
+                api,
+                store,
+                clock,
+                RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
+            )
         api.beforeIdentity = { store.value = newer }
         api.failure = AuthenticationFailure(AccountAccessIssue.InvalidCredentials)
         assertEquals(AccountAccessResult.SignedOut, access.restore())
@@ -328,7 +366,14 @@ class ServerAccountAccessTest {
     fun lateCancelledLoginCannotPersistCredentials() = runTest {
         val api = RecordingAuthenticationRepository(now).apply { gate = CompletableDeferred() }
         val store = MemoryAuthenticationSessionStore()
-        val access = ServerAccountAccess(api, store, clock, RecordingWalletRepository())
+        val access =
+            ServerAccountAccess(
+                api,
+                store,
+                clock,
+                RecordingWalletRepository(),
+                dashboard = InMemoryDashboardRepository(),
+            )
         val job =
             launch(start = CoroutineStart.UNDISPATCHED) {
                 access.begin(

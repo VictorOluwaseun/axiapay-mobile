@@ -74,6 +74,7 @@ class AuthenticationConfigTest {
                     MemoryAuthenticationSessionStore(),
                     clock,
                     RecordingWalletRepository(),
+                    dashboard = InMemoryDashboardRepository(),
                 ),
                 clock,
                 refresh,
