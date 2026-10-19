@@ -54,6 +54,7 @@ class KeystoreAuthenticationSessionStore(context: Context, private val io: Corou
                             .put("accessToken", session.accessToken)
                             .put("expiresAt", session.expiresAt.toString())
                             .put("apiIdentity", session.apiIdentity)
+                            .put("accountId", session.accountId)
                             .toString()
                             .toByteArray(Charsets.UTF_8)
                     val encrypted = cipher.doFinal(payload)
@@ -125,6 +126,7 @@ class KeystoreAuthenticationSessionStore(context: Context, private val io: Corou
                 token,
                 Instant.parse(json.get("expiresAt") as String),
                 json.get("apiIdentity") as String,
+                json.opt("accountId") as? String,
             )
         } catch (missing: FileNotFoundException) {
             val hasCommittedFile =

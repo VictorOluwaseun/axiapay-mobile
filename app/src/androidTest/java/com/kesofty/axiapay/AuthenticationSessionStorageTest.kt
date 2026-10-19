@@ -38,6 +38,7 @@ class AuthenticationSessionStorageTest {
                 "z".repeat(43),
                 Instant.parse("2026-10-17T12:00:00Z"),
                 "https://api.example.test/v1/",
+                "123e4567-e89b-42d3-a456-426614174000",
             )
         try {
             val first = KeystoreAuthenticationSessionStore(isolated, Dispatchers.IO)

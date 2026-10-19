@@ -78,6 +78,7 @@ data class StoredAuthenticationSession(
     val accessToken: String,
     val expiresAt: Instant,
     val apiIdentity: String,
+    val accountId: String? = null,
 ) {
     /** Redacts all identifying or credential-bearing fields from diagnostic interpolation. */
     override fun toString() = "StoredAuthenticationSession(credentials=redacted)"
