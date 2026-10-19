@@ -57,7 +57,8 @@ internal object AuthenticationInfrastructureModule {
     /** API calls are bounded, uncached and never replayed or redirected with credentials. */
     @Provides
     @Singleton
-    fun provideApiHttpClient(clock: Clock): ApiHttpClient {
+    @AuthenticationTransport
+    fun provideAuthenticationTransport(clock: Clock): ApiHttpClient {
         val client =
             OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -81,6 +82,26 @@ internal object AuthenticationInfrastructureModule {
             ApiRequestIdGenerator(Build.MANUFACTURER, Build.MODEL, clock),
         )
     }
+
+    /** All protected feature adapters use one shared renewal coordinator and HTTP pool. */
+    @Provides
+    @Singleton
+    fun provideApiHttpClient(
+        @AuthenticationTransport raw: ApiHttpClient,
+        tokens: SessionTokenProvider,
+    ): ApiHttpClient = raw.withSessionTokens(tokens)
+
+    /**
+     * Raw refresh IO cannot recursively authorize itself; compare-and-replace remains
+     * repository-owned.
+     */
+    @Provides
+    @Singleton
+    fun provideSessionTokenProvider(
+        @AuthenticationTransport raw: ApiHttpClient,
+        sessions: AuthenticationSessionStore,
+        clock: Clock,
+    ): SessionTokenProvider = AuthenticationSessionRepositoryImpl(raw, sessions, clock)
 
     /**
      * Keep one atomic public-config record per installed flavor, validating the API scope on read.

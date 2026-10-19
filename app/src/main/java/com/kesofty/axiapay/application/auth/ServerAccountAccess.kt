@@ -81,15 +81,12 @@ class ServerAccountAccess(
      */
     override suspend fun cached(): AccountAccessResult.SignedIn? {
         val stored = sessions.read() ?: return null
-        if (
-            stored.apiIdentity != repository.apiIdentity ||
-                !clock.instant().isBefore(stored.expiresAt)
-        ) {
+        if (stored.apiIdentity != repository.apiIdentity || !stored.isUsableAt(clock.instant())) {
             return null
         }
         val accountId = stored.accountId ?: return null
         val snapshot = dashboard.read(stored.apiIdentity, accountId) ?: return null
-        if (sessions.read() != stored) {
+        if (!stored.belongsToSameSession(sessions.read())) {
             return null
         }
         return AccountAccessResult.SignedIn(
@@ -105,10 +102,7 @@ class ServerAccountAccess(
      */
     override suspend fun restore(): AccountAccessResult {
         val stored = sessions.read() ?: return AccountAccessResult.SignedOut
-        if (
-            stored.apiIdentity != repository.apiIdentity ||
-                !clock.instant().isBefore(stored.expiresAt)
-        ) {
+        if (stored.apiIdentity != repository.apiIdentity || !stored.isUsableAt(clock.instant())) {
             clearSession(stored)
             return AccountAccessResult.SignedOut
         }
@@ -118,12 +112,13 @@ class ServerAccountAccess(
             if (stored.accountId != null && account.id != stored.accountId) {
                 throw AuthenticationFailure(AccountAccessIssue.InvalidResponse)
             }
-            val bound = stored.copy(accountId = account.id)
-            if (sessions.read() != stored) {
+            val current = sessions.read()
+            if (!stored.belongsToSameSession(current)) {
                 return AccountAccessResult.SignedOut
             }
-            if (bound != stored) {
-                sessions.write(bound)
+            val bound = requireNotNull(current).copy(accountId = account.id)
+            if (bound != current && !sessions.replace(current, bound)) {
+                return AccountAccessResult.SignedOut
             }
             signedInWithWallet(account, bound)
         } catch (failure: AuthenticationFailure) {
@@ -161,6 +156,7 @@ class ServerAccountAccess(
                 session.expiresAt,
                 repository.apiIdentity,
                 session.account.id,
+                session.refreshCredentials,
             )
         sessions.write(stored)
         currentCoroutineContext().ensureActive()
@@ -175,13 +171,13 @@ class ServerAccountAccess(
         account: AccountIdentity,
         stored: StoredAuthenticationSession,
     ): AccountAccessResult {
-        if (sessions.read() != stored) {
+        if (!stored.belongsToSameSession(sessions.read())) {
             return AccountAccessResult.SignedOut
         }
         dashboard.saveAccount(stored.apiIdentity, account)
         val wallet = loadWallet(stored)
         currentCoroutineContext().ensureActive()
-        if (sessions.read() != stored) {
+        if (!stored.belongsToSameSession(sessions.read())) {
             return AccountAccessResult.SignedOut
         }
         if (wallet == WalletLookupResult.Failed(WalletIssue.InvalidSession)) {
@@ -194,7 +190,7 @@ class ServerAccountAccess(
         if (wallet is WalletLookupResult.Loaded) {
             dashboard.saveWallet(stored.apiIdentity, account.id, wallet.wallet)
         }
-        if (sessions.read() != stored) {
+        if (!stored.belongsToSameSession(sessions.read())) {
             return AccountAccessResult.SignedOut
         }
         val saved =
@@ -228,7 +224,10 @@ class ServerAccountAccess(
      * records.
      */
     private suspend fun clearSession(stored: StoredAuthenticationSession) {
-        sessions.clear(stored)
+        val current = sessions.read()
+        if (stored.belongsToSameSession(current)) {
+            sessions.clear(requireNotNull(current))
+        }
         if (sessions.read() != null) {
             return
         }

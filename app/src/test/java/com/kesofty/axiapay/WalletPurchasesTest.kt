@@ -9,6 +9,38 @@ import org.junit.Test
 
 /** Proves ownership, durable consent identity, and honest recovery at the application boundary. */
 class WalletPurchasesTest {
+    /**
+     * Rotated access retains the same consent identity and does not invalidate an in-flight review.
+     */
+    @Test
+    fun rotationDuringPurchasePreparationKeepsTheOriginalRequest() = runTest {
+        val fixture = PurchaseFixture()
+        val initial =
+            fixture.sessions.value!!.copy(
+                accountId = fixture.accountId,
+                expiresAt = fixture.now.minusSeconds(1),
+                refreshCredentials =
+                    RefreshCredentials(
+                        "r".repeat(43),
+                        fixture.now.plusSeconds(2592000),
+                        "946a98d5-246f-41d5-93c6-cf052fb10769",
+                    ),
+            )
+        fixture.sessions.value = initial
+        fixture.authentication.beforeIdentity = {
+            fixture.sessions.value =
+                initial.copy(
+                    accessToken = "b".repeat(43),
+                    expiresAt = fixture.now.plusSeconds(900),
+                    refreshCredentials = initial.refreshCredentials!!.copy(token = "s".repeat(43)),
+                )
+        }
+        val review = fixture.workflow.review(fixture.accountId, fixture.input)
+        val result = fixture.workflow.submit(fixture.accountId, review)
+        assertEquals(review.request, result.request)
+        assertEquals(listOf(review.request), fixture.api.submissions)
+    }
+
     /** Wallet identity comes from the protected lookup and review alone never spends. */
     @Test
     fun reviewUsesOwnedWalletAndPersistsOnlyOnConfirmation() = runTest {

@@ -465,6 +465,7 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
                 when {
                     failure.kind == ApiFailureKind.Configuration -> PurchaseIssue.Configuration
                     failure.kind == ApiFailureKind.Network -> PurchaseIssue.Network
+                    failure.kind == ApiFailureKind.Storage -> PurchaseIssue.Storage
                     failure.kind == ApiFailureKind.InvalidResponse -> PurchaseIssue.InvalidResponse
                     failure.status == 401 -> PurchaseIssue.SignInRequired
                     failure.code == "ACCOUNT_INVALID" -> PurchaseIssue.InvalidMeter

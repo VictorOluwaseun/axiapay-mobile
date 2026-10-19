@@ -321,7 +321,7 @@ class WalletPurchases(
             if (!sameApi) {
                 throw PurchaseFailure(PurchaseIssue.Configuration)
             }
-            if (session.apiIdentity != identity || session.expiresAt <= clock.instant()) {
+            if (session.apiIdentity != identity || !session.isUsableAt(clock.instant())) {
                 sessions.clear(session)
                 throw PurchaseFailure(PurchaseIssue.SignInRequired)
             }
@@ -378,7 +378,10 @@ class WalletPurchases(
         currentCoroutineContext().ensureActive()
         val current = sessions.read()
         currentCoroutineContext().ensureActive()
-        if (current != access.session || access.session.expiresAt <= clock.instant()) {
+        if (
+            !access.session.belongsToSameSession(current) ||
+                current?.isUsableAt(clock.instant()) != true
+        ) {
             throw PurchaseFailure(PurchaseIssue.SessionChanged)
         }
     }

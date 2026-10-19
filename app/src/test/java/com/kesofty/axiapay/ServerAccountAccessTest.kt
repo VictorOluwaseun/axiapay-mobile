@@ -390,6 +390,89 @@ class ServerAccountAccessTest {
         job.join()
         assertNull(store.value)
     }
+
+    /**
+     * A valid family rotation during either protected lookup keeps the logged-in account visible.
+     */
+    @Test
+    fun rotationDuringRestorationKeepsIdentityAndWalletResults() = runTest {
+        for (duringIdentity in listOf(true, false)) {
+            val api = RecordingAuthenticationRepository(now)
+            val initial =
+                StoredAuthenticationSession(
+                    api.session.accessToken,
+                    now.minusSeconds(1),
+                    api.apiIdentity,
+                    api.session.account.id,
+                    RefreshCredentials(
+                        "r".repeat(43),
+                        now.plusSeconds(2592000),
+                        "946a98d5-246f-41d5-93c6-cf052fb10769",
+                    ),
+                )
+            val store = MemoryAuthenticationSessionStore(initial)
+            val rotated =
+                initial.copy(
+                    accessToken = "b".repeat(43),
+                    expiresAt = now.plusSeconds(900),
+                    refreshCredentials = initial.refreshCredentials!!.copy(token = "s".repeat(43)),
+                )
+            val wallets = RecordingWalletRepository()
+            if (duringIdentity) {
+                api.beforeIdentity = { store.value = rotated }
+            } else {
+                wallets.beforeRead = { store.value = rotated }
+            }
+            val access =
+                ServerAccountAccess(api, store, clock, wallets, InMemoryDashboardRepository())
+            val result = access.restore()
+            assertTrue(result is AccountAccessResult.SignedIn)
+            assertEquals(rotated, store.read())
+        }
+    }
+
+    /** Logout clears a rotation of its family but cannot remove another login's credentials. */
+    @Test
+    fun logoutMatchesTheFamilyAcrossRotationAndPreservesANewerLogin() = runTest {
+        for (sameFamily in listOf(true, false)) {
+            val api = RecordingAuthenticationRepository(now)
+            val initial =
+                StoredAuthenticationSession(
+                    api.session.accessToken,
+                    now.plusSeconds(600),
+                    api.apiIdentity,
+                    api.session.account.id,
+                    RefreshCredentials(
+                        "r".repeat(43),
+                        now.plusSeconds(2592000),
+                        "946a98d5-246f-41d5-93c6-cf052fb10769",
+                    ),
+                )
+            val store = MemoryAuthenticationSessionStore(initial)
+            val newer =
+                initial.copy(
+                    accessToken = "b".repeat(43),
+                    refreshCredentials =
+                        initial.refreshCredentials!!.copy(
+                            token = "s".repeat(43),
+                            sessionId =
+                                if (sameFamily) initial.refreshCredentials!!.sessionId
+                                else "9ad9dcf9-98bf-4971-a288-fc791db4ba76",
+                        ),
+                )
+            api.beforeLogout = { store.value = newer }
+            val access =
+                ServerAccountAccess(
+                    api,
+                    store,
+                    clock,
+                    RecordingWalletRepository(),
+                    InMemoryDashboardRepository(),
+                )
+            assertEquals(AccountAccessResult.SignedOut, access.signOut())
+            assertEquals(if (sameFamily) null else newer, store.read())
+        }
+    }
 }
 
 /**

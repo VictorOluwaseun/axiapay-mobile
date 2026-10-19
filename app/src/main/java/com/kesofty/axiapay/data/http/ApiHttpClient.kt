@@ -1,5 +1,6 @@
 package com.kesofty.axiapay.data.http
 
+import com.kesofty.axiapay.domain.auth.*
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -37,6 +38,7 @@ enum class ApiFailureKind {
     Configuration,
     Network,
     InvalidResponse,
+    Storage,
     Http,
 }
 
@@ -50,7 +52,15 @@ class ApiHttpClient(
     private val client: OkHttpClient,
     private val io: CoroutineDispatcher,
     private val requestIds: ApiRequestIdGenerator = ApiRequestIdGenerator(),
+    private val sessionTokens: SessionTokenProvider? = null,
 ) {
+    /**
+     * Reuse the bounded physical client with explicit authorization; the raw instance stays
+     * unchanged.
+     */
+    fun withSessionTokens(tokens: SessionTokenProvider): ApiHttpClient =
+        ApiHttpClient(baseUrl, allowLocalHttp, client, io, requestIds, tokens)
+
     /** Stable API scope used by protected credential storage and all authenticated adapters. */
     val apiIdentity: String
         get() = endpoint().toString()
@@ -78,8 +88,8 @@ class ApiHttpClient(
     }
 
     /**
-     * Execute one uncached request off-main; cancellation closes its call and mutations never
-     * replay.
+     * Execute bounded uncached IO; only an explicit authentication rejection permits one renewed
+     * attempt. Network failures never replay a mutation or alter its logical payment identity.
      */
     suspend fun request(
         path: String,
@@ -105,11 +115,69 @@ class ApiHttpClient(
                         .toRequestBody("application/json; charset=utf-8".toMediaType()),
                 )
             }
-            if (bearer != null) {
-                builder.header("Authorization", "Bearer $bearer")
+            val renewable = bearer != null && sessionTokens != null && path != "auth/logout"
+            val sentToken = if (renewable) resolveBearer(requireNotNull(bearer), false) else bearer
+            if (sentToken != null) {
+                builder.header("Authorization", "Bearer $sentToken")
             }
-            performRequest(builder.build(), expected).body
+            val request = builder.build()
+            try {
+                performRequest(request, expected).body
+            } catch (failure: ApiRequestFailure) {
+                if (!renewable || failure.status != 401 || failure.code != "INVALID_CREDENTIALS") {
+                    throw failure
+                }
+                val replacement = resolveBearer(requireNotNull(sentToken), true)
+                try {
+                    performRequest(
+                            request
+                                .newBuilder()
+                                .header("Authorization", "Bearer $replacement")
+                                .header("X-Request-Id", requestIds.next())
+                                .build(),
+                            expected,
+                        )
+                        .body
+                } catch (rejected: ApiRequestFailure) {
+                    if (rejected.status == 401 && rejected.code == "INVALID_CREDENTIALS") {
+                        requireNotNull(sessionTokens).rejected(apiIdentity, replacement)
+                    }
+                    throw rejected
+                }
+            }
         }
+
+    /**
+     * Map credential-coordination failures into transport classifications owned by feature
+     * adapters.
+     */
+    private suspend fun resolveBearer(expectedToken: String, force: Boolean): String {
+        try {
+            return requireNotNull(sessionTokens).accessToken(apiIdentity, expectedToken, force)
+        } catch (failure: AuthenticationFailure) {
+            val kind =
+                when (failure.issue) {
+                    AccountAccessIssue.Network -> ApiFailureKind.Network
+                    AccountAccessIssue.Configuration -> ApiFailureKind.Configuration
+                    AccountAccessIssue.InvalidResponse -> ApiFailureKind.InvalidResponse
+                    AccountAccessIssue.SecureStorage -> ApiFailureKind.Storage
+                    else -> ApiFailureKind.Http
+                }
+            val status =
+                when (failure.issue) {
+                    AccountAccessIssue.InvalidCredentials -> 401
+                    AccountAccessIssue.RateLimited -> 429
+                    else -> 503
+                }
+            throw ApiRequestFailure(
+                kind,
+                status,
+                failure.retryAfterSeconds,
+                failure.requestReference,
+                if (status == 401) "INVALID_CREDENTIALS" else "AUTHENTICATION_UNAVAILABLE",
+            )
+        }
+    }
 
     /** Revalidate public JSON without an auth token; keep 304 distinct from a decoded 200 body. */
     suspend fun conditionalGet(path: String, etag: String?): ApiJsonResponse =

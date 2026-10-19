@@ -124,6 +124,7 @@ class HttpAuthenticationRepository(
             when {
                 failure.kind == ApiFailureKind.Configuration -> AccountAccessIssue.Configuration
                 failure.kind == ApiFailureKind.Network -> AccountAccessIssue.Network
+                failure.kind == ApiFailureKind.Storage -> AccountAccessIssue.SecureStorage
                 failure.kind == ApiFailureKind.InvalidResponse -> AccountAccessIssue.InvalidResponse
                 failure.status == 403 && failure.code == "AUTHENTICATION_METHOD_DISABLED" ->
                     AccountAccessIssue.MethodDisabled

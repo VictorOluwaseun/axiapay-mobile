@@ -49,6 +49,7 @@ class RemoteConfigRepositoryImpl(
                     ApiFailureKind.Network -> RemoteConfigIssue.Network
                     ApiFailureKind.Configuration -> RemoteConfigIssue.Configuration
                     ApiFailureKind.InvalidResponse -> RemoteConfigIssue.InvalidResponse
+                    ApiFailureKind.Storage -> RemoteConfigIssue.Storage
                     ApiFailureKind.Http -> RemoteConfigIssue.Unavailable
                 }
             throw RemoteConfigFailure(issue)
