@@ -222,7 +222,7 @@ class AccountWalletTest {
             wallets.gate = CompletableDeferred()
             vm.accept(AuthIntent.RetryWallet)
             assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)
-            assertEquals(HomeWalletState.Loading, vm.uiState.value.homeWallet)
+            assertEquals(HomeWalletState.Loaded(wallets.wallet), vm.uiState.value.homeWallet)
             val requests = wallets.requests
             vm.accept(AuthIntent.RetryWallet)
             assertEquals(requests, wallets.requests)
@@ -244,20 +244,20 @@ class AccountWalletTest {
      * Home restoration reloads the captured owner's wallet without reading or reseeding demo money.
      */
     @Test
-    fun restoredDashboardWaitsForTheRealWallet() = runTest {
+    fun restoredDashboardShowsSavedWalletWhileRefreshing() = runTest {
         try {
             access.begin(login)
             wallets.gate = CompletableDeferred()
             val vm =
                 AuthViewModel(
-                        SavedStateHandle(mapOf("auth.demoEntered" to true)),
+                        SavedStateHandle(),
                         access,
                         clock,
                         enabledRemoteConfiguration(),
                     )
                     .also { owner.put("auth", it) }
             assertFalse(vm.uiState.value.homeWallet is HomeWalletState.Demo)
-            assertFalse(vm.uiState.value.homeWallet is HomeWalletState.Loaded)
+            assertEquals(HomeWalletState.Loaded(wallets.wallet), vm.uiState.value.homeWallet)
             wallets.gate!!.complete(Unit)
             runCurrent()
             assertEquals(AuthScreen.Dashboard, vm.uiState.value.screen)

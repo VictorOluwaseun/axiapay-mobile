@@ -133,8 +133,8 @@ data class AuthUiState(
             when {
                 isDemo -> HomeWalletState.Demo
                 account == null -> HomeWalletState.SignedOut
-                isWalletRefreshing -> HomeWalletState.Loading
                 wallet is WalletLookupResult.Loaded -> HomeWalletState.Loaded(wallet.wallet)
+                isWalletRefreshing -> HomeWalletState.Loading
                 wallet is WalletLookupResult.Failed -> HomeWalletState.Failed(wallet.issue)
                 else -> HomeWalletState.Loading
             }

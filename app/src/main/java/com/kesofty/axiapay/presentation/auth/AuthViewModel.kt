@@ -440,7 +440,9 @@ constructor(
             requestedDestination
                 ?: if (mutableState.value.screen == AuthScreen.Complete) AuthScreen.Complete
                 else AuthScreen.Dashboard
-        navigate(freshState(AuthScreen.Restoring))
+        if (mutableState.value.account == null) {
+            navigate(freshState(AuthScreen.Restoring))
+        }
         execute(restoring = true, restoredDestination = destination) { access.restore() }
     }
 
@@ -480,6 +482,9 @@ constructor(
             )
         pendingAction = viewModelScope.launch {
             try {
+                if (restoring) {
+                    publishCachedDashboard(origin, restoredDestination)
+                }
                 val result = operation()
                 if (visit != origin) {
                     return@launch
@@ -502,6 +507,25 @@ constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Show committed Room records before network revalidation, preserving this screen visit's
+     * ownership.
+     */
+    private suspend fun publishCachedDashboard(origin: Long, destination: AuthScreen) {
+        val cached = access.cached() ?: return
+        if (visit != origin) {
+            return
+        }
+        mutableState.value =
+            mutableState.value.copy(
+                screen = destination,
+                account = cached.account,
+                wallet = cached.wallet,
+                isProcessing = true,
+                isWalletRefreshing = true,
+            )
     }
 
     /** Reduces success without storing a bearer token or invoking any payment operation. */
@@ -603,7 +627,9 @@ constructor(
         retryUntil = clock.instant().plusSeconds(retryAfterSeconds.coerceAtLeast(0))
         mutableState.value =
             mutableState.value.copy(
-                screen = if (restoring) AuthScreen.SessionRecovery else mutableState.value.screen,
+                screen =
+                    if (restoring && mutableState.value.account == null) AuthScreen.SessionRecovery
+                    else mutableState.value.screen,
                 isProcessing = false,
                 isWalletRefreshing = false,
                 error = error,

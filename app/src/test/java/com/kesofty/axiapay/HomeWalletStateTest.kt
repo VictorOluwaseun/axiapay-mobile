@@ -64,13 +64,13 @@ class HomeWalletStateTest {
         )
     }
 
-    /** Loading never exposes an older amount while a current session/wallet request is pending. */
+    /** A stored account-owned amount remains visible during refresh; a cache miss shows loading. */
     @Test
-    fun refreshingAndUnloadedWalletsHaveExplicitLoadingStates() {
+    fun refreshingKeepsLoadedWalletWhileCacheMissesShowLoading() {
         val state = AuthUiState(mode = AccountAccessMode.Server, account = account)
         assertEquals(HomeWalletState.Loading, state.homeWallet)
         assertEquals(
-            HomeWalletState.Loading,
+            HomeWalletState.Loaded(wallet),
             state
                 .copy(wallet = WalletLookupResult.Loaded(wallet), isWalletRefreshing = true)
                 .homeWallet,
