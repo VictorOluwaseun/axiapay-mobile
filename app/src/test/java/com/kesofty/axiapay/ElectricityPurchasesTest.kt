@@ -77,6 +77,11 @@ class ElectricityPurchasesTest {
     /** Create a retained reducer with the real application workflow. */
     private fun vm(f: PurchaseFixture) =
         PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
+            )
             owners.put("electricity", it)
         }
 

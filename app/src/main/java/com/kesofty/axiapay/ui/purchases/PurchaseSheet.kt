@@ -62,6 +62,13 @@ fun PurchaseSheet(
                 else R.string.telecom_subtitle,
             ),
         )
+        if (!state.featureAvailable) {
+            Text(
+                stringResource(R.string.feature_temporarily_unavailable),
+                color = Warning,
+                modifier = Modifier.testTag("purchase-feature-disabled"),
+            )
+        }
         if (offline) {
             Text(stringResource(R.string.telecom_offline), color = Warning)
         }
@@ -281,7 +288,7 @@ private fun ColumnScope.PurchaseFields(
     PrimaryButton(
         stringResource(R.string.telecom_review),
         Modifier.testTag("telecom-review"),
-        state.prepared != null && !state.isProcessing && !offline,
+        state.featureAvailable && state.prepared != null && !state.isProcessing && !offline,
     ) {
         onIntent(PurchaseIntent.Review)
     }
@@ -330,7 +337,8 @@ private fun ColumnScope.PurchaseReview(
             walletMoney(quote.totalDebitMinorUnits, quote.currency),
         ),
         Modifier.testTag("telecom-confirm"),
-        state.secondsRemaining > 0L &&
+        state.featureAvailable &&
+            state.secondsRemaining > 0L &&
             quote.isSubmissionAvailable &&
             !state.isProcessing &&
             !offline,
@@ -379,7 +387,7 @@ private fun ColumnScope.PurchaseHistory(
     PrimaryButton(
         stringResource(R.string.telecom_new),
         Modifier.testTag("telecom-new"),
-        !state.isProcessing,
+        state.featureAvailable && !state.isProcessing,
     ) {
         onIntent(PurchaseIntent.NewPurchase)
     }
@@ -618,6 +626,7 @@ private fun issueMessage(issue: PurchaseIssue): Int =
         PurchaseIssue.WalletUnavailable,
         PurchaseIssue.WalletRestricted -> R.string.telecom_error_wallet
         PurchaseIssue.Network -> R.string.telecom_error_network
+        PurchaseIssue.FeatureDisabled -> R.string.feature_temporarily_unavailable
         PurchaseIssue.Unavailable -> R.string.telecom_error_unavailable
         PurchaseIssue.InvalidResponse -> R.string.telecom_error_response
         PurchaseIssue.SelectProduct,

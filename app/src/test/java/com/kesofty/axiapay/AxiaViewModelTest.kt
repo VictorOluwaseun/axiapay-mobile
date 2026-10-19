@@ -37,6 +37,36 @@ class AxiaViewModelTest {
         return vm
     }
 
+    /** Current policy blocks direct entry and a previously reviewed draft without destroying it. */
+    @Test
+    fun disabledFeaturePreservesDraftAndRequiresExplicitConfirmationAfterReenable() {
+        val f = DemoTestFixture()
+        val vm = own(f.viewModel())
+        fillAirtime(vm)
+        val reviewed = vm.uiState.value.navigation.sheet
+        val balance = vm.uiState.value.session.balance
+        vm.accept(
+            AxiaIntent.UpdateFeatures(
+                com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled.copy(airtime = false),
+            ),
+        )
+        vm.accept(AxiaIntent.ConfirmPayment)
+        assertEquals(balance, vm.uiState.value.session.balance)
+        assertEquals(reviewed, vm.uiState.value.navigation.sheet)
+        vm.accept(AxiaIntent.CloseSheet)
+        vm.accept(AxiaIntent.OpenService("Airtime"))
+        assertNull(vm.uiState.value.navigation.sheet)
+        vm.accept(AxiaIntent.OpenService("Data"))
+        assertEquals("Data", (vm.uiState.value.navigation.sheet as Sheet.Payment).form.route)
+        vm.accept(
+            AxiaIntent.UpdateFeatures(com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled),
+        )
+        assertEquals(balance, vm.uiState.value.session.balance)
+        vm.accept(AxiaIntent.OpenService("Airtime"))
+        vm.accept(AxiaIntent.ConfirmPayment)
+        assertTrue(vm.uiState.value.navigation.sheet is Sheet.Receipt)
+    }
+
     private fun fillAirtime(vm: AxiaViewModel) {
         vm.accept(AxiaIntent.OpenService("Airtime"))
         vm.accept(AxiaIntent.EditPayment(PaymentIntent.Recipient("08000000000")))

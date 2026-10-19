@@ -92,37 +92,44 @@ internal class DemoTestFixture(
             },
     ) =
         AxiaViewModel(
-            ObserveSession(repository),
-            submitAction,
-            CompletePayment { complete(it) },
-            QueueBulkBatch { queueBulk(it) },
-            RetryBulkBatch { retryBulk(it) },
-            RunBulkBatch { runBulk(it) },
-            BulkFormPresenter(prepareBulk) { java.util.UUID.randomUUID().toString() },
-            PrepareRecipientImport(
-                importRepository,
-                prepareBulk,
-                kotlinx.coroutines.Dispatchers.Main,
-            ) {
-                java.util.UUID.randomUUID().toString()
-            },
-            ExportRecipientSample(sampleRepository),
-            UpdatePlan { id, enabled -> SetPlanEnabled(repository)(id, enabled) },
-            SetBalanceVisibility(repository),
-            SetPaymentReminders(repository),
-            MarkNotificationsRead(repository),
-            UpdateConnectionState(repository, clock),
-            SetConnectionMode(repository, connection, clock),
-            ObserveInternetConnection(connection),
-            PrepareSmsRequest { input, id, sim ->
-                PrepareSmsPayment(repository, prepare, clock)(input, id, sim)
-            },
-            SendSmsRequest { id, failure -> SendDemoSms(repository, clock)(id, failure) },
-            ReconcileSmsRequest { id -> ReconcileDemoSms(repository, clock)(id) },
-            PaymentFormPresenter(prepare, clock),
-            navigation,
-            { java.util.UUID.randomUUID().toString() },
-        )
+                ObserveSession(repository),
+                submitAction,
+                CompletePayment { complete(it) },
+                QueueBulkBatch { queueBulk(it) },
+                RetryBulkBatch { retryBulk(it) },
+                RunBulkBatch { runBulk(it) },
+                BulkFormPresenter(prepareBulk) { java.util.UUID.randomUUID().toString() },
+                PrepareRecipientImport(
+                    importRepository,
+                    prepareBulk,
+                    kotlinx.coroutines.Dispatchers.Main,
+                ) {
+                    java.util.UUID.randomUUID().toString()
+                },
+                ExportRecipientSample(sampleRepository),
+                UpdatePlan { id, enabled -> SetPlanEnabled(repository)(id, enabled) },
+                SetBalanceVisibility(repository),
+                SetPaymentReminders(repository),
+                MarkNotificationsRead(repository),
+                UpdateConnectionState(repository, clock),
+                SetConnectionMode(repository, connection, clock),
+                ObserveInternetConnection(connection),
+                PrepareSmsRequest { input, id, sim ->
+                    PrepareSmsPayment(repository, prepare, clock)(input, id, sim)
+                },
+                SendSmsRequest { id, failure -> SendDemoSms(repository, clock)(id, failure) },
+                ReconcileSmsRequest { id -> ReconcileDemoSms(repository, clock)(id) },
+                PaymentFormPresenter(prepare, clock),
+                navigation,
+                { java.util.UUID.randomUUID().toString() },
+            )
+            .also {
+                it.accept(
+                    com.kesofty.axiapay.presentation.AxiaIntent.UpdateFeatures(
+                        com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                    ),
+                )
+            }
 }
 
 internal fun <T> Outcome<T>.success(): T = (this as Outcome.Success).value

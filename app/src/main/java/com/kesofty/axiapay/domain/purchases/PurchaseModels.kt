@@ -222,6 +222,7 @@ enum class PurchaseIssue {
     InvalidAmount,
     InvalidPayment,
     ProductUnavailable,
+    FeatureDisabled,
     QuoteExpired,
     PaymentConflict,
     InsufficientFunds,

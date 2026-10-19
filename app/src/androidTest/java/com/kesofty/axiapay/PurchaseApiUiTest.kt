@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.application.*
 import com.kesofty.axiapay.application.purchases.*
@@ -217,6 +218,11 @@ class PurchaseApiUiTest {
                 requestKey
             }
         return PurchaseViewModel(Optional.of(workflow), PreparePurchase(), clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
+            )
             owners.put(key, it)
         }
     }
@@ -428,6 +434,7 @@ class PurchaseApiUiTest {
             AxiaUiState(
                 DemoSessionSeed.create(LocalDate.now(clock)).copy(offline = offline),
                 NavigationState(sheet = Sheet.Payment(form)),
+                features = com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
             )
         compose.setContent {
             val purchases by vm.uiState.collectAsStateWithLifecycle()
@@ -473,7 +480,8 @@ class PurchaseApiUiTest {
         if (service == PurchaseService.Airtime) {
             compose.onNodeWithTag("telecom-amount").performScrollTo().performTextInput("100")
         }
-        compose.onNodeWithTag("telecom-review").performScrollTo().performClick()
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("telecom-review").performScrollTo().assertIsEnabled().performClick()
         waitFor(PurchaseScreen.Review)
     }
 
@@ -779,7 +787,12 @@ class PurchaseApiUiTest {
             .performClick()
         compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
         compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("00123456789")
-        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        Espresso.closeSoftKeyboard()
+        compose
+            .onNodeWithTag("electricity-verify")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
         compose.waitUntil(15_000) {
             vm.uiState.value.verifiedMeter != null && !vm.uiState.value.isProcessing
         }
@@ -788,7 +801,8 @@ class PurchaseApiUiTest {
             .performScrollTo()
             .performTextInput("08012345678")
         compose.onNodeWithTag("telecom-amount").performScrollTo().performTextInput("100")
-        compose.onNodeWithTag("telecom-review").performScrollTo().performClick()
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("telecom-review").performScrollTo().assertIsEnabled().performClick()
         waitFor(PurchaseScreen.Review)
     }
 
@@ -939,7 +953,12 @@ class PurchaseApiUiTest {
         compose.onNodeWithTag("telecom-network-ikeja-electric").performScrollTo().performClick()
         compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
         compose.onNodeWithTag("telecom-recipient").performScrollTo().performTextInput("00123456789")
-        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        Espresso.closeSoftKeyboard()
+        compose
+            .onNodeWithTag("electricity-verify")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
         compose.waitUntil(15_000) {
             vm.uiState.value.issue == PurchaseIssue.MeterUnconfirmed &&
                 !vm.uiState.value.isProcessing
@@ -948,7 +967,12 @@ class PurchaseApiUiTest {
         assertEquals(0, quotes.get())
         assertEquals(0, posts.get())
         verificationCode = 201
-        compose.onNodeWithTag("electricity-verify").performScrollTo().performClick()
+        Espresso.closeSoftKeyboard()
+        compose
+            .onNodeWithTag("electricity-verify")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
         compose.waitUntil(15_000) {
             vm.uiState.value.verifiedMeter != null && !vm.uiState.value.isProcessing
         }

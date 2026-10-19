@@ -63,10 +63,14 @@ data class PurchaseUiState(
     val selectedMeterType: ElectricityMeterType = ElectricityMeterType.Prepaid,
     val verifiedMeter: VerifiedMeter? = null,
     val contactPhoneNumber: String = "",
+    val featureAvailable: Boolean = false,
 ) {
     /** Form-bound meter syntax permits a non-spending verification intent. */
     val canVerifyMeter: Boolean
-        get() = selectedProduct?.isSubmissionAvailable == true && hasMeterSyntax(recipient)
+        get() =
+            featureAvailable &&
+                selectedProduct?.isSubmissionAvailable == true &&
+                hasMeterSyntax(recipient)
 
     /** Publish only the selected API identity, never a locally guessed provider/product mapping. */
     val selectedProduct: PurchaseProduct?
@@ -119,6 +123,13 @@ data class PurchaseUiState(
  * performs reads only.
  */
 sealed interface PurchaseIntent {
+    /**
+     * Project current cached/refreshed display policy; this intent never submits or cancels
+     * accepted work.
+     */
+    data class UpdateFeatures(val features: com.kesofty.axiapay.domain.config.PaymentFeatures) :
+        PurchaseIntent
+
     /**
      * Bind the verified account and existing sheet visit; null closes and drops transient personal
      * data.

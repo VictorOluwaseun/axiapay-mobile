@@ -33,6 +33,11 @@ class PurchaseViewModelTest {
     /** Own every constructed reducer so timer jobs never survive a test. */
     private fun vm(f: PurchaseFixture, key: String = "airtime") =
         PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
+            )
             owners.put(key, it)
         }
 
@@ -179,6 +184,40 @@ class PurchaseViewModelTest {
         } finally {
             owners.clear()
         }
+    }
+
+    /**
+     * A refresh cannot replay consent; disablement retains the review and accepted progress remains
+     * recoverable.
+     */
+    @Test
+    fun featureChangesGateNewConsentAndPreserveRecovery() = runTest {
+        val f = PurchaseFixture()
+        val vm = vm(f)
+        review(vm, f)
+        val original = vm.uiState.value.review
+        val disabled =
+            com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled.copy(airtime = false)
+        vm.accept(PurchaseIntent.UpdateFeatures(disabled))
+        vm.accept(PurchaseIntent.Confirm)
+        assertEquals(original, vm.uiState.value.review)
+        assertTrue(f.api.submissions.isEmpty())
+        vm.accept(
+            PurchaseIntent.UpdateFeatures(
+                com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+            ),
+        )
+        assertTrue(f.api.submissions.isEmpty())
+        vm.accept(PurchaseIntent.Confirm)
+        assertEquals(1, f.api.submissions.size)
+        vm.accept(PurchaseIntent.UpdateFeatures(disabled))
+        vm.accept(PurchaseIntent.CheckStatus)
+        assertNotNull(vm.uiState.value.progress?.payment)
+        assertFalse(vm.uiState.value.featureAvailable)
+        assertEquals(1, f.api.submissions.size)
+        vm.accept(PurchaseIntent.History)
+        vm.accept(PurchaseIntent.CheckSaved(f.store.records.single().requestKey))
+        assertEquals(PurchaseScreen.Progress, vm.uiState.value.screen)
     }
 
     /** Demo composition has no purchase capability, regardless of emitted live intents. */

@@ -8,6 +8,7 @@ import com.kesofty.axiapay.application.purchases.WalletPurchases
 import com.kesofty.axiapay.application.purchases.hasMeterSyntax
 import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.purchases.*
+import com.kesofty.axiapay.presentation.allows
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.Duration
@@ -37,6 +38,7 @@ constructor(
     private val clock: Clock,
 ) : ViewModel() {
     private val purchases = feature.orElse(null)
+    private var features = com.kesofty.axiapay.domain.config.PaymentFeatures.Disabled
     private val mutableState = MutableStateFlow(PurchaseUiState(enabled = purchases != null))
     val uiState = mutableState.asStateFlow()
     private val effectChannel = Channel<PurchaseEffect>(Channel.BUFFERED)
@@ -48,6 +50,14 @@ constructor(
     /** Keep one operation per visit; Views emit intents and never mutate the render snapshot. */
     @MainThread
     fun accept(intent: PurchaseIntent) {
+        if (intent is PurchaseIntent.UpdateFeatures) {
+            features = intent.features
+            mutableState.value =
+                mutableState.value.copy(
+                    featureAvailable = features.allows(mutableState.value.service),
+                )
+            return
+        }
         if (purchases == null) {
             return
         }
@@ -59,7 +69,19 @@ constructor(
         if (state.routeId == null || state.accountId == null || state.isProcessing) {
             return
         }
+        if (
+            !state.featureAvailable &&
+                intent in
+                    setOf(
+                        PurchaseIntent.Review,
+                        PurchaseIntent.Confirm,
+                        PurchaseIntent.VerifyMeter,
+                        PurchaseIntent.NewPurchase,
+                    )
+        )
+            return
         when (intent) {
+            is PurchaseIntent.UpdateFeatures -> Unit
             PurchaseIntent.Reload -> load()
             is PurchaseIntent.SelectProvider -> selectProvider(intent.code)
             is PurchaseIntent.SelectProduct -> selectProduct(intent.id)
@@ -160,6 +182,7 @@ constructor(
                 intent.routeId,
                 screen,
                 service = intent.service,
+                featureAvailable = features.allows(intent.service),
             )
         if (screen == PurchaseScreen.Loading) {
             load()
@@ -320,6 +343,7 @@ constructor(
                 PurchaseScreen.Form,
                 state.context,
                 service = state.service,
+                featureAvailable = features.allows(state.service),
             )
     }
 

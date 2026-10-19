@@ -41,10 +41,19 @@ data class AxiaUiState(
     val isProcessing: Boolean = false,
     val isRestoring: Boolean = false,
     val restorationFailed: Boolean = false,
+    val features: com.kesofty.axiapay.domain.config.PaymentFeatures =
+        com.kesofty.axiapay.domain.config.PaymentFeatures.Disabled,
     @androidx.annotation.StringRes val errorResource: Int? = null,
 )
 
 sealed interface AxiaIntent {
+    /**
+     * Accept display policy from the configuration state owner without changing navigation or
+     * replaying work.
+     */
+    data class UpdateFeatures(val features: com.kesofty.axiapay.domain.config.PaymentFeatures) :
+        AxiaIntent
+
     data class SelectTab(val tab: Int) : AxiaIntent
 
     data class OpenService(val route: String) : AxiaIntent

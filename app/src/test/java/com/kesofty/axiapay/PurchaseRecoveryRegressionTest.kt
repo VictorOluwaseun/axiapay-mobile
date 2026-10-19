@@ -222,6 +222,11 @@ class PurchaseRecoveryRegressionTest {
     /** Lifecycle ownership makes cancellation and expiry behavior match production. */
     private fun vm(f: PurchaseFixture, workflow: WalletPurchases = f.workflow) =
         PurchaseViewModel(Optional.of(workflow), PreparePurchase(), f.clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
+            )
             owners.put("review", it)
         }
 

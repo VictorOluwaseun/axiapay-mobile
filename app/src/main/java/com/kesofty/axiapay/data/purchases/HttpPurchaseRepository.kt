@@ -478,6 +478,7 @@ class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseReposito
                     failure.code == "WALLET_RESTRICTED" -> PurchaseIssue.WalletRestricted
                     failure.code in setOf("PAYMENT_CONFLICT", "IDEMPOTENCY_CONFLICT") ->
                         PurchaseIssue.PaymentConflict
+                    failure.code == "FEATURE_DISABLED" -> PurchaseIssue.FeatureDisabled
                     failure.code == "PRODUCT_UNAVAILABLE" -> PurchaseIssue.ProductUnavailable
                     failure.code == "INVALID_PAYMENT" -> PurchaseIssue.InvalidPayment
                     failure.status == 404 -> PurchaseIssue.NotFound

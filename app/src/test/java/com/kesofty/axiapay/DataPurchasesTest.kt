@@ -68,6 +68,11 @@ class DataPurchasesTest {
     /** Construct the actual reducer/workflow with a test lifecycle owner. */
     private fun vm(f: PurchaseFixture) =
         PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
+            )
             owners.put("data", it)
         }
 

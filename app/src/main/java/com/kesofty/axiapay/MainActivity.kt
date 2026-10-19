@@ -60,6 +60,10 @@ class MainActivity : ComponentActivity() {
             val authState by authViewModel.uiState.collectAsStateWithLifecycle()
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val purchaseState by purchaseViewModel.uiState.collectAsStateWithLifecycle()
+            LaunchedEffect(authState.paymentFeatures) {
+                viewModel.accept(AxiaIntent.UpdateFeatures(authState.paymentFeatures))
+                purchaseViewModel.accept(PurchaseIntent.UpdateFeatures(authState.paymentFeatures))
+            }
             val purchaseForm =
                 (state.navigation.sheet as? Sheet.Payment)?.form?.takeIf {
                     it.isWalletPurchaseEntry

@@ -142,6 +142,10 @@ constructor(
     /** Routes user intents to use cases or navigation; rendering cannot replay an action. */
     @MainThread
     fun accept(intent: AxiaIntent) {
+        if (intent is AxiaIntent.UpdateFeatures) {
+            mutableState.update { it.copy(features = intent.features) }
+            return
+        }
         if (intent == AxiaIntent.RetryRestore) {
             restoreOwner()
             return
@@ -181,6 +185,7 @@ constructor(
             AxiaIntent.SaveDraft -> saveDraft()
             AxiaIntent.ResumeDraft -> resumeDraft()
             AxiaIntent.RetryRestore -> Unit
+            is AxiaIntent.UpdateFeatures -> Unit
             AxiaIntent.DismissError ->
                 mutableState.update { it.copy(error = null, errorResource = null) }
         }
@@ -614,6 +619,7 @@ constructor(
 
     /** Opens a destination; notification read state changes only through its use case. */
     private fun open(route: String) {
+        if (!allowFeature(route)) return
         if (route == "bulk") {
             handleBulk(BulkIntent.Open)
             return
@@ -631,6 +637,13 @@ constructor(
             }
         navigate(navigation.copy(sheet = sheet))
         if (sheet == Sheet.Notifications) preference { markRead() }
+    }
+
+    /** Block new entry or confirmation without discarding drafts, receipts or recovery routes. */
+    private fun allowFeature(route: String): Boolean {
+        if (uiState.value.features.allowsRoute(route)) return true
+        mutableState.update { it.copy(errorResource = R.string.feature_temporarily_unavailable) }
+        return false
     }
 
     /** Routes SMS identities to their transport status and other identities to receipts. */
@@ -652,7 +665,7 @@ constructor(
     /** Captures reviewed terms and routes an explicit confirmation to online or SMS work. */
     private fun confirmPayment() {
         val sheet = navigation.sheet as? Sheet.Payment ?: return
-        if (!sheet.form.reviewing) return
+        if (!sheet.form.reviewing || !allowFeature(sheet.form.service)) return
         if (session.value.offline) {
             executeAction(
                 { prepareSms(sheet.form.input, sheet.form.requestId, sheet.form.smsSim) },

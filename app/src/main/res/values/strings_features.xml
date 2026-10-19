@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_temporarily_unavailable">This service is temporarily unavailable. You can still check your previous payments.</string>
+    <string name="feature_unavailable_label">Temporarily unavailable</string>
+</resources>

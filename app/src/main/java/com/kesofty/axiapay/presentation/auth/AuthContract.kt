@@ -77,6 +77,16 @@ data class AuthUiState(
     val failureCause: Exception? = null,
     val isCodeResent: Boolean = false,
 ) {
+    /**
+     * Demo availability is selected explicitly; real unknown policy keeps new features unavailable.
+     */
+    val paymentFeatures: com.kesofty.axiapay.domain.config.PaymentFeatures
+        get() =
+            if (isDemo) com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled
+            else
+                configuration?.features
+                    ?: com.kesofty.axiapay.domain.config.PaymentFeatures.Disabled
+
     /** Project separate signup/login switches into the caller-owned contact selector. */
     val availableContacts: List<AuthContactType>
         get() = AuthContactType.entries.filter { isContactEnabled(it) }

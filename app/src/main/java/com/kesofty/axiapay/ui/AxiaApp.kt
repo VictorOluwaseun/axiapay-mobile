@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -94,6 +95,7 @@ fun AxiaApp(
                                     homeWallet,
                                     onRefreshWallet,
                                     onOpenAccount,
+                                    uiState.features,
                                 )
                             1 ->
                                 PaymentsScreen(
@@ -106,6 +108,7 @@ fun AxiaApp(
                                         ?.size,
                                     { onIntent(AxiaIntent.SearchServices(it)) },
                                     open,
+                                    uiState.features,
                                 )
                             2 ->
                                 ActivityScreen(
@@ -326,6 +329,7 @@ private fun HomeScreen(
     homeWallet: HomeWalletState,
     onRefreshWallet: () -> Unit,
     onOpenAccount: () -> Unit,
+    features: com.kesofty.axiapay.domain.config.PaymentFeatures,
 ) {
     LazyColumn(
         modifier = Modifier.testTag("home-dashboard"),
@@ -389,7 +393,7 @@ private fun HomeScreen(
             Column {
                 SectionHeading("Your everyday, sorted", "See all") { onTab(1) }
                 Spacer(Modifier.height(12.dp))
-                ServiceGrid { if (it == "More") onTab(1) else open(it) }
+                ServiceGrid(features) { if (it == "More") onTab(1) else open(it) }
             }
         }
         item {
@@ -467,9 +471,14 @@ private fun WalletCard(state: DemoSession, open: (String) -> Unit, onIntent: (Ax
     }
 }
 
-/** Keeps the demo shortcut spacing shared across dashboard wallet sources. */
+/**
+ * Preserves shortcut geometry when availability changes; disabled tiles retain explicit semantics.
+ */
 @Composable
-private fun ServiceGrid(onSelect: (String) -> Unit) {
+private fun ServiceGrid(
+    features: com.kesofty.axiapay.domain.config.PaymentFeatures,
+    onSelect: (String) -> Unit,
+) {
     val quickServices = services.take(7) + Service("More", Glyph.More, "")
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -478,20 +487,44 @@ private fun ServiceGrid(onSelect: (String) -> Unit) {
             quickServices.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     row.forEach { service ->
+                        val available = features.allowsRoute(service.name)
+                        val unavailableLabel = stringResource(R.string.feature_unavailable_label)
                         Column(
                             Modifier.weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable(role = Role.Button) { onSelect(service.name) }
+                                .clickable(
+                                    enabled = available,
+                                    role = Role.Button,
+                                ) {
+                                    onSelect(service.name)
+                                }
+                                .semantics { if (!available) stateDescription = unavailableLabel }
                                 .testTag("dashboard-service-${service.name}")
                                 .padding(vertical = 3.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            IconTile(
-                                service.icon,
-                                Modifier.size(50.dp),
-                                if (service.name == "More") Color(0xFFEAF0ED).modeColor()
-                                else glyphTint(service.icon),
-                            )
+                            Box {
+                                IconTile(
+                                    service.icon,
+                                    Modifier.size(50.dp),
+                                    when {
+                                        !available -> Line
+                                        service.name == "More" -> Color(0xFFEAF0ED).modeColor()
+                                        else -> glyphTint(service.icon)
+                                    },
+                                )
+                                if (!available) {
+                                    Box(
+                                        Modifier.align(Alignment.TopEnd)
+                                            .size(18.dp)
+                                            .background(Canvas, CircleShape)
+                                            .border(1.dp, Muted, CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        AxiaIcon(Glyph.Offline, Modifier.size(12.dp), Muted)
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 if (service.name == "Convert airtime") "Airtime to cash"
@@ -590,6 +623,7 @@ private fun PaymentsScreen(
     bulkDraftCount: Int?,
     onQuery: (String) -> Unit,
     open: (String) -> Unit,
+    features: com.kesofty.axiapay.domain.config.PaymentFeatures,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(22.dp),
@@ -624,14 +658,21 @@ private fun PaymentsScreen(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
-                    .clickable(role = Role.Button) { open(service.name) }
+                    .clickable(enabled = features.allowsRoute(service.name), role = Role.Button) {
+                        open(service.name)
+                    }
                     .padding(15.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconTile(service.icon)
                 Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                     Text(service.name, style = MaterialTheme.typography.titleSmall)
-                    Text(service.hint, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text(
+                        if (features.allowsRoute(service.name)) service.hint
+                        else stringResource(R.string.feature_unavailable_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
                 }
                 AxiaIcon(Glyph.Chevron, Modifier.size(17.dp), Muted)
             }
