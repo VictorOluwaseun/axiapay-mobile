@@ -23,6 +23,7 @@ class ConnectionPreviewUiTest {
             "Simulated wallet flows require the demo flavor",
             BuildConfig.FLAVOR == "demo",
         )
+        compose.awaitDemoWelcome()
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
     }
 
@@ -31,8 +32,7 @@ class ConnectionPreviewUiTest {
     fun profileAndManageShareTheOverrideAndRestoreTheSelectedMode() {
         compose.onNodeWithContentDescription("Open profile").performClick()
         compose.onNodeWithText("Automatic").performScrollTo().assertIsSelected()
-        compose.onNodeWithText("Force offline").performScrollTo().performClick()
-        compose.onNodeWithText("Force offline").assertIsSelected()
+        selectModeAndAwaitSelection("Force offline")
         assertEquals(false, hasColour(compose.onNode(isDialog()).captureToImage().toPixelMap()))
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("Force offline").performScrollTo().assertIsSelected()
@@ -40,18 +40,25 @@ class ConnectionPreviewUiTest {
         compose.onNodeWithText("Offline preview").assertIsDisplayed()
         compose.onNodeWithText("₦128,450.00").assertIsDisplayed()
         compose.onNodeWithText("Manage").performClick()
-        compose.onNodeWithText("Force online").performScrollTo().performClick()
-        compose.onNodeWithText("Force online").assertIsSelected()
+        selectModeAndAwaitSelection("Force online")
         assertEquals(true, hasColour(compose.onNode(isDialog()).captureToImage().toPixelMap()))
         Espresso.pressBack()
         compose.onNodeWithText("Online preview").assertIsDisplayed()
         compose.onNodeWithText("Available balance").assertIsDisplayed()
         compose.onNodeWithText("Manage").performClick()
-        compose.onNodeWithText("Automatic").performScrollTo().performClick()
-        compose.onNodeWithText("Automatic").assertIsSelected()
+        selectModeAndAwaitSelection("Automatic")
         Espresso.pressBack()
         compose.onNodeWithText("Manual override • Demo only").assertDoesNotExist()
         compose.onNodeWithText("₦128,450.00").assertIsDisplayed()
+    }
+
+    /** Await the committed preference's UI projection before checking selection or palette. */
+    private fun selectModeAndAwaitSelection(label: String) {
+        compose.onNodeWithText(label).performScrollTo().performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(label) and isSelected()).fetchSemanticsNodes().size == 1
+        }
+        compose.onNodeWithText(label).assertIsSelected()
     }
 
     /** Samples app pixels to check the actual rendered palette, including sheet controls. */

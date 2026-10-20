@@ -3,7 +3,9 @@ package com.kesofty.axiapay
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.espresso.Espresso
+import com.kesofty.axiapay.presentation.auth.AuthViewModel
 import kotlin.math.abs
 import org.junit.Assert.assertTrue
 import org.junit.Assume
@@ -23,6 +25,7 @@ class AuthUiTest {
     @Before
     fun requireDemoAuthentication() {
         Assume.assumeTrue(BuildConfig.FLAVOR == "demo")
+        compose.awaitDemoWelcome()
     }
 
     /**
@@ -30,8 +33,19 @@ class AuthUiTest {
      * navigation.
      */
     private fun waitForText(text: String) {
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        try {
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            val state = compose.runOnIdle {
+                ViewModelProvider(compose.activity)[AuthViewModel::class.java].uiState.value
+            }
+            throw AssertionError(
+                "Expected preview result '$text'; state=$state, issue=${state.error}, " +
+                    "contactLength=${state.contact.length}, nameLength=${state.name.length}",
+                timeout,
+            )
         }
     }
 
@@ -119,6 +133,8 @@ class AuthUiTest {
             },
         )
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+        // Account entry dismisses Profile; reopen connection controls through the retained banner.
+        compose.onNodeWithText("Manage").performClick()
         compose.onNodeWithText("Force offline").performScrollTo().assertIsSelected()
         Espresso.pressBack()
         compose.onNodeWithText("₦133,450.00").assertIsDisplayed()
