@@ -1,7 +1,5 @@
 package com.kesofty.axiapay.ui
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,9 +32,12 @@ import androidx.compose.ui.unit.sp
 import com.kesofty.axiapay.R
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.presentation.*
+import com.kesofty.axiapay.presentation.navigation.AppDestination
+import com.kesofty.axiapay.presentation.navigation.dashboardBackStack
 import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.bulk.*
 import com.kesofty.axiapay.ui.components.*
+import com.kesofty.axiapay.ui.navigation.StateNavigationHost
 import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.*
 import java.time.LocalDate
@@ -63,29 +64,32 @@ fun AxiaApp(
     val onTab: (Int) -> Unit = { onIntent(AxiaIntent.SelectTab(it)) }
     val open: (String) -> Unit = { onIntent(AxiaIntent.OpenService(it)) }
     val onReceipt: (String) -> Unit = { onIntent(AxiaIntent.OpenReceipt(it)) }
-    BackHandler(navigation.bulk.screen == null && navigation.sheet == null && navigation.tab != 0) {
-        onTab(0)
-    }
-    when (navigation.bulk.screen) {
-        null -> {
-            Scaffold(
-                containerColor = Canvas,
-                bottomBar = { BottomNavigation(navigation.tab, onTab) },
-            ) { padding ->
-                Column(
-                    Modifier.fillMaxSize().padding(padding),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (uiState.isProcessing) PaymentProgress()
-                    if (state.offline || state.connectionMode != ConnectionMode.Automatic)
-                        ConnectionBanner(state.connectionMode) { open("offline") }
-                    Crossfade(
-                        targetState = navigation.tab,
-                        label = "Navigation",
-                        modifier = Modifier.widthIn(max = 600.dp).fillMaxSize(),
-                    ) { page ->
-                        when (page) {
-                            0 ->
+    Scaffold(
+        containerColor = Canvas,
+        bottomBar = {
+            if (navigation.bulk.screen == null) BottomNavigation(navigation.tab, onTab)
+        },
+    ) { padding ->
+        StateNavigationHost(
+            destinations = AppDestination.dashboardRoutes,
+            backStack = dashboardBackStack(navigation),
+            onBack = {
+                if (navigation.bulk.screen != null) onIntent(AxiaIntent.Bulk(BulkIntent.Back))
+                else onTab(0)
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) { destination ->
+            when (destination) {
+                AppDestination.BulkServices,
+                AppDestination.BulkRecipients,
+                AppDestination.BulkImport,
+                AppDestination.BulkReview,
+                AppDestination.BulkProgress,
+                AppDestination.BulkRetryReview -> BulkPaymentFlow(uiState, onIntent)
+                else ->
+                    DashboardPage(uiState, padding, open) {
+                        when (destination) {
+                            AppDestination.Home ->
                                 HomeScreen(
                                     state,
                                     open,
@@ -97,7 +101,7 @@ fun AxiaApp(
                                     onOpenAccount,
                                     uiState.features,
                                 )
-                            1 ->
+                            AppDestination.Payments ->
                                 PaymentsScreen(
                                     navigation.serviceQuery,
                                     navigation.bulk.draft
@@ -110,7 +114,7 @@ fun AxiaApp(
                                     open,
                                     uiState.features,
                                 )
-                            2 ->
+                            AppDestination.Activity ->
                                 ActivityScreen(
                                     state,
                                     navigation.activityFilter,
@@ -119,13 +123,12 @@ fun AxiaApp(
                                     { onIntent(AxiaIntent.OpenSms(it)) },
                                     { onIntent(AxiaIntent.Bulk(BulkIntent.OpenBatch(it))) },
                                 )
-                            else -> PlansScreen(state, open, onIntent)
+                            AppDestination.Plans -> PlansScreen(state, open, onIntent)
+                            else -> Unit
                         }
                     }
-                }
             }
         }
-        else -> BulkPaymentFlow(uiState, onIntent)
     }
     navigation.sheet?.let {
         AppSheet(
@@ -147,6 +150,28 @@ fun AxiaApp(
             text = { Text(message) },
             confirmButton = { TextButton({ onIntent(AxiaIntent.DismissError) }) { Text("OK") } },
         )
+    }
+}
+
+/**
+ * Shared tab chrome preserves system insets, connection feedback, and the existing content width.
+ */
+@Composable
+private fun DashboardPage(
+    state: AxiaUiState,
+    padding: PaddingValues,
+    open: (String) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().padding(padding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (state.isProcessing) PaymentProgress()
+        if (state.session.offline || state.session.connectionMode != ConnectionMode.Automatic) {
+            ConnectionBanner(state.session.connectionMode) { open("offline") }
+        }
+        Box(Modifier.widthIn(max = 600.dp).fillMaxSize()) { content() }
     }
 }
 
