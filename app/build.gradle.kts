@@ -119,6 +119,8 @@ dependencies {
     implementation(libs.apache.poi)
     implementation(libs.apache.csv)
     implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose)
     ksp(libs.hilt.compiler)
     implementation(composeBom)
     implementation(libs.androidx.activity.compose)
