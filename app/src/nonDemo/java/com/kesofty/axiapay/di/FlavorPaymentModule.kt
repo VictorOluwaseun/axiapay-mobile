@@ -12,9 +12,7 @@ import dagger.hilt.android.scopes.ViewModelScoped
 import java.time.Clock
 import java.time.LocalDate
 
-/**
- * Selects the current demo adapters for dev/staging/prod; real integrations replace bindings here.
- */
+/** Selects the current demo adapters for dev; real integrations replace bindings here. */
 @Module
 @InstallIn(ViewModelComponent::class)
 internal object FlavorPaymentModule {

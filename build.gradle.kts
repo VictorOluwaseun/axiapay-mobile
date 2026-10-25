@@ -41,5 +41,5 @@ tasks.register<JavaExec>("formatKotlin") {
 tasks.register("verifyAllFlavors") {
     group = "verification"
     description = "Checks formatting, unit tests, lint and debug/release/test APKs for all flavors."
-    dependsOn(listOf("Dev", "Demo", "Staging", "Prod").map { ":app:verify$it" })
+    dependsOn(listOf("Dev", "Demo").map { ":app:verify$it" })
 }

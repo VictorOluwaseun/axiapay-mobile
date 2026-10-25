@@ -1,4 +1,4 @@
-# Checks the four independent app identities; never signs, publishes or deploys a build.
+# Checks the dev and demo app identities; never signs, publishes or deploys a build.
 name: Android verification
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [Dev, Demo, Staging, Prod]
+        flavor: [Dev, Demo]
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -19,8 +19,6 @@ class AppIdentityTest {
             when (BuildConfig.FLAVOR) {
                 "dev" -> "com.kesofty.axiapay.dev" to "AxiaPay Dev"
                 "demo" -> "com.kesofty.axiapay.demo" to "AxiaPay Demo"
-                "staging" -> "com.kesofty.axiapay.staging" to "AxiaPay Staging"
-                "prod" -> "com.kesofty.axiapay" to "AxiaPay"
                 else -> error("Unexpected environment: ${BuildConfig.FLAVOR}")
             }
         assertEquals(expected.first, appContext.packageName)

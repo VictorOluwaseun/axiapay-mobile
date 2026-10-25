@@ -1,4 +1,4 @@
-/** Defines the four installable environments and their shared Android build configuration. */
+/** Defines the dev and demo environments and their shared Android build configuration. */
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -51,40 +51,14 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"\"")
             buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
         }
-        create("staging") {
-            dimension = "environment"
-            applicationIdSuffix = ".staging"
-            versionNameSuffix = "-staging"
-            buildConfigField(
-                "String",
-                "API_BASE_URL",
-                providers.gradleProperty("axiapay.staging.apiBaseUrl").orElse("").get().let {
-                    "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-                },
-            )
-            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
-        }
-        create("prod") {
-            dimension = "environment"
-            buildConfigField(
-                "String",
-                "API_BASE_URL",
-                providers.gradleProperty("axiapay.prod.apiBaseUrl").orElse("").get().let {
-                    "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-                },
-            )
-            buildConfigField("boolean", "API_ALLOW_LOCAL_HTTP", "false")
-        }
     }
 
     sourceSets {
         // Identical synthetic import files exercise desktop unit tests and Android parsers.
         getByName("test").resources.directories += "src/sharedTest/resources"
         getByName("androidTest").assets.directories += "src/sharedTest/resources"
-        // Demo has separate Hilt bindings. Backend migration is shared only by these three flavors.
-        listOf("dev", "staging", "prod").forEach { environment ->
-            getByName(environment).kotlin.directories += "src/nonDemo/java"
-        }
+        // Dev uses API bindings; demo keeps its separate Hilt bindings.
+        getByName("dev").kotlin.directories += "src/nonDemo/java"
     }
 
     buildTypes {
@@ -153,7 +127,7 @@ if (providers.gradleProperty("composeReports").map(String::toBoolean).getOrElse(
     }
 }
 
-listOf("Dev", "Demo", "Staging", "Prod").forEach { flavor ->
+listOf("Dev", "Demo").forEach { flavor ->
     tasks.register("verify$flavor") {
         group = "verification"
         description = "Verifies $flavor formatting, unit tests, lint and all installable outputs."

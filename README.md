@@ -13,7 +13,7 @@ Open this folder in Android Studio, select `devDebug` or `demoDebug` in **Build 
 ./gradlew verifyAllFlavors
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDemoDebugAndroidTest
 
-# Build the four debug APKs together.
+# Build the two debug APKs together.
 ./gradlew :app:assembleDebug
 ```
 
@@ -23,18 +23,16 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDemoDebugAndroidTest
 | --- | --- | --- | --- |
 | `dev` | `com.kesofty.axiapay.dev` | AxiaPay Dev | Development backend integrations |
 | `demo` | `com.kesofty.axiapay.demo` | AxiaPay Demo | Permanent sample experience |
-| `staging` | `com.kesofty.axiapay.staging` | AxiaPay Staging | Pre-production backend validation |
-| `prod` | `com.kesofty.axiapay` | AxiaPay | Production backend integrations |
 
-**Authentication, account/Home wallet balances and immediate single airtime and data purchases use the API in dev/staging/prod; demo keeps simulated authentication, balances and purchases.** Other payments, schedules and SMS remain labelled local previews. Staging/prod require an explicitly configured HTTPS API; no deployed address is assumed.
+**Authentication, account/Home wallet balances and immediate single airtime and data purchases use the API in dev; demo keeps simulated authentication, balances and purchases.** Other payments, schedules and SMS remain labelled local previews.
 
-The four apps can be installed together, each with a separate Android sandbox, saved session, drafts and preferences. The unsuffixed ID is preserved for prod; existing installs using that ID belong to prod, and demo begins as a separate install. Kotlin packages and the resource namespace remain `com.kesofty.axiapay`.
+The two apps can be installed together, each with a separate Android sandbox, saved session, drafts and preferences. Kotlin packages and the resource namespace remain `com.kesofty.axiapay`.
 
-Each flavor has `Debug` and `Release` variants, such as `demoDebug` and `prodRelease`. A flavor uses the same application ID for both build types, so debug and release of that same flavor do not install side by side. Flavor selects the environment; build type controls debugging and optimization. Release signing has not been configured.
+Each flavor has `Debug` and `Release` variants, such as `demoDebug` and `devRelease`. A flavor uses the same application ID for both build types, so debug and release of that same flavor do not install side by side. Flavor selects the environment; build type controls debugging and optimization. Release signing has not been configured.
 
-Debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Replace `Dev` in the commands above with `Demo`, `Staging` or `Prod` for other flavors. Use explicit flavor task names for unit tests, lint and device tests.
+Debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Replace `Dev` in the commands above with `Demo` for the demo flavor. Use explicit flavor task names for unit tests, lint and device tests.
 
-Hilt modules in `app/src/demo/java/` select the demo repositories and payment/SMS actions. Separate modules in `app/src/nonDemo/java/` are compiled into dev/staging/prod only. `FlavorAuthenticationModule` selects real account access, while `FlavorPaymentModule` retains payment simulations. Shared modules provide platform adapters, presentation collaborators and framework-independent use cases. This keeps one UI and sample implementation while giving future backend integrations a separate binding boundary. Environment selection stays at composition; the confirmed local dev URL is configured separately from undeclared staging/prod URLs. Credentials never belong in Gradle properties or source.
+Hilt modules in `app/src/demo/java/` select the demo repositories and payment/SMS actions. Separate modules in `app/src/nonDemo/java/` are compiled into dev only. `FlavorAuthenticationModule` selects real account access, while `FlavorPaymentModule` retains payment simulations. Shared modules provide platform adapters, presentation collaborators and framework-independent use cases. This keeps one UI and sample implementation while giving future backend integrations a separate binding boundary. Environment selection stays at composition; the dev API URL is configured independently of demo. Credentials never belong in Gradle properties or source.
 
 Source-set and variant conventions follow the [Android build-variant guide](https://developer.android.com/build/build-variants).
 
@@ -86,9 +84,9 @@ The app follows Clean Architecture, MVVM with MVI, and Hilt dependency injection
 | `ui` | Stateless Compose screens, sheets, formatting, icons and theme |
 | `di` | Hilt modules for platform dependencies, use cases, presentation collaborators and flavor bindings |
 
-`ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Run `./gradlew formatKotlin` to apply the pinned ktfmt 0.65 style. `checkKotlinFormat` checks all Kotlin source sets (including shared non-demo wiring and Android tests) and Gradle scripts. `verifyAllFlavors` runs this check, unit tests, lint, debug/release builds and instrumentation APK compilation. Device test execution remains a separate emulator command. The GitHub Actions workflow runs a verification matrix for dev/demo/staging/prod without publishing or signing releases.
+`ArchitectureTest` guards dependency direction and prevents mutable application state from returning to Views. Unit tests cover use cases, concurrency, persistence failure recovery, and MVI transitions. Device tests cover user flows, recreation, and snapshot serialization. Run `./gradlew formatKotlin` to apply the pinned ktfmt 0.65 style. `checkKotlinFormat` checks all Kotlin source sets (including shared non-demo wiring and Android tests) and Gradle scripts. `verifyAllFlavors` runs this check, unit tests, lint, debug/release builds and instrumentation APK compilation. Device test execution remains a separate emulator command. The GitHub Actions workflow runs a verification matrix for dev/demo without publishing or signing releases.
 
-Payment actions use suspending application contracts and ViewModel-owned coroutines. An in-flight action shows progress and rejects repeated submissions; later results update the session without taking over a newly opened screen. Cancellation is not reported as payment failure, and restored state cannot replay a command. Repository snapshots own and protect their lists against external mutation. All four flavors still use the same demo operations.
+Payment actions use suspending application contracts and ViewModel-owned coroutines. An in-flight action shows progress and rejects repeated submissions; later results update the session without taking over a newly opened screen. Cancellation is not reported as payment failure, and restored state cannot replay a command. Repository snapshots own and protect their lists against external mutation. Both flavors still use the same demo operations.
 
 Run `./gradlew :app:compileDemoReleaseKotlin -PcomposeReports=true --rerun-tasks` to generate Compose compiler stability/skipping reports in `app/build/reports/compose/` and `compose-metrics/`. Use them alongside device profiling; they do not replace runtime performance measurements.
 
@@ -102,7 +100,7 @@ Offline: palette tokens and inline accents resolve to their greyscale luminance,
 
 ## Account access
 
-The existing phone/email and password/code selectors now drive all four real auth flows in **dev, staging and prod**:
+The existing phone/email and password/code selectors now drive all four real auth flows in **dev**:
 
 - Signup with a password requests a signup challenge, then verifies it to create the account/session.
 - Signup without a password requests and verifies the same contact-bound signup proof.
@@ -121,7 +119,7 @@ Only the preview-entry navigation Boolean is saved. Form contacts, names, passwo
 
 ### Local development
 
-Start the existing local API and its development services from the backend repository. The dev flavor defaults to `http://10.0.2.2:4000/v1/` for the Android emulator. Its network policy permits HTTP only for emulator/loopback hosts; public HTTP, user-supplied credentials in URLs, query strings, fragments and redirecting auth endpoints are rejected. Staging/prod require HTTPS with normal platform trust.
+Start the existing local API and its development services from the backend repository. The dev flavor defaults to `http://10.0.2.2:4000/v1/` for the Android emulator. Its network policy permits HTTP only for emulator/loopback hosts; public HTTP, user-supplied credentials in URLs, query strings, fragments and redirecting auth endpoints are rejected.
 
 Local email and phone codes are captured in **Mailpit at http://127.0.0.1:58025**. Phone delivery appears as mail to `sms+<international digits>@sms.axiapay.test`; no SMS is sent to a handset. Use the latest code for the corresponding challenge.
 
@@ -131,11 +129,9 @@ Override a base URL, including the `/v1/` prefix and trailing slash, through unt
 
 ```sh
 ./gradlew :app:assembleDevDebug -Paxiapay.dev.apiBaseUrl=http://10.0.2.2:4000/v1/
-./gradlew :app:assembleStagingDebug -Paxiapay.staging.apiBaseUrl=https://your-staging-host/v1/
-./gradlew :app:assembleProdRelease -Paxiapay.prod.apiBaseUrl=https://your-production-host/v1/
 ```
 
-The HTTPS host names above are examples, not configured deployments. For an explicitly selected USB device, use `adb -s <serial> reverse tcp:4000 tcp:4000` and a dev override of `http://127.0.0.1:4000/v1/`. The application IDs remain distinct; credentials cannot cross installed flavors.
+For an explicitly selected USB device, use `adb -s <serial> reverse tcp:4000 tcp:4000` and a dev override of `http://127.0.0.1:4000/v1/`. The application IDs remain distinct; credentials cannot cross installed flavors.
 
 The demo flavor retains its original name field, eight-character sample-password policy, any-six-digits verification and simulated completion. **Explore demo** never establishes a real identity. No backend outage is hidden by switching to that simulation.
 
@@ -171,14 +167,14 @@ Reference: [Hilt Gradle setup](https://dagger.dev/hilt/gradle-setup), [Hilt View
 
 Payments opens a service picker for Airtime, Data, Electricity or TV. Each quick list contains one payment type: enter a recipient, tap **+ Add another recipient**, and continue on the same screen. The next row reuses the provider and amount or plan, while identifiers stay blank. No batch name or separate setup is required. Inline edits update the running total; review includes the final entered row and ignores only an unused new row. Immediate individual payment forms offer the same add-recipient action, carrying the current form into the matching list. Try demo list adds four same-service examples. Each list supports up to 1,000 recipients. Data and TV quotes are illustrative, with no provider purchase. Review shows the demo wallet reservation and offers funding when needed. The optional failure scenario declines the last recipient once, releases its reservation and enables a separately reviewed failed-only retry. Activity’s Batches filter opens saved per-recipient progress, including two sample histories.
 
-Independent service drafts, inline editor input, logical request IDs, reservations and outcomes use private, atomic demo checkpoints with small identities in SavedStateHandle. Leaving the screen does not interrupt an active run. Cancellation or losing internet retains queued/processing rows; restoration and reconnection never submit or resume them automatically. Use Resume demo explicitly. Bulk SMS, durable background execution and live providers are not implemented. History is bounded to 20 batches for this local demo; it is not a production storage or throughput limit. All four flavors retain this simulation through their existing Hilt composition boundary.
+Independent service drafts, inline editor input, logical request IDs, reservations and outcomes use private, atomic demo checkpoints with small identities in SavedStateHandle. Leaving the screen does not interrupt an active run. Cancellation or losing internet retains queued/processing rows; restoration and reconnection never submit or resume them automatically. Use Resume demo explicitly. Bulk SMS, durable background execution and live providers are not implemented. History is bounded to 20 batches for this local demo; it is not a production storage or throughput limit. Both flavors retain this simulation through their existing Hilt composition boundary.
 
 Named reusable groups and group membership are deferred product work; quick bulk payment does not create a group.
 
 
 ## Import bulk recipients
 
-In the **demo flavor only**, the import screen includes **Download CSV sample** and **Download Excel sample**. The standard files have three synthetic recipients for the selected service. **Download 1,000 recipients · CSV** generates a full-size synthetic list on the phone; airtime uses ₦100 per row so a fresh demo wallet can cover it. Data and TV samples retain their catalog prices and may require explicit demo funding. Android's Save dialog lets you put it in Downloads or another folder, then choose it for import. Samples are bundled in the demo APK and work offline. Downloading never adds recipients or submits a payment. Cancellation and save failures leave the current draft and preview intact. Dev, staging and prod contain neither this capability nor its sample assets.
+In the **demo flavor only**, the import screen includes **Download CSV sample** and **Download Excel sample**. The standard files have three synthetic recipients for the selected service. **Download 1,000 recipients · CSV** generates a full-size synthetic list on the phone; airtime uses ₦100 per row so a fresh demo wallet can cover it. Data and TV samples retain their catalog prices and may require explicit demo funding. Android's Save dialog lets you put it in Downloads or another folder, then choose it for import. Samples are bundled in the demo APK and work offline. Downloading never adds recipients or submits a payment. Cancellation and save failures leave the current draft and preview intact. Dev contains neither this capability nor its sample assets.
 
 Choose a service in Payments → Bulk payments, then **Import list**. CSV, modern Excel (`.xlsx`) and Excel 97–2003 (`.xls`) are read locally through Android’s document picker; no storage permission or upload is required. Excel uses the first worksheet in tab order. Files are limited to 2 MB, 1,000 recipient rows plus the header, 16 columns and 256 characters per cell; XLSX expansion is bounded to 8 MB. Password protection and formulas are unsupported.
 
@@ -228,7 +224,7 @@ The demo flavor keeps its original sample balance, funding/transfer controls and
 
 ### Single airtime and data purchases
 
-In dev/staging/prod, sign in, open Home and choose **Airtime** (also available in Payments). The app reads the caller's NGN wallet and the API's airtime catalogue. Choose the recipient's network explicitly, enter the phone number and amount, then **Review payment**. The server quote supplies the recipient, principal, fee, total and expiry. **Pay** submits that exact quote with one saved request key. An unavailable catalogue/adapter, missing wallet or expired quote stays explicit; sample prices and balances never replace API failures. The API deployment must publish airtime products and enable a fulfilment adapter for purchases to be available.
+In dev, sign in, open Home and choose **Airtime** (also available in Payments). The app reads the caller's NGN wallet and the API's airtime catalogue. Choose the recipient's network explicitly, enter the phone number and amount, then **Review payment**. The server quote supplies the recipient, principal, fee, total and expiry. **Pay** submits that exact quote with one saved request key. An unavailable catalogue/adapter, missing wallet or expired quote stays explicit; sample prices and balances never replace API failures. The API deployment must publish airtime products and enable a fulfilment adapter for purchases to be available.
 
 All calls send the captured signed-in bearer. The flow uses `GET /wallets/me?currency=NGN`, `GET /service-catalog/products?serviceType=airtime&currency=NGN&limit=25`, `POST /payments/quotes`, and the explicit `POST /payments` with only `quoteId` and `requestKey` (paths relative to `/v1`). No mobile pricing or displayed balance authorizes spending. Server responses distinguish awaiting funds, reserved, pending, succeeded and failed. Wallet display refreshes after submission/recovery/status checks.
 
@@ -243,7 +239,7 @@ Run `./gradlew verifyAllFlavors --max-workers=1` for all flavors. `WalletPurchas
 
 ### API data plans and recovery compatibility
 
-In dev/staging/prod, **Home → Data** and **Payments → Data** use the same protected NGN wallet and purchase workflow as airtime. The catalogue request uses `serviceType=data`; network and product choices come exclusively from the API. Choose the recipient's network explicitly, including for ported numbers, then a published plan. Data plans have a fixed server price, required allowance and validity; incomplete or malformed API terms are rejected. They have no editable amount and their quote POST contains only `walletId`, `productId` and `recipientPhoneNumber`. The quote screen shows the exact principal, fee, total, recipient, network, allowance and plan validity. Plan validity is separate from the short quote expiry. Changing networks clears the previous plan.
+In dev, **Home → Data** and **Payments → Data** use the same protected NGN wallet and purchase workflow as airtime. The catalogue request uses `serviceType=data`; network and product choices come exclusively from the API. Choose the recipient's network explicitly, including for ported numbers, then a published plan. Data plans have a fixed server price, required allowance and validity; incomplete or malformed API terms are rejected. They have no editable amount and their quote POST contains only `walletId`, `productId` and `recipientPhoneNumber`. The quote screen shows the exact principal, fee, total, recipient, network, allowance and plan validity. Plan validity is separate from the short quote expiry. Changing networks clears the previous plan.
 
 The app honors `isSubmissionAvailable` and never inserts sample plans, prices or balances after a catalogue/wallet/API failure. Data uses the same explicit confirmation, original request-key retry, read-only status lookup, explicit reconciliation, session/account ownership guards and wallet-refresh effects as airtime. Pending or unconfirmed progress never becomes a successful data receipt. Scheduled/bulk data, the general Activity view and SMS remain labelled previews; demo keeps its sample plans and simulated wallet.
 
@@ -261,7 +257,7 @@ Saved-request progress can retain display terms only from that same request; mis
 
 ### Electricity payments
 
-In dev/staging/prod, **Home → Electricity** and **Payments → Electricity** use the signed-in account's NGN wallet. Select an API catalogue provider, prepaid/postpaid mode and product, enter the exact meter/account number, then **Verify meter**. Verification calls `POST /v1/payments/account-validations` with only `productId` and `accountNumber`; leading zeros are preserved. The response supplies the customer, service address and expiry. Changing provider, product, mode or meter clears verification. Starting re-verification also clears the previous capability, so an invalid or unconfirmed response cannot leave stale verified terms usable. A separate delivery phone is canonicalized for the quote. No demo provider ID or customer name establishes verification.
+In dev, **Home → Electricity** and **Payments → Electricity** use the signed-in account's NGN wallet. Select an API catalogue provider, prepaid/postpaid mode and product, enter the exact meter/account number, then **Verify meter**. Verification calls `POST /v1/payments/account-validations` with only `productId` and `accountNumber`; leading zeros are preserved. The response supplies the customer, service address and expiry. Changing provider, product, mode or meter clears verification. Starting re-verification also clears the previous capability, so an invalid or unconfirmed response cannot leave stale verified terms usable. A separate delivery phone is canonicalized for the quote. No demo provider ID or customer name establishes verification.
 
 **Review payment** sends the owned wallet ID, product ID, account validation ID, exact string minor units and delivery contact to `POST /v1/payments/quotes`. It never sends the meter as `recipientPhoneNumber`. The review shows the verified customer/mode, principal, fee, total and expiry. **Pay** durably records one original quote/request reference before the shared purchase POST. The API must publish electricity products and enable its adapter; unavailable verification, pricing or submission remains explicit without a simulated fallback.
 
@@ -277,7 +273,7 @@ Dev HTTP log prefixes use that same ID, and safe echoed references remain availa
 
 ## API remote configuration
 
-Dev, staging and prod consume eight independent authentication switches: email, phone, password and passwordless OTP for signup and login from `GET /v1/config`. Android needs no Firebase SDK or credentials. The app refreshes in the background on account-form entry and foregrounding. Before its first successful config read, email with password or one-time code remains available for signup and login. Config loading/failure never replaces the form with an options error. Once settings have been fetched, the UI keeps those switches during refresh failures, including explicitly disabled methods. A disabled-method rejection refreshes the options without replaying authentication. Demo retains its independent all-enabled simulation.
+Dev consumes eight independent authentication switches: email, phone, password and passwordless OTP for signup and login from `GET /v1/config`. Android needs no Firebase SDK or credentials. The app refreshes in the background on account-form entry and foregrounding. Before its first successful config read, email with password or one-time code remains available for signup and login. Config loading/failure never replaces the form with an options error. Once settings have been fetched, the UI keeps those switches during refresh failures, including explicitly disabled methods. A disabled-method rejection refreshes the options without replaying authentication. Demo retains its independent all-enabled simulation.
 
 For each operation, `authentication.signup` and `authentication.login` expose `emailEnabled`, `phoneEnabled`, `passwordEnabled` and `otpEnabled`. An enabled contact and an enabled credential are both required. A selector appears only when it offers two choices; no contact or no credential choice shows explicit unavailability. Password signup always needs its contact-verification code, even if passwordless OTP signup is disabled. Policy refresh preserves entered passwords and issued proof; an affected draft requires an explicit method change, and re-enabling never submits automatically. Older contact-only snapshots preserve their contact settings and both original credential choices; partially supplied new credential fields are rejected.
 
