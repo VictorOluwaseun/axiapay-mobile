@@ -22,6 +22,8 @@ import com.kesofty.axiapay.presentation.auth.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
 import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.data.local.RoomWalletLocalDataSource
+import com.kesofty.axiapay.wallet.data.remote.WalletRemoteDataSource
 import com.kesofty.axiapay.wallet.domain.*
 import java.io.File
 import java.math.BigInteger
@@ -86,7 +88,8 @@ class DashboardRoomUiTest {
         runBlocking {
             val snapshots = DashboardRepositoryImpl(database, clock)
             snapshots.saveAccount(http.apiIdentity, account)
-            snapshots.saveWallet(http.apiIdentity, account.id, wallet)
+            RoomWalletLocalDataSource(database, clock)
+                .saveWallet(http.apiIdentity, account.id, wallet)
             val policy =
                 RemoteConfiguration(
                     "ui-v1",
@@ -117,8 +120,10 @@ class DashboardRoomUiTest {
                     return account
                 }
             }
-        val wallets =
-            object : WalletRepository by WalletRepositoryImpl(http) {
+        val remote =
+            object : WalletRemoteDataSource {
+                override val apiIdentity = http.apiIdentity
+
                 /** Only a later confirmed response can replace the saved balance. */
                 override suspend fun currentWallet(accessToken: String, currency: String) =
                     wallet.copy(
@@ -126,6 +131,7 @@ class DashboardRoomUiTest {
                         totalMinorUnits = BigInteger("27500"),
                     )
             }
+        val wallets = WalletRepositoryImpl(remote, RoomWalletLocalDataSource(database, clock))
         val sessions =
             object : AuthenticationSessionStore {
                 private var value: StoredAuthenticationSession? =

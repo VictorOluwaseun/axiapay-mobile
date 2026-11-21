@@ -2,6 +2,7 @@ package com.kesofty.axiapay
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.data.remote.HttpWalletRemoteDataSource
 import com.kesofty.axiapay.wallet.domain.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
@@ -30,6 +31,7 @@ class WalletRepositoryImplTest {
             .followSslRedirects(false)
             .callTimeout(3, TimeUnit.SECONDS)
             .build()
+    private val local = InMemoryDashboardRepository()
     private lateinit var repository: WalletRepositoryImpl
     private val id = "123e4567-e89b-42d3-a456-426614174001"
     private val body =
@@ -40,8 +42,10 @@ class WalletRepositoryImplTest {
     fun start() {
         server.start()
         repository =
-            WalletRepositoryImpl(
-                ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
+            local.walletRepository(
+                HttpWalletRemoteDataSource(
+                    ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
+                ),
             )
     }
 
@@ -110,6 +114,68 @@ class WalletRepositoryImplTest {
     }
 
     /**
+     * The display cache is owner-scoped; fresh reads and invalid sessions always surface server
+     * failure.
+     */
+    @Test
+    fun cachedBalanceIsUsedOnlyForDisplayUntilTheServerReportsItMissing() = runTest {
+        val account = RecordingAuthenticationRepository(java.time.Instant.EPOCH).session.account
+        local.saveAccount(repository.apiIdentity, account)
+        server.enqueue(response(200))
+        val loaded =
+            repository.refreshDisplayWallet(account.id, "token", "NGN") { true }
+                as WalletLookupResult.Loaded
+        assertNull(repository.cachedWallet("other-account", "NGN"))
+        assertNull(repository.cachedWallet(account.id, "USD"))
+        server.enqueue(response(503))
+        assertEquals(
+            loaded.copy(issue = WalletIssue.Unavailable),
+            repository.refreshDisplayWallet(account.id, "token", "NGN") { true },
+        )
+        server.enqueue(response(503))
+        try {
+            repository.currentWallet("token", "NGN")
+            fail("An authoritative wallet read cannot use the display cache")
+        } catch (failure: WalletFailure) {
+            assertEquals(WalletIssue.Unavailable, failure.issue)
+        }
+        server.enqueue(response(401))
+        assertEquals(
+            WalletLookupResult.Failed(WalletIssue.InvalidSession),
+            repository.refreshDisplayWallet(account.id, "token", "NGN") { true },
+        )
+        server.enqueue(response(404))
+        assertEquals(
+            WalletLookupResult.Failed(WalletIssue.Missing),
+            repository.refreshDisplayWallet(account.id, "token", "NGN") { true },
+        )
+        assertNull(repository.cachedWallet(account.id, "NGN"))
+    }
+
+    /**
+     * A late success or missing response from an old login cannot replace or evict the new login's
+     * balance.
+     */
+    @Test
+    fun aReplacedSessionCannotWriteOrEvictTheCachedBalance() = runTest {
+        val account = RecordingAuthenticationRepository(java.time.Instant.EPOCH).session.account
+        local.saveAccount(repository.apiIdentity, account)
+        val previous = RecordingWalletRemoteDataSource().wallet
+        local.saveWallet(repository.apiIdentity, account.id, previous)
+        for (status in listOf(200, 404)) {
+            server.enqueue(response(status))
+            var ownershipChecks = 0
+            assertEquals(
+                WalletLookupResult.Failed(WalletIssue.InvalidSession),
+                repository.refreshDisplayWallet(account.id, "old-token", "NGN") {
+                    ++ownershipChecks == 1
+                },
+            )
+            assertEquals(previous, repository.cachedWallet(account.id, "NGN"))
+        }
+    }
+
+    /**
      * Reject implicit numeric conversion, inconsistent amounts, wrong currencies and malformed
      * server identities.
      */
@@ -142,8 +208,10 @@ class WalletRepositoryImplTest {
     @Test
     fun unsafeConfigurationAndRedirectsFailClosed() = runTest {
         val invalid =
-            WalletRepositoryImpl(
-                ApiHttpClient("http://public.example/v1/", true, client, Dispatchers.IO),
+            local.walletRepository(
+                HttpWalletRemoteDataSource(
+                    ApiHttpClient("http://public.example/v1/", true, client, Dispatchers.IO),
+                ),
             )
         try {
             invalid.currentWallet("private-token", "NGN")
@@ -194,8 +262,15 @@ class WalletRepositoryImplTest {
                 )
                 .build()
         val observedRepository =
-            WalletRepositoryImpl(
-                ApiHttpClient(server.url("/v1/").toString(), true, observedClient, Dispatchers.IO),
+            local.walletRepository(
+                HttpWalletRemoteDataSource(
+                    ApiHttpClient(
+                        server.url("/v1/").toString(),
+                        true,
+                        observedClient,
+                        Dispatchers.IO,
+                    ),
+                ),
             )
         server.enqueue(
             MockResponse.Builder()

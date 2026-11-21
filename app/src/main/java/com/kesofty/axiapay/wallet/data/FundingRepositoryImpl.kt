@@ -1,164 +1,63 @@
 package com.kesofty.axiapay.wallet.data
 
-import com.kesofty.axiapay.data.http.*
+import com.kesofty.axiapay.data.http.ApiFailureKind
+import com.kesofty.axiapay.data.http.ApiRequestFailure
+import com.kesofty.axiapay.wallet.data.remote.FundingRemoteDataSource
+import com.kesofty.axiapay.wallet.data.remote.toFundingContext
+import com.kesofty.axiapay.wallet.data.remote.toFundingRequest
 import com.kesofty.axiapay.wallet.domain.*
-import java.math.BigInteger
-import java.net.URI
-import java.util.Collections
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 
 /**
- * Adapt the owner-scoped API into immutable funding models; all evidence and balances remain
- * server-owned.
+ * Returns server-owned funding records after correlating them to the requested wallet or request.
  */
-class FundingRepositoryImpl(private val http: ApiHttpClient) : FundingRepository {
-    override val apiIdentity
-        get() = http.apiIdentity
+class FundingRepositoryImpl(private val remote: FundingRemoteDataSource) : FundingRepository {
+    override val apiIdentity: String
+        get() = remote.apiIdentity
 
-    /**
-     * Decode a bounded page using strict values, never JSONObject's implicit number/string
-     * coercion.
-     */
+    /** Return options and request history for this wallet only. */
     override suspend fun context(token: String, walletId: String, offset: Int): FundingContext =
         guarded {
-            val json =
-                requireNotNull(
-                    http.request(
-                        "wallets/$walletId/funding-context",
-                        200,
-                        bearer = token,
-                        query = mapOf("offset" to offset.toString()),
-                    ),
-                )
-            val options = json.getJSONArray("options")
-            val requests = json.getJSONArray("requests")
-            require(options.length() <= 100 && requests.length() <= 25)
-            FundingContext(
-                walletId,
-                Collections.unmodifiableList(
-                    List(options.length()) { index ->
-                        val option = options.getJSONObject(index)
-                        FundingOption(
-                            text(option, "id"),
-                            text(option, "displayName"),
-                            text(option, "currency"),
-                            amount(option, "minimumAmountMinorUnits"),
-                            amount(option, "maximumAmountMinorUnits"),
-                            option.opt("flow") == "bank_transfer",
-                        )
-                    },
-                ),
-                Collections.unmodifiableList(
-                    List(requests.length()) { index ->
-                        decode(requests.getJSONObject(index)).also {
-                            require(it.walletId == walletId)
-                        }
-                    },
-                ),
-                json.opt("nextOffset").takeIf { it is Int } as? Int,
-            )
+            remote.context(token, walletId, offset).toFundingContext(walletId)
         }
 
-    /**
-     * Serialize already prepared money directly, retaining the same logical identity on every
-     * explicit retry.
-     */
+    /** Accept only a server response for the wallet, option and amount actually submitted. */
     override suspend fun create(
         token: String,
         walletId: String,
         input: FundingInput,
     ): FundingRequest = guarded {
-        val body =
-            JSONObject()
-                .put("fundingOptionId", input.optionId)
-                .put("amountMinorUnits", input.amountMinorUnits.toString())
-                .put("currency", "NGN")
-                .put("requestKey", input.requestKey)
-        input.payerEmail?.let { body.put("payerEmail", it) }
-        decode(requireNotNull(http.request("wallets/$walletId/funding-requests", 202, body, token)))
-            .also {
-                require(
-                    it.walletId == walletId &&
-                        it.optionId == input.optionId &&
-                        it.amountMinorUnits == input.amountMinorUnits,
-                )
-            }
+        val request = remote.create(token, walletId, input).toFundingRequest()
+        require(
+            request.walletId == walletId &&
+                request.optionId == input.optionId &&
+                request.amountMinorUnits == input.amountMinorUnits,
+        )
+        request
     }
 
-    /** Read without replaying any command during restoration. */
-    override suspend fun get(token: String, requestId: String) =
-        readRequest(token, requestId, "", null)
+    /** Read previously saved progress. */
+    override suspend fun get(token: String, requestId: String): FundingRequest =
+        matchingRequest(requestId) { remote.get(token, requestId) }
 
-    /** References help match deposits but cannot authorize credits. */
-    override suspend fun submitReference(token: String, requestId: String, reference: String) =
-        readRequest(token, requestId, "/reference", JSONObject().put("paymentReference", reference))
-
-    /** Reconcile only after an explicit customer status check. */
-    override suspend fun reconcile(token: String, requestId: String) =
-        readRequest(token, requestId, "/reconcile", JSONObject())
-
-    /** Enforce response correlation before publishing a server result. */
-    private suspend fun readRequest(
+    /** Send evidence for this request and return the server's status. */
+    override suspend fun submitReference(
         token: String,
-        id: String,
-        suffix: String,
-        payload: JSONObject?,
-    ): FundingRequest = guarded {
-        decode(requireNotNull(http.request("wallet-funding/$id$suffix", 200, payload, token)))
-            .also { require(it.id == id) }
-    }
+        requestId: String,
+        reference: String,
+    ): FundingRequest =
+        matchingRequest(requestId) { remote.submitReference(token, requestId, reference) }
 
-    /**
-     * Decode only documented statuses and HTTPS hosted checkout; unknown responses never imply
-     * success.
-     */
-    private fun decode(json: JSONObject): FundingRequest {
-        val id = text(json, "fundingId")
-        val walletId = text(json, "walletId")
-        require(
-            UUID.fromString(id).toString() == id &&
-                UUID.fromString(walletId).toString() == walletId,
-        )
-        val status =
-            when (text(json, "fundingStatus")) {
-                "pending" -> FundingStatus.Pending
-                "awaiting_transfer" -> FundingStatus.AwaitingTransfer
-                "awaiting_confirmation" -> FundingStatus.AwaitingConfirmation
-                "awaiting_credit" -> FundingStatus.AwaitingCredit
-                "rejected" -> FundingStatus.Rejected
-                "credited" -> FundingStatus.Credited
-                else -> error("Unknown funding status")
-            }
-        val url = optionalText(json, "checkoutUrl")
-        require(
-            url == null ||
-                (URI(url).scheme == "https" && URI(url).host != null && URI(url).userInfo == null),
-        )
-        val account =
-            json.optJSONObject("transferInstructions")?.let {
-                FundingBankAccount(
-                    text(it, "bankName"),
-                    text(it, "accountName"),
-                    text(it, "accountNumber"),
-                )
-            }
-        require(text(json, "currency") == "NGN")
-        require(status != FundingStatus.Credited || optionalText(json, "operationId") != null)
-        return FundingRequest(
-            id,
-            walletId,
-            text(json, "fundingOptionId"),
-            amount(json, "amountMinorUnits"),
-            "NGN",
-            status,
-            account,
-            url,
-            optionalText(json, "customerReference"),
-            optionalText(json, "reviewNote"),
-        )
-    }
+    /** Keep explicit reconciliation bound to the selected request. */
+    override suspend fun reconcile(token: String, requestId: String): FundingRequest =
+        matchingRequest(requestId) { remote.reconcile(token, requestId) }
+
+    /** Reject a response belonging to another funding request. */
+    private suspend fun matchingRequest(
+        requestId: String,
+        fetch: suspend () -> JSONObject,
+    ): FundingRequest = guarded { fetch().toFundingRequest().also { require(it.id == requestId) } }
 
     /** Preserve cancellation and map only bounded transport metadata. */
     private suspend fun <T> guarded(operation: suspend () -> T): T {
@@ -172,27 +71,15 @@ class FundingRepositoryImpl(private val http: ApiHttpClient) : FundingRepository
                     failure.kind == ApiFailureKind.Network -> FundingIssue.Network
                     failure.status == 401 -> FundingIssue.SignInRequired
                     failure.status == 409 -> FundingIssue.Conflict
-                    failure.status == 400 -> FundingIssue.InvalidInput
+                    // INVALID_FUNDING can also follow a persisted request and a failed provider
+                    // response.
+                    failure.status == 400 && failure.code == "INVALID_INPUT" ->
+                        FundingIssue.InvalidInput
                     else -> FundingIssue.Unavailable
                 }
             throw FundingFailure(issue)
         } catch (_: Exception) {
             throw FundingFailure(FundingIssue.InvalidResponse)
         }
-    }
-
-    /** Reject implicit JSON coercion at this external boundary. */
-    private fun text(json: JSONObject, name: String) =
-        json.get(name) as? String ?: error("Expected string")
-
-    /** Allow missing/null fields without accepting wrong primitive types. */
-    private fun optionalText(json: JSONObject, name: String): String? =
-        if (!json.has(name) || json.isNull(name)) null else text(json, name)
-
-    /** Parse exact canonical minor units without floating point arithmetic. */
-    private fun amount(json: JSONObject, name: String): BigInteger {
-        val value = text(json, name)
-        require(Regex("[1-9][0-9]{0,18}").matches(value))
-        return value.toBigInteger()
     }
 }

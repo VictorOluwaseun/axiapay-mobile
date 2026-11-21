@@ -4,7 +4,6 @@ import androidx.room.withTransaction
 import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.domain.auth.AccountIdentity
 import com.kesofty.axiapay.domain.dashboard.*
-import com.kesofty.axiapay.wallet.domain.WalletSummary
 import java.time.Clock
 
 /**
@@ -28,20 +27,6 @@ class DashboardRepositoryImpl(private val database: AxiaDatabase, private val cl
         database
             .dashboard()
             .saveAccount(AccountEntity.fromAccount(apiIdentity, account, clock.millis()))
-    }
-
-    /** Persist the entire exact wallet response under its known account. */
-    override suspend fun saveWallet(apiIdentity: String, accountId: String, wallet: WalletSummary) {
-        database
-            .dashboard()
-            .saveWallet(
-                WalletSummaryEntity.fromWallet(apiIdentity, accountId, wallet, clock.millis()),
-            )
-    }
-
-    /** An authoritative missing response invalidates only this currency's old snapshot. */
-    override suspend fun clearWallet(apiIdentity: String, accountId: String, currency: String) {
-        database.dashboard().clearWallet(apiIdentity, accountId, currency)
     }
 
     /** Cascade deletion is limited to the supplied API/account. */

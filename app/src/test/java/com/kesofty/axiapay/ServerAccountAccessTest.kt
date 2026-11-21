@@ -13,6 +13,7 @@ import org.junit.Test
  * Checks real auth coordination, exact credentials and recovery without network or Android storage.
  */
 class ServerAccountAccessTest {
+    private val dashboard = InMemoryDashboardRepository()
     private val now = Instant.parse("2026-10-16T12:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
 
@@ -30,8 +31,8 @@ class ServerAccountAccessTest {
                         api,
                         store,
                         clock,
-                        RecordingWalletRepository(),
-                        dashboard = InMemoryDashboardRepository(),
+                        dashboard.walletRepository(),
+                        dashboard,
                     )
                 val value =
                     if (kind == AuthContactType.Phone) "0801 234 5678" else " Ada+tag@Example.test "
@@ -69,8 +70,8 @@ class ServerAccountAccessTest {
                 api,
                 MemoryAuthenticationSessionStore(),
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         val result =
             access.begin(
@@ -98,8 +99,8 @@ class ServerAccountAccessTest {
                 api,
                 store,
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         assertTrue(
             access.begin(
@@ -145,8 +146,8 @@ class ServerAccountAccessTest {
                 api,
                 MemoryAuthenticationSessionStore(),
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         val signup =
             AccountAccessInput(
@@ -180,8 +181,8 @@ class ServerAccountAccessTest {
                 api,
                 MemoryAuthenticationSessionStore(),
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         val input =
             AccountAccessInput(
@@ -244,8 +245,8 @@ class ServerAccountAccessTest {
                 api,
                 store,
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         api.failure = AuthenticationFailure(AccountAccessIssue.Network)
         try {
@@ -260,7 +261,7 @@ class ServerAccountAccessTest {
             AccountAccessResult.SignedIn(
                 api.session.account,
                 com.kesofty.axiapay.wallet.domain.WalletLookupResult.Loaded(
-                    RecordingWalletRepository().wallet,
+                    RecordingWalletRemoteDataSource().wallet,
                 ),
             ),
             access.restore(),
@@ -292,8 +293,8 @@ class ServerAccountAccessTest {
                 api,
                 store,
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         try {
             access.begin(
@@ -347,8 +348,8 @@ class ServerAccountAccessTest {
                 api,
                 store,
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         api.beforeIdentity = { store.value = newer }
         api.failure = AuthenticationFailure(AccountAccessIssue.InvalidCredentials)
@@ -371,8 +372,8 @@ class ServerAccountAccessTest {
                 api,
                 store,
                 clock,
-                RecordingWalletRepository(),
-                dashboard = InMemoryDashboardRepository(),
+                dashboard.walletRepository(),
+                dashboard,
             )
         val job =
             launch(start = CoroutineStart.UNDISPATCHED) {
@@ -417,14 +418,20 @@ class ServerAccountAccessTest {
                     expiresAt = now.plusSeconds(900),
                     refreshCredentials = initial.refreshCredentials!!.copy(token = "s".repeat(43)),
                 )
-            val wallets = RecordingWalletRepository()
+            val wallets = RecordingWalletRemoteDataSource()
             if (duringIdentity) {
                 api.beforeIdentity = { store.value = rotated }
             } else {
                 wallets.beforeRead = { store.value = rotated }
             }
             val access =
-                ServerAccountAccess(api, store, clock, wallets, InMemoryDashboardRepository())
+                ServerAccountAccess(
+                    api,
+                    store,
+                    clock,
+                    dashboard.walletRepository(wallets),
+                    dashboard,
+                )
             val result = access.restore()
             assertTrue(result is AccountAccessResult.SignedIn)
             assertEquals(rotated, store.read())
@@ -466,8 +473,8 @@ class ServerAccountAccessTest {
                     api,
                     store,
                     clock,
-                    RecordingWalletRepository(),
-                    InMemoryDashboardRepository(),
+                    dashboard.walletRepository(),
+                    dashboard,
                 )
             assertEquals(AccountAccessResult.SignedOut, access.signOut())
             assertEquals(if (sameFamily) null else newer, store.read())

@@ -24,9 +24,10 @@ class LocalDashboardTest {
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val api = RecordingAuthenticationRepository(now)
     private val sessions = MemoryAuthenticationSessionStore()
-    private val wallets = RecordingWalletRepository()
+    private val wallets = RecordingWalletRemoteDataSource()
     private val snapshots = InMemoryDashboardRepository()
-    private val access = ServerAccountAccess(api, sessions, clock, wallets, snapshots)
+    private val access =
+        ServerAccountAccess(api, sessions, clock, snapshots.walletRepository(wallets), snapshots)
     private val owner = ViewModelStore()
 
     /** Let tests suspend only at explicitly gated network calls. */

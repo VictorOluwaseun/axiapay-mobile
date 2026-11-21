@@ -20,6 +20,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerAuthViewModelTest {
+    private val dashboard = InMemoryDashboardRepository()
     private val owner = ViewModelStore()
     private val now = Instant.parse("2026-10-16T12:00:00Z")
     private val clock = MutableAuthenticationClock(now)
@@ -57,8 +58,8 @@ class ServerAuthViewModelTest {
                     api,
                     store,
                     clock,
-                    RecordingWalletRepository(),
-                    dashboard = InMemoryDashboardRepository(),
+                    dashboard.walletRepository(),
+                    dashboard,
                 ),
                 clock,
                 enabledRemoteConfiguration(),

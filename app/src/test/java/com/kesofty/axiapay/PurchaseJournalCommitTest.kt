@@ -186,7 +186,15 @@ class PurchaseJournalCommitTest {
 
     /** Compose the production workflow with the real journal and isolated remote ports. */
     private fun workflow(f: PurchaseFixture, store: PurchaseRequestStore) =
-        WalletPurchases(f.authentication, f.sessions, f.wallets, f.api, store, f.clock) {
+        WalletPurchases(
+            f.authentication,
+            f.sessions,
+            f.walletRepository,
+            f.api,
+            store,
+            f.dashboard,
+            f.clock,
+        ) {
             UUID.randomUUID().toString()
         }
 

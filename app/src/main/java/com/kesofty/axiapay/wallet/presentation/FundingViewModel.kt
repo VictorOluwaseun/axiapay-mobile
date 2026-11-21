@@ -3,7 +3,7 @@ package com.kesofty.axiapay.wallet.presentation
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kesofty.axiapay.wallet.application.WalletFunding
+import com.kesofty.axiapay.wallet.application.FundingUseCases
 import com.kesofty.axiapay.wallet.domain.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Optional
@@ -96,9 +96,9 @@ data class FundingEffect(
 @HiltViewModel
 class FundingViewModel
 @Inject
-constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandle) : ViewModel() {
-    private val funding = feature.orElse(null)
-    private val mutable = MutableStateFlow(FundingUiState(enabled = funding != null))
+constructor(feature: Optional<FundingUseCases>, private val saved: SavedStateHandle) : ViewModel() {
+    private val useCases = feature.orElse(null)
+    private val mutable = MutableStateFlow(FundingUiState(enabled = useCases != null))
     val uiState = mutable.asStateFlow()
     private val channel = Channel<FundingEffect>(Channel.BUFFERED)
     val effects = channel.receiveAsFlow()
@@ -116,7 +116,7 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
             return
         }
         val state = mutable.value
-        if (funding == null || state.accountId == null || state.routeId == null || state.busy) {
+        if (useCases == null || state.accountId == null || state.routeId == null || state.busy) {
             return
         }
         when (intent) {
@@ -126,14 +126,19 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
             is FundingIntent.Option -> edit { copy(optionId = intent.id) }
             is FundingIntent.Reference ->
                 mutable.value = state.copy(reference = intent.value.take(200), issue = null)
-            is FundingIntent.Select -> perform { observed(funding.get(state.accountId, intent.id)) }
+            is FundingIntent.Select ->
+                perform { observed(useCases.getFundingRequest(state.accountId, intent.id)) }
             is FundingIntent.Page -> load(intent.offset)
             FundingIntent.Create -> create()
             FundingIntent.SubmitReference ->
                 state.request?.let { request ->
                     perform {
                         observed(
-                            funding.submitReference(state.accountId, request.id, state.reference),
+                            useCases.submitFundingReference(
+                                state.accountId,
+                                request.id,
+                                state.reference,
+                            ),
                         )
                     }
                 }
@@ -142,7 +147,9 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
                 if (request == null) {
                     load(state.offset)
                 } else {
-                    perform { observed(funding.refresh(state.accountId, request.id)) }
+                    perform {
+                        observed(useCases.reconcileFundingRequest(state.accountId, request.id))
+                    }
                 }
             }
             FundingIntent.NewRequest -> {
@@ -187,11 +194,11 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
                 state.copy(accountId = intent.accountId, routeId = intent.routeId, busy = false)
             else
                 FundingUiState(
-                    enabled = funding != null,
+                    enabled = useCases != null,
                     accountId = intent.accountId,
                     routeId = intent.routeId,
                 )
-        if (funding != null && intent.accountId != null && intent.routeId != null) {
+        if (useCases != null && intent.accountId != null && intent.routeId != null) {
             load(0)
         }
     }
@@ -201,9 +208,10 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
      * open another app.
      */
     private fun load(offset: Int) {
+        val funding = useCases ?: return
         val account = mutable.value.accountId ?: return
         perform {
-            val context = requireNotNull(funding).load(account, offset)
+            val context = funding.loadFundingContext(account, offset)
             currentCoroutineContext().ensureActive()
             mutable.value =
                 mutable.value.copy(
@@ -212,7 +220,7 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
                     optionId = mutable.value.optionId ?: context.options.firstOrNull()?.id,
                 )
             val selected = saved.get<String>("funding.request") ?: return@perform
-            observed(requireNotNull(funding).get(account, selected))
+            observed(funding.getFundingRequest(account, selected))
         }
     }
 
@@ -221,6 +229,7 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
      * same input.
      */
     private fun create() {
+        val funding = useCases ?: return
         val state = mutable.value
         val context = state.context ?: return
         val option = context.options.find { it.id == state.optionId } ?: return
@@ -231,11 +240,20 @@ constructor(feature: Optional<WalletFunding>, private val saved: SavedStateHandl
                     ?: UUID.randomUUID().toString().also { saved["funding.key"] = it }
             val input =
                 prepared
-                    ?: requireNotNull(funding)
-                        .prepare(option, state.amount, state.email, key)
-                        .also { prepared = it }
+                    ?: funding.prepareFundingRequest(option, state.amount, state.email, key).also {
+                        prepared = it
+                    }
             mutable.value = mutable.value.copy(submissionUncertain = true)
-            observed(requireNotNull(funding).create(account, context.walletId, input))
+            try {
+                observed(funding.createFundingRequest(account, context.walletId, input))
+            } catch (failure: FundingFailure) {
+                currentCoroutineContext().ensureActive()
+                if (failure.issue == FundingIssue.InvalidInput) {
+                    prepared = null
+                    mutable.value = mutable.value.copy(submissionUncertain = false)
+                }
+                throw failure
+            }
         }
     }
 

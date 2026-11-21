@@ -21,11 +21,13 @@ internal class PurchaseFixture {
                 authentication.apiIdentity,
             ),
         )
-    val wallets = RecordingWalletRepository()
+    val wallets = RecordingWalletRemoteDataSource()
     val store = MemoryPurchaseRequests()
     val api = RecordingPurchaseRepository(now, wallets.wallet.id)
+    val dashboard = InMemoryDashboardRepository()
+    val walletRepository = dashboard.walletRepository(wallets)
     val workflow =
-        WalletPurchases(authentication, sessions, wallets, api, store, clock) {
+        WalletPurchases(authentication, sessions, walletRepository, api, store, dashboard, clock) {
             "123e4567-e89b-42d3-a456-426614174005"
         }
     val input = PurchaseQuoteInput(api.product.id, "+2348012345678", BigInteger.valueOf(10000))

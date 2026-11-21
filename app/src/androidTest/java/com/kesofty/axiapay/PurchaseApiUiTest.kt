@@ -13,12 +13,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.room.Room
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.application.*
 import com.kesofty.axiapay.application.purchases.*
 import com.kesofty.axiapay.data.DemoSessionSeed
 import com.kesofty.axiapay.data.auth.HttpAuthenticationRepository
+import com.kesofty.axiapay.data.dashboard.DashboardRepositoryImpl
+import com.kesofty.axiapay.data.database.AxiaDatabase
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.*
 import com.kesofty.axiapay.domain.*
@@ -30,6 +33,8 @@ import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
 import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.data.local.RoomWalletLocalDataSource
+import com.kesofty.axiapay.wallet.data.remote.HttpWalletRemoteDataSource
 import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.io.File
 import java.time.*
@@ -88,6 +93,7 @@ class PurchaseApiUiTest {
                 AndroidPurchaseJournalCommitOperations.syncDirectory(directory)
             }
         }
+    private lateinit var database: AxiaDatabase
     private lateinit var file: File
     private lateinit var http: ApiHttpClient
     private lateinit var sessions: TestSessions
@@ -100,6 +106,12 @@ class PurchaseApiUiTest {
             "Loopback fixture requires the dev network policy",
             BuildConfig.FLAVOR == "dev",
         )
+        database =
+            Room.inMemoryDatabaseBuilder(
+                    InstrumentationRegistry.getInstrumentation().targetContext,
+                    AxiaDatabase::class.java,
+                )
+                .build()
         file =
             File(
                 InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir,
@@ -194,6 +206,7 @@ class PurchaseApiUiTest {
     @After
     fun close() {
         compose.runOnIdle { owners.clear() }
+        if (::database.isInitialized) database.close()
         client.dispatcher.cancelAll()
         server.close()
         client.connectionPool.evictAll()
@@ -211,9 +224,13 @@ class PurchaseApiUiTest {
             WalletPurchases(
                 HttpAuthenticationRepository(http, clock),
                 sessions,
-                WalletRepositoryImpl(http),
+                WalletRepositoryImpl(
+                    HttpWalletRemoteDataSource(http),
+                    RoomWalletLocalDataSource(database, clock),
+                ),
                 HttpPurchaseRepository(http),
                 AtomicPurchaseRequestStore(file, Dispatchers.IO, journalCommits),
+                DashboardRepositoryImpl(database, clock),
                 clock,
             ) {
                 requestKey

@@ -2,6 +2,7 @@ package com.kesofty.axiapay
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.wallet.data.FundingRepositoryImpl
+import com.kesofty.axiapay.wallet.data.remote.FundingRemoteDataSource
 import com.kesofty.axiapay.wallet.domain.*
 import java.math.BigInteger
 import java.util.concurrent.TimeUnit
@@ -33,7 +34,9 @@ class FundingRepositoryImplTest {
         server.start()
         funding =
             FundingRepositoryImpl(
-                ApiHttpClient(server.url("/api/v1/").toString(), true, client, Dispatchers.IO),
+                FundingRemoteDataSource(
+                    ApiHttpClient(server.url("/api/v1/").toString(), true, client, Dispatchers.IO),
+                ),
             )
     }
 
@@ -97,6 +100,25 @@ class FundingRepositoryImplTest {
             JSONObject(submit.body!!.utf8()).keys().asSequence().toSet(),
         )
         assertEquals(FundingStatus.AwaitingConfirmation, pending.status)
+    }
+
+    /** Only a documented pre-submission validation rejection permits corrected terms. */
+    @Test
+    fun distinguishesRejectedInputFromUncertainInitialization() = runTest {
+        val input = FundingInput("hosted-checkout", BigInteger("10000"), "bad-email", "original")
+        for ((code, issue) in
+            listOf(
+                "INVALID_INPUT" to FundingIssue.InvalidInput,
+                "INVALID_FUNDING" to FundingIssue.Unavailable,
+            )) {
+            enqueue(JSONObject().put("code", code).toString(), 400)
+            try {
+                funding.create("fixture-token", wallet, input)
+                fail("Expected the server rejection")
+            } catch (failure: FundingFailure) {
+                assertEquals(issue, failure.issue)
+            }
+        }
     }
 
     /**

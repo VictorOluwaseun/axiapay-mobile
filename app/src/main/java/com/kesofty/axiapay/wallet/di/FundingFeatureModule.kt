@@ -1,6 +1,6 @@
 package com.kesofty.axiapay.wallet.di
 
-import com.kesofty.axiapay.wallet.application.WalletFunding
+import com.kesofty.axiapay.wallet.application.FundingUseCases
 import dagger.BindsOptionalOf
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -13,5 +13,5 @@ import dagger.hilt.android.components.ViewModelComponent
 @InstallIn(ViewModelComponent::class)
 internal interface FundingFeatureModule {
     /** Expose an optional workflow without constructing HTTP infrastructure in demo. */
-    @BindsOptionalOf fun optionalWalletFunding(): WalletFunding
+    @BindsOptionalOf fun optionalFundingUseCases(): FundingUseCases
 }

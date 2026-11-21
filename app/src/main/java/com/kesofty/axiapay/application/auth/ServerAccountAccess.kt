@@ -5,7 +5,6 @@ import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.wallet.domain.*
 import java.time.Clock
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -175,48 +174,21 @@ class ServerAccountAccess(
             return AccountAccessResult.SignedOut
         }
         dashboard.saveAccount(stored.apiIdentity, account)
-        val wallet = loadWallet(stored)
+        val wallet =
+            if (wallets.apiIdentity == stored.apiIdentity) {
+                wallets.refreshDisplayWallet(account.id, stored.accessToken, "NGN") {
+                    stored.belongsToSameSession(sessions.read())
+                }
+            } else {
+                WalletLookupResult.Failed(WalletIssue.Configuration)
+            }
         currentCoroutineContext().ensureActive()
-        if (!stored.belongsToSameSession(sessions.read())) {
-            return AccountAccessResult.SignedOut
-        }
-        if (wallet == WalletLookupResult.Failed(WalletIssue.InvalidSession)) {
+        if (!stored.belongsToSameSession(sessions.read())) return AccountAccessResult.SignedOut
+        if (wallet.issue == WalletIssue.InvalidSession) {
             clearSession(stored)
             return AccountAccessResult.SignedOut
         }
-        if (wallet == WalletLookupResult.Failed(WalletIssue.Missing)) {
-            dashboard.clearWallet(stored.apiIdentity, account.id, "NGN")
-        }
-        if (wallet is WalletLookupResult.Loaded) {
-            dashboard.saveWallet(stored.apiIdentity, account.id, wallet.wallet)
-        }
-        if (!stored.belongsToSameSession(sessions.read())) {
-            return AccountAccessResult.SignedOut
-        }
-        val saved =
-            dashboard.read(stored.apiIdentity, account.id)
-                ?: throw AuthenticationFailure(AccountAccessIssue.SecureStorage)
-        val displayedWallet = saved.wallet?.let { WalletLookupResult.Loaded(it) } ?: wallet
-        return AccountAccessResult.SignedIn(saved.account, displayedWallet)
-    }
-
-    /**
-     * Bind the GET to the captured API/session; unavailable or missing display data never becomes a
-     * fake balance.
-     */
-    private suspend fun loadWallet(stored: StoredAuthenticationSession): WalletLookupResult {
-        try {
-            if (wallets.apiIdentity != stored.apiIdentity) {
-                return WalletLookupResult.Failed(WalletIssue.Configuration)
-            }
-            return WalletLookupResult.Loaded(wallets.currentWallet(stored.accessToken, "NGN"))
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: WalletFailure) {
-            return WalletLookupResult.Failed(failure.issue)
-        } catch (failure: Exception) {
-            return WalletLookupResult.Failed(WalletIssue.Unavailable)
-        }
+        return AccountAccessResult.SignedIn(account, wallet)
     }
 
     /**

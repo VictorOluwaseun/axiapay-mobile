@@ -215,7 +215,15 @@ class PurchaseRecoveryRegressionTest {
 
     /** Compose an actual application operation with isolated ports for the failure under test. */
     private fun workflow(f: PurchaseFixture, api: PurchaseRepository, store: PurchaseRequestStore) =
-        WalletPurchases(f.authentication, f.sessions, f.wallets, api, store, f.clock) {
+        WalletPurchases(
+            f.authentication,
+            f.sessions,
+            f.walletRepository,
+            api,
+            store,
+            f.dashboard,
+            f.clock,
+        ) {
             "123e4567-e89b-42d3-a456-426614174005"
         }
 

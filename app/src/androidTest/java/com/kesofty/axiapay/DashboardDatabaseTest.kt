@@ -7,6 +7,7 @@ import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.config.*
+import com.kesofty.axiapay.wallet.data.local.RoomWalletLocalDataSource
 import com.kesofty.axiapay.wallet.domain.*
 import java.io.File
 import java.math.BigInteger
@@ -69,7 +70,7 @@ class DashboardDatabaseTest {
     @Test
     fun recordsSurviveDatabaseReopeningWithoutMonetaryRounding() = runBlocking {
         repository().saveAccount(api, account)
-        repository().saveWallet(api, account.id, wallet)
+        RoomWalletLocalDataSource(database, clock).saveWallet(api, account.id, wallet)
         val configuration =
             RemoteConfiguration(
                 "v1",
@@ -101,7 +102,7 @@ class DashboardDatabaseTest {
     @Test
     fun refreshingIdentityKeepsItsWalletSnapshot() = runBlocking {
         repository().saveAccount(api, account)
-        repository().saveWallet(api, account.id, wallet)
+        RoomWalletLocalDataSource(database, clock).saveWallet(api, account.id, wallet)
         val updated =
             account.copy(contact = AccountContact(AuthContactType.Email, "updated@example.test"))
         repository().saveAccount(api, updated)
@@ -116,10 +117,11 @@ class DashboardDatabaseTest {
         val otherAccount = account.copy(id = "account-2")
         for (scope in listOf(api, otherApi)) {
             repository().saveAccount(scope, account)
-            repository().saveWallet(scope, account.id, wallet)
+            RoomWalletLocalDataSource(database, clock).saveWallet(scope, account.id, wallet)
         }
         repository().saveAccount(api, otherAccount)
-        repository().saveWallet(api, otherAccount.id, wallet.copy(id = "wallet-2"))
+        RoomWalletLocalDataSource(database, clock)
+            .saveWallet(api, otherAccount.id, wallet.copy(id = "wallet-2"))
         val configuration =
             RemoteConfiguration(
                 "v1",

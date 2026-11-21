@@ -21,6 +21,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthenticationConfigTest {
+    private val dashboard = InMemoryDashboardRepository()
     private val owner = ViewModelStore()
     private val clock = Clock.fixed(Instant.parse("2026-10-17T12:00:00Z"), ZoneOffset.UTC)
     private val api = RecordingAuthenticationRepository(clock.instant())
@@ -73,8 +74,8 @@ class AuthenticationConfigTest {
                     api,
                     MemoryAuthenticationSessionStore(),
                     clock,
-                    RecordingWalletRepository(),
-                    dashboard = InMemoryDashboardRepository(),
+                    dashboard.walletRepository(),
+                    dashboard,
                 ),
                 clock,
                 refresh,

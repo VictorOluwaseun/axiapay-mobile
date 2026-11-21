@@ -2,8 +2,9 @@ package com.kesofty.axiapay.wallet.di
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.wallet.application.WalletFunding
+import com.kesofty.axiapay.wallet.application.*
 import com.kesofty.axiapay.wallet.data.FundingRepositoryImpl
+import com.kesofty.axiapay.wallet.data.remote.FundingRemoteDataSource
 import com.kesofty.axiapay.wallet.domain.FundingRepository
 import com.kesofty.axiapay.wallet.domain.WalletRepository
 import dagger.Module
@@ -20,18 +21,29 @@ internal object FlavorFundingModule {
     /** Borrow the lifecycle-managed HTTP client; requests and recovery live on the server. */
     @Provides
     @ViewModelScoped
-    fun repository(http: ApiHttpClient): FundingRepository = FundingRepositoryImpl(http)
+    fun repository(http: ApiHttpClient): FundingRepository =
+        FundingRepositoryImpl(FundingRemoteDataSource(http))
 
     /**
      * Construct the plain application workflow; no Hilt annotations enter application/domain code.
      */
     @Provides
     @ViewModelScoped
-    fun workflow(
+    fun provideFundingUseCases(
         authentication: AuthenticationRepository,
         sessions: AuthenticationSessionStore,
         wallets: WalletRepository,
         funding: FundingRepository,
         clock: Clock,
-    ): WalletFunding = WalletFunding(authentication, sessions, wallets, funding, clock)
+    ): FundingUseCases {
+        val access = FundingSessionAccess(authentication, sessions, clock)
+        return FundingUseCases(
+            loadFundingContext = LoadFundingContext(access, wallets, funding),
+            prepareFundingRequest = PrepareFundingRequest(),
+            createFundingRequest = CreateFundingRequest(access, funding),
+            getFundingRequest = GetFundingRequest(access, funding),
+            submitFundingReference = SubmitFundingReference(access, funding),
+            reconcileFundingRequest = ReconcileFundingRequest(access, funding),
+        )
+    }
 }

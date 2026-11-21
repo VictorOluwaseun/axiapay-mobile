@@ -13,15 +13,21 @@ import androidx.compose.ui.unit.Density
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.room.Room
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.data.auth.HttpAuthenticationRepository
+import com.kesofty.axiapay.data.database.AxiaDatabase
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
-import com.kesofty.axiapay.wallet.application.WalletFunding
+import com.kesofty.axiapay.wallet.application.*
 import com.kesofty.axiapay.wallet.data.FundingRepositoryImpl
 import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.data.local.RoomWalletLocalDataSource
+import com.kesofty.axiapay.wallet.data.remote.FundingRemoteDataSource
+import com.kesofty.axiapay.wallet.data.remote.HttpWalletRemoteDataSource
+import com.kesofty.axiapay.wallet.domain.FundingIssue
 import com.kesofty.axiapay.wallet.presentation.*
 import com.kesofty.axiapay.wallet.ui.FundingSheet
 import java.io.File
@@ -59,7 +65,8 @@ class FundingApiUiTest {
     @Volatile private var status = "awaiting_transfer"
     @Volatile private var reference: String? = null
     @Volatile private var created = false
-    private lateinit var workflow: WalletFunding
+    @Volatile private var selectedOption = "vtpass-bank-transfer"
+    private lateinit var database: AxiaDatabase
     private lateinit var vm: FundingViewModel
     private val saved = SavedStateHandle()
     private var fontScale by mutableFloatStateOf(1f)
@@ -92,11 +99,21 @@ class FundingApiUiTest {
                     if (path.startsWith("/api/v1/wallets/$walletId/funding-context")) {
                         return response(
                             200,
-                            """{"options":[{"id":"vtpass-bank-transfer","displayName":"Bank transfer","currency":"NGN","flow":"bank_transfer","minimumAmountMinorUnits":"100","maximumAmountMinorUnits":"100000000"}],"requests":[${if (created) fundingJson() else ""}],"nextOffset":null}""",
+                            """{"options":[{"id":"vtpass-bank-transfer","displayName":"Bank transfer","currency":"NGN","flow":"bank_transfer","minimumAmountMinorUnits":"100","maximumAmountMinorUnits":"100000000"},{"id":"hosted-checkout","displayName":"Hosted checkout","currency":"NGN","flow":"hosted_checkout","minimumAmountMinorUnits":"100","maximumAmountMinorUnits":"100000000"}],"requests":[${if (created) fundingJson() else ""}],"nextOffset":null}""",
                         )
                     }
                     if (path == "/api/v1/wallets/$walletId/funding-requests") {
                         posts.incrementAndGet()
+                        val input = JSONObject(request.body!!.utf8())
+                        val option = input.getString("fundingOptionId")
+                        if (
+                            option == "hosted-checkout" &&
+                                input.optString("payerEmail") != "corrected@example.test"
+                        ) {
+                            return response(400, """{"code":"INVALID_INPUT","statusCode":400}""")
+                        }
+                        selectedOption = option
+                        if (option == "hosted-checkout") status = "pending"
                         created = true
                         return response(202, fundingJson())
                     }
@@ -127,15 +144,31 @@ class FundingApiUiTest {
                     accountId,
                 ),
             )
-        workflow =
-            WalletFunding(
-                authentication,
-                sessions,
-                WalletRepositoryImpl(http),
-                FundingRepositoryImpl(http),
-                Clock.fixed(now, ZoneOffset.UTC),
+        val clock = Clock.fixed(now, ZoneOffset.UTC)
+        database =
+            Room.inMemoryDatabaseBuilder(
+                    InstrumentationRegistry.getInstrumentation().targetContext,
+                    AxiaDatabase::class.java,
+                )
+                .build()
+        val walletRepository =
+            WalletRepositoryImpl(
+                HttpWalletRemoteDataSource(http),
+                RoomWalletLocalDataSource(database, clock),
             )
-        vm = FundingViewModel(Optional.of(workflow), saved)
+        val fundingRepository = FundingRepositoryImpl(FundingRemoteDataSource(http))
+        val access = FundingSessionAccess(authentication, sessions, clock)
+        val useCases =
+            FundingUseCases(
+                loadFundingContext =
+                    LoadFundingContext(access, walletRepository, fundingRepository),
+                prepareFundingRequest = PrepareFundingRequest(),
+                createFundingRequest = CreateFundingRequest(access, fundingRepository),
+                getFundingRequest = GetFundingRequest(access, fundingRepository),
+                submitFundingReference = SubmitFundingReference(access, fundingRepository),
+                reconcileFundingRequest = ReconcileFundingRequest(access, fundingRepository),
+            )
+        vm = FundingViewModel(Optional.of(useCases), saved)
         owners.put("funding", vm)
     }
 
@@ -143,6 +176,7 @@ class FundingApiUiTest {
     @After
     fun close() {
         owners.clear()
+        if (::database.isInitialized) database.close()
         client.dispatcher.cancelAll()
         server.close()
         client.connectionPool.evictAll()
@@ -156,11 +190,15 @@ class FundingApiUiTest {
         JSONObject()
             .put("fundingId", fundingId)
             .put("walletId", walletId)
-            .put("fundingOptionId", "vtpass-bank-transfer")
+            .put("fundingOptionId", selectedOption)
             .put("amountMinorUnits", "2500000")
             .put("currency", "NGN")
             .put("fundingStatus", status)
-            .put("checkoutUrl", JSONObject.NULL)
+            .put(
+                "checkoutUrl",
+                if (selectedOption == "hosted-checkout") "https://checkout.example.test/fixture"
+                else JSONObject.NULL,
+            )
             .put(
                 "operationId",
                 if (status == "credited") "123e4567-e89b-42d3-a456-426614174005"
@@ -168,10 +206,12 @@ class FundingApiUiTest {
             )
             .put(
                 "transferInstructions",
-                JSONObject()
-                    .put("bankName", "Fixture Bank")
-                    .put("accountName", "AxiaPay test collection")
-                    .put("accountNumber", "0000000001"),
+                if (selectedOption == "hosted-checkout") JSONObject.NULL
+                else
+                    JSONObject()
+                        .put("bankName", "Fixture Bank")
+                        .put("accountName", "AxiaPay test collection")
+                        .put("accountNumber", "0000000001"),
             )
             .put("customerReference", reference ?: JSONObject.NULL)
             .put("reviewNote", JSONObject.NULL)
@@ -266,6 +306,31 @@ class FundingApiUiTest {
         }
         compose.onNodeWithText("Money added to your wallet").assertExists()
         assertEquals(1, posts.get())
+    }
+
+    /**
+     * A rejected checkout email becomes editable and the next explicit submit uses the corrected
+     * value.
+     */
+    @Test
+    fun customerCanCorrectAnEmailRejectedByTheApi() {
+        render()
+        compose.onNodeWithText("Hosted checkout").performScrollTo().performClick()
+        compose.onNodeWithText("Amount (NGN)").performTextInput("25000")
+        val email = compose.onNodeWithText("Receipt email")
+        email.performScrollTo().performTextInput("invalid-email")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Get funding instructions").performScrollTo().performClick()
+        compose.waitUntil(10000) {
+            vm.uiState.value.issue == FundingIssue.InvalidInput && !vm.uiState.value.busy
+        }
+        email.performScrollTo().assertIsEnabled().performTextReplacement("corrected@example.test")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Get funding instructions").performScrollTo().performClick()
+        compose.waitUntil(10000) { vm.uiState.value.request != null && !vm.uiState.value.busy }
+        assertEquals(2, posts.get())
+        assertEquals("hosted-checkout", vm.uiState.value.request?.optionId)
+        compose.onNodeWithText("Open secure checkout").performScrollTo().assertIsEnabled()
     }
 
     /**

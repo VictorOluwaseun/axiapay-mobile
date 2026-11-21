@@ -1,6 +1,7 @@
 package com.kesofty.axiapay.application.purchases
 
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.wallet.domain.*
 import java.time.Clock
@@ -20,11 +21,16 @@ class WalletPurchases(
     private val wallets: WalletRepository,
     private val purchases: PurchaseRepository,
     private val requestStore: PurchaseRequestStore,
+    private val dashboard: DashboardRepository,
     private val clock: Clock,
     private val newRequestId: () -> String,
 ) {
     /** Keep the captured credential inside the application workflow, never in UI or saved state. */
-    private data class Access(val owner: PurchaseOwner, val session: StoredAuthenticationSession) {
+    private data class Access(
+        val owner: PurchaseOwner,
+        val session: StoredAuthenticationSession,
+        val account: AccountIdentity,
+    ) {
         /** Prevent accidental diagnostic interpolation of a bearer. */
         override fun toString() = "PurchaseAccess(redacted)"
     }
@@ -41,26 +47,41 @@ class WalletPurchases(
                 Collections.unmodifiableList(
                     requestStore.read(access.owner).filter { it.service == service },
                 )
-            try {
-                val wallet = wallets.currentWallet(access.session.accessToken, "NGN")
-                val products =
-                    purchases.products(access.session.accessToken, wallet.currency, service)
-                PurchaseContext(
-                    access.owner,
-                    wallet,
-                    Collections.unmodifiableList(products.toList()),
-                    requests,
-                )
-            } catch (failure: WalletFailure) {
-                if (requests.isEmpty() || failure.issue == WalletIssue.InvalidSession) {
-                    throw failure
+            dashboard.saveAccount(access.owner.apiIdentity, access.account)
+            val wallet =
+                wallets.refreshDisplayWallet(accountId, access.session.accessToken, "NGN") {
+                    isCurrentSession(access.session)
                 }
-                PurchaseContext(
+            if (
+                wallet is WalletLookupResult.Failed &&
+                    (requests.isEmpty() || wallet.issue == WalletIssue.InvalidSession)
+            ) {
+                assertCurrentSession(access.session)
+                throw WalletFailure(wallet.issue)
+            }
+            val balance = (wallet as? WalletLookupResult.Loaded)?.wallet
+            val issue =
+                when (wallet.issue) {
+                    null -> null
+                    WalletIssue.Missing -> PurchaseIssue.WalletMissing
+                    else -> PurchaseIssue.WalletUnavailable
+                }
+            if (issue != null) {
+                return@withAccess PurchaseContext(
                     access.owner,
-                    null,
+                    balance,
                     emptyList(),
                     requests,
-                    PurchaseIssue.WalletUnavailable,
+                    issue,
+                )
+            }
+            try {
+                val products = purchases.products(access.session.accessToken, "NGN", service)
+                PurchaseContext(
+                    access.owner,
+                    balance,
+                    Collections.unmodifiableList(products.toList()),
+                    requests,
                 )
             } catch (failure: PurchaseFailure) {
                 if (
@@ -70,7 +91,7 @@ class WalletPurchases(
                 ) {
                     throw failure
                 }
-                PurchaseContext(access.owner, null, emptyList(), requests, failure.issue)
+                PurchaseContext(access.owner, balance, emptyList(), requests, failure.issue)
             }
         }
 
@@ -153,7 +174,7 @@ class WalletPurchases(
                 throw PurchaseFailure(PurchaseIssue.QuoteExpired)
             }
             requestStore.save(review.request)
-            assertCurrentSession(access)
+            assertCurrentSession(access.session)
             transmit(access, review.request, review.quote)
         }
 
@@ -179,7 +200,7 @@ class WalletPurchases(
     suspend fun retrySubmission(accountId: String, request: PurchaseRequest): PurchaseProgress =
         withAccess(accountId) { access ->
             requireSaved(access, request)
-            assertCurrentSession(access)
+            assertCurrentSession(access.session)
             transmit(access, request, null)
         }
 
@@ -202,7 +223,7 @@ class WalletPurchases(
             if (!payment.canReconcile) {
                 return@withAccess current
             }
-            assertCurrentSession(access)
+            assertCurrentSession(access.session)
             observed(request, purchases.reconcile(access.session.accessToken, payment.id))
         }
 
@@ -329,10 +350,10 @@ class WalletPurchases(
             if (account.id != accountId) {
                 throw PurchaseFailure(PurchaseIssue.SessionChanged)
             }
-            val access = Access(PurchaseOwner(accountId, identity), session)
-            assertCurrentSession(access)
+            val access = Access(PurchaseOwner(accountId, identity), session, account)
+            assertCurrentSession(access.session)
             val result = operation(access)
-            assertCurrentSession(access)
+            assertCurrentSession(access.session)
             return result
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -374,15 +395,15 @@ class WalletPurchases(
     }
 
     /** A late response from a replaced/expired credential cannot enter another account's UI. */
-    private suspend fun assertCurrentSession(access: Access) {
+    private suspend fun assertCurrentSession(session: StoredAuthenticationSession) {
+        if (!isCurrentSession(session)) throw PurchaseFailure(PurchaseIssue.SessionChanged)
+    }
+
+    /** Recheck the captured family immediately before updating a display snapshot. */
+    private suspend fun isCurrentSession(session: StoredAuthenticationSession): Boolean {
         currentCoroutineContext().ensureActive()
         val current = sessions.read()
         currentCoroutineContext().ensureActive()
-        if (
-            !access.session.belongsToSameSession(current) ||
-                current?.isUsableAt(clock.instant()) != true
-        ) {
-            throw PurchaseFailure(PurchaseIssue.SessionChanged)
-        }
+        return session.belongsToSameSession(current) && current?.isUsableAt(clock.instant()) == true
     }
 }

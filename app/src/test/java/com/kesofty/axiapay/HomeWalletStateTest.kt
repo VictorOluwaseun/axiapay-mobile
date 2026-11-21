@@ -11,7 +11,7 @@ import org.junit.Test
 
 /** Enforces source isolation before any dashboard View receives a render state. */
 class HomeWalletStateTest {
-    private val wallet = RecordingWalletRepository().wallet
+    private val wallet = RecordingWalletRemoteDataSource().wallet
     private val account =
         AccountIdentity(
             "account",

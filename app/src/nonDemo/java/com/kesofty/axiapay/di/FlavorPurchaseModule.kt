@@ -6,6 +6,7 @@ import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
 import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
 import com.kesofty.axiapay.domain.auth.*
+import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.wallet.domain.WalletRepository
 import dagger.Module
@@ -39,6 +40,7 @@ internal object FlavorPurchaseModule {
         wallets: WalletRepository,
         purchases: PurchaseRepository,
         requestStore: PurchaseRequestStore,
+        dashboard: DashboardRepository,
         clock: Clock,
         newRequestId: () -> String,
     ): WalletPurchases =
@@ -48,6 +50,7 @@ internal object FlavorPurchaseModule {
             wallets,
             purchases,
             requestStore,
+            dashboard,
             clock,
             newRequestId,
         )

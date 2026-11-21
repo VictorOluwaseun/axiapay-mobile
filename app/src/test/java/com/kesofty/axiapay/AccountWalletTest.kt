@@ -26,9 +26,16 @@ class AccountWalletTest {
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val api = RecordingAuthenticationRepository(now)
     private val sessions = MemoryAuthenticationSessionStore()
-    private val wallets = RecordingWalletRepository()
+    private val wallets = RecordingWalletRemoteDataSource()
     private val snapshots = InMemoryDashboardRepository()
-    private val access = ServerAccountAccess(api, sessions, clock, wallets, dashboard = snapshots)
+    private val access =
+        ServerAccountAccess(
+            api,
+            sessions,
+            clock,
+            snapshots.walletRepository(wallets),
+            dashboard = snapshots,
+        )
     private val owner = ViewModelStore()
     private val login =
         AccountAccessInput(

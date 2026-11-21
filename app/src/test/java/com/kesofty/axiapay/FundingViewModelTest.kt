@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.domain.auth.StoredAuthenticationSession
 import com.kesofty.axiapay.presentation.auth.*
-import com.kesofty.axiapay.wallet.application.WalletFunding
+import com.kesofty.axiapay.wallet.application.*
 import com.kesofty.axiapay.wallet.domain.*
 import com.kesofty.axiapay.wallet.presentation.*
 import java.math.BigInteger
@@ -41,7 +41,7 @@ class FundingViewModelTest {
         saved: SavedStateHandle = SavedStateHandle(),
         name: String = "funding",
     ): FundingViewModel =
-        FundingViewModel(Optional.of(fixture.workflow), saved).also {
+        FundingViewModel(Optional.of(fixture.useCases), saved).also {
             owners.put(name, it)
             it.accept(FundingIntent.Bind(fixture.accountId, name))
         }
@@ -75,15 +75,43 @@ class FundingViewModelTest {
     fun uncertainCreationFreezesInputUntilExplicitRetry() = runTest {
         val fixture = FundingFixture()
         val vm = vm(fixture)
-        fixture.api.failCreate = true
+        fixture.api.createIssue = FundingIssue.Network
+        vm.accept(FundingIntent.Option("hosted"))
+        vm.accept(FundingIntent.Email("original@example.test"))
         vm.accept(FundingIntent.Amount("100.25"))
         vm.accept(FundingIntent.Create)
         assertTrue(vm.uiState.value.submissionUncertain)
         vm.accept(FundingIntent.Amount("200"))
-        fixture.api.failCreate = false
+        vm.accept(FundingIntent.Email("changed@example.test"))
+        assertEquals("original@example.test", vm.uiState.value.email)
+        fixture.api.createIssue = null
         vm.accept(FundingIntent.Create)
         assertEquals(fixture.api.inputs[0], fixture.api.inputs[1])
         assertEquals(BigInteger("10025"), fixture.api.inputs[0].amountMinorUnits)
+    }
+
+    /**
+     * A definitive server validation rejection reopens the same draft and preserves its logical
+     * key.
+     */
+    @Test
+    fun rejectedEmailCanBeCorrectedAndResubmitted() = runTest {
+        val fixture = FundingFixture()
+        val model = vm(fixture)
+        model.accept(FundingIntent.Option("hosted"))
+        model.accept(FundingIntent.Amount("100"))
+        model.accept(FundingIntent.Email("incorrect"))
+        fixture.api.createIssue = FundingIssue.InvalidInput
+        model.accept(FundingIntent.Create)
+        assertEquals(FundingIssue.InvalidInput, model.uiState.value.issue)
+        assertFalse(model.uiState.value.submissionUncertain)
+        assertEquals("incorrect", model.uiState.value.email)
+        model.accept(FundingIntent.Email("corrected@example.test"))
+        fixture.api.createIssue = null
+        model.accept(FundingIntent.Create)
+        val (rejected, corrected) = fixture.api.inputs
+        assertEquals(rejected.copy(payerEmail = "corrected@example.test"), corrected)
+        assertNotNull(model.uiState.value.request)
     }
 
     /**
@@ -205,7 +233,7 @@ class FundingViewModelTest {
         val fixture = FundingFixture()
         for (amount in listOf("0", "-1", "1.001", "1e3", "1000000000")) {
             try {
-                fixture.workflow.prepare(fixture.api.option, amount, "", "key")
+                fixture.useCases.prepareFundingRequest(fixture.api.option, amount, "", "key")
                 fail("Invalid amount accepted")
             } catch (failure: FundingFailure) {
                 assertEquals(FundingIssue.InvalidInput, failure.issue)
@@ -231,12 +259,23 @@ private class FundingFixture {
                 authentication.apiIdentity,
             ),
         )
-    val wallets = RecordingWalletRepository()
+    val wallets = RecordingWalletRemoteDataSource()
     val clock = MutableAuthenticationClock(now)
+    private val dashboard = InMemoryDashboardRepository()
+    private val walletRepository = dashboard.walletRepository(wallets)
     val accountAccess =
-        ServerAccountAccess(authentication, sessions, clock, wallets, InMemoryDashboardRepository())
+        ServerAccountAccess(authentication, sessions, clock, walletRepository, dashboard)
     val api = RecordingFundingRepository(wallets.wallet.id, wallets.apiIdentity)
-    val workflow = WalletFunding(authentication, sessions, wallets, api, clock)
+    private val access = FundingSessionAccess(authentication, sessions, clock)
+    val useCases =
+        FundingUseCases(
+            loadFundingContext = LoadFundingContext(access, walletRepository, api),
+            prepareFundingRequest = PrepareFundingRequest(),
+            createFundingRequest = CreateFundingRequest(access, api),
+            getFundingRequest = GetFundingRequest(access, api),
+            submitFundingReference = SubmitFundingReference(access, api),
+            reconcileFundingRequest = ReconcileFundingRequest(access, api),
+        )
 }
 
 /**
@@ -270,14 +309,14 @@ private class RecordingFundingRepository(
         )
     val inputs = mutableListOf<FundingInput>()
     var gate: CompletableDeferred<Unit>? = null
-    var failCreate = false
+    var createIssue: FundingIssue? = null
     var reconciles = 0
 
     /** Return saved requests without a write. */
     override suspend fun context(token: String, walletId: String, offset: Int) =
         FundingContext(
             walletId,
-            listOf(option),
+            listOf(option, option.copy(id = "hosted", bankTransfer = false)),
             if (inputs.isEmpty()) emptyList() else listOf(request),
             null,
         )
@@ -290,9 +329,7 @@ private class RecordingFundingRepository(
     ): FundingRequest {
         inputs += input
         gate?.let { withContext(NonCancellable) { it.await() } }
-        if (failCreate) {
-            throw FundingFailure(FundingIssue.Network)
-        }
+        createIssue?.let { throw FundingFailure(it) }
         return request.copy(amountMinorUnits = input.amountMinorUnits)
     }
 

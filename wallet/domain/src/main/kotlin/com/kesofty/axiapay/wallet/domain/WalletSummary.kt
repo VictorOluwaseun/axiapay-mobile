@@ -41,9 +41,13 @@ class WalletFailure(val issue: WalletIssue) : Exception("Wallet lookup failed: $
  * A failed display fetch does not undo successful authentication or repeat credential redemption.
  */
 sealed interface WalletLookupResult {
-    /** Carries the authenticated session's server wallet for display. */
-    data class Loaded(val wallet: WalletSummary) : WalletLookupResult
+    /** The latest refresh failure, retained when a saved balance is still available. */
+    val issue: WalletIssue?
+
+    /** Carries the fresh balance or the last committed balance after a failed refresh. */
+    data class Loaded(val wallet: WalletSummary, override val issue: WalletIssue? = null) :
+        WalletLookupResult
 
     /** Retains an explicit, retryable display failure without fabricating a wallet. */
-    data class Failed(val issue: WalletIssue) : WalletLookupResult
+    data class Failed(override val issue: WalletIssue) : WalletLookupResult
 }

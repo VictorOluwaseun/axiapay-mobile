@@ -1,5 +1,6 @@
 package com.kesofty.axiapay
 
+import com.kesofty.axiapay.wallet.data.remote.WalletRemoteDataSource
 import com.kesofty.axiapay.wallet.domain.*
 import java.math.BigInteger
 import kotlinx.coroutines.CompletableDeferred
@@ -10,7 +11,7 @@ import kotlinx.coroutines.withContext
  * Isolated wallet port records bearer/currency selection and supports controlled failure or late
  * completion.
  */
-internal class RecordingWalletRepository : WalletRepository {
+internal class RecordingWalletRemoteDataSource : WalletRemoteDataSource {
     override var apiIdentity = "https://api.example.test/v1/"
     var wallet =
         WalletSummary(
