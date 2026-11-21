@@ -2,7 +2,7 @@ package com.kesofty.axiapay
 
 import com.kesofty.axiapay.domain.auth.AccountIdentity
 import com.kesofty.axiapay.domain.dashboard.*
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 
 /** Deterministic owned snapshots for use-case tests; Room persistence is exercised on device. */
 internal class InMemoryDashboardRepository : DashboardRepository {

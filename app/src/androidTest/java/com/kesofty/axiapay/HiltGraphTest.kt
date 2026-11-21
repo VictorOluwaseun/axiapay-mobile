@@ -3,6 +3,7 @@ package com.kesofty.axiapay
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.espresso.Espresso
 import com.kesofty.axiapay.domain.ConnectionMode
 import com.kesofty.axiapay.domain.purchases.PurchaseService
@@ -12,6 +13,7 @@ import com.kesofty.axiapay.presentation.auth.AuthViewModel
 import com.kesofty.axiapay.presentation.purchases.PurchaseIntent
 import com.kesofty.axiapay.presentation.purchases.PurchaseScreen
 import com.kesofty.axiapay.presentation.purchases.PurchaseViewModel
+import com.kesofty.axiapay.wallet.presentation.FundingViewModel
 import org.junit.Assert.*
 import org.junit.Assume
 import org.junit.Rule
@@ -20,6 +22,30 @@ import org.junit.Test
 /** Exercises the installed flavor's real Hilt graph without replacing its bindings in the test. */
 class HiltGraphTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /** The Activity can restore its funding owner under the original store key in both flavors. */
+    @Test
+    fun fundingUsesTheOriginalActivityKeyAndFlavorBinding() {
+        val originalKey =
+            "androidx.lifecycle.ViewModelProvider.DefaultKey:com.kesofty.axiapay.presentation.funding.FundingViewModel"
+        // An empty factory can retrieve an existing owner and fails if the route used another key.
+        val existingOwnersOnly = viewModelFactory {}
+        lateinit var funding: FundingViewModel
+        compose.runOnIdle {
+            funding =
+                ViewModelProvider(compose.activity, existingOwnersOnly)[
+                    originalKey, FundingViewModel::class.java]
+            assertEquals(BuildConfig.FLAVOR == "dev", funding.uiState.value.enabled)
+        }
+        compose.activityRule.scenario.recreate()
+        compose.runOnIdle {
+            assertSame(
+                funding,
+                ViewModelProvider(compose.activity, existingOwnersOnly)[
+                    originalKey, FundingViewModel::class.java],
+            )
+        }
+    }
 
     /** Production flavor composition enables live wallet purchases only outside the demo flavor. */
     @Test

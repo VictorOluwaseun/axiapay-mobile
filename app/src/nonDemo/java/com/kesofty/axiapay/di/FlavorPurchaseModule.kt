@@ -7,7 +7,7 @@ import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
 import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.purchases.*
-import com.kesofty.axiapay.domain.wallet.WalletRepository
+import com.kesofty.axiapay.wallet.domain.WalletRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

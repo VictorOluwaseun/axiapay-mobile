@@ -10,11 +10,12 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.data.DemoSessionSeed
-import com.kesofty.axiapay.domain.wallet.*
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.money
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.domain.*
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.io.File
 import java.math.BigInteger
 import java.time.LocalDate

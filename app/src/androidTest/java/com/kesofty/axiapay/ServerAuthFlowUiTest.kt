@@ -7,10 +7,10 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.data.auth.*
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.wallet.WalletLookupResult
 import com.kesofty.axiapay.presentation.auth.AuthScreen
 import com.kesofty.axiapay.presentation.auth.AuthViewModel
-import com.kesofty.axiapay.ui.walletMoney
+import com.kesofty.axiapay.wallet.domain.WalletLookupResult
+import com.kesofty.axiapay.wallet.ui.walletMoney
 import java.time.Clock
 import java.util.Locale
 import java.util.UUID

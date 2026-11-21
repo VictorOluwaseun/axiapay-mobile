@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <package android:name="team.opay.pay" />
+    </queries>
+
     <application
         android:name=".AxiaPayApplication"
         android:networkSecurityConfig="@xml/network_security_config"

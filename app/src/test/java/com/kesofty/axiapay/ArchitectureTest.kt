@@ -4,103 +4,88 @@ import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Cheap dependency-direction guard while this small app remains a single Gradle module. */
+/** Checks dependency direction in the app and the shared wallet contracts. */
 class ArchitectureTest {
-    private val root = File("src/main/java/com/kesofty/axiapay")
+    private val forbiddenLayers =
+        mapOf(
+            "domain" to setOf("application", "data", "presentation", "ui", "di"),
+            "application" to setOf("data", "presentation", "ui", "di"),
+            "data" to setOf("application", "presentation", "ui", "di"),
+            "presentation" to setOf("data", "ui", "di"),
+            "ui" to setOf("application", "data", "di"),
+        )
+    private val platformImports =
+        listOf("android.", "androidx.", "org.json.", "dagger.", "javax.inject.", "jakarta.inject.")
 
-    /** Keeps business layers independent of platform, DI frameworks and concrete outer adapters. */
-    @Test
-    fun `inner layers never import Android presentation or concrete data adapters`() {
-        assertTrue(root.isDirectory)
-        val forbidden =
-            mapOf(
-                "domain" to
-                    listOf(
-                        "android.",
-                        "androidx.",
-                        "org.json.",
-                        "dagger.",
-                        "javax.inject.",
-                        "jakarta.inject.",
-                        "com.kesofty.axiapay.application.",
-                        "com.kesofty.axiapay.data.",
-                        "com.kesofty.axiapay.presentation.",
-                        "com.kesofty.axiapay.ui.",
-                        "com.kesofty.axiapay.di.",
-                    ),
-                "application" to
-                    listOf(
-                        "android.",
-                        "androidx.",
-                        "org.json.",
-                        "dagger.",
-                        "javax.inject.",
-                        "jakarta.inject.",
-                        "com.kesofty.axiapay.data.",
-                        "com.kesofty.axiapay.presentation.",
-                        "com.kesofty.axiapay.ui.",
-                        "com.kesofty.axiapay.di.",
-                    ),
-                "data" to
-                    listOf(
-                        "com.kesofty.axiapay.presentation.",
-                        "com.kesofty.axiapay.ui.",
-                        "com.kesofty.axiapay.application.",
-                        "com.kesofty.axiapay.di.",
-                    ),
-                "presentation" to
-                    listOf(
-                        "com.kesofty.axiapay.data.",
-                        "com.kesofty.axiapay.ui.",
-                        "com.kesofty.axiapay.di.",
-                    ),
-                "ui" to
-                    listOf(
-                        "com.kesofty.axiapay.data.",
-                        "com.kesofty.axiapay.application.",
-                        "com.kesofty.axiapay.di.",
-                    ),
+    /** Include each production source root and fail if a module or source set moves. */
+    private fun productionSources(): List<File> =
+        listOf(
+                "src/main/java",
+                "src/demo/java",
+                "src/nonDemo/java",
+                "../wallet/domain/src/main/kotlin",
             )
-        forbidden.forEach { (layer, prefixes) ->
-            File(root, layer)
-                .walkTopDown()
-                .filter { it.extension == "kt" }
-                .forEach { file ->
-                    val imports =
-                        file
-                            .readLines()
-                            .filter { it.startsWith("import ") }
-                            .map { it.removePrefix("import ") }
-                    prefixes.forEach { prefix ->
-                        assertFalse(
-                            "${file.name} imports forbidden $prefix",
-                            imports.any { it.startsWith(prefix) },
-                        )
+            .flatMap { directory ->
+                File(directory)
+                    .walkTopDown()
+                    .filter { it.extension == "kt" }
+                    .toList()
+                    .also {
+                        assertTrue("No Kotlin sources in $directory", it.isNotEmpty())
                     }
-                }
+            }
+
+    /** Resolve both layer-first and feature-first packages, including wildcard imports. */
+    private fun layer(qualifiedName: String): String? {
+        val prefix = "com.kesofty.axiapay."
+        if (!qualifiedName.startsWith(prefix)) return null
+        return qualifiedName.removePrefix(prefix).split('.').firstOrNull {
+            it in forbiddenLayers || it == "di"
         }
     }
 
+    /** Check every production source against the dependency rules of its declared package. */
     @Test
-    fun `views do not own mutable application state or access repositories`() {
-        File(root, "ui")
-            .walkTopDown()
-            .filter { it.extension == "kt" }
-            .forEach { file ->
-                val source = file.readText()
-                listOf(
-                        "mutableStateOf(",
-                        "mutableStateListOf(",
-                        "rememberSaveable",
-                        "SessionRepository",
-                        "SubmitDemoPayment",
-                    )
-                    .forEach { forbidden ->
-                        assertFalse(
-                            "${file.name} bypasses intent flow with $forbidden",
-                            source.contains(forbidden),
-                        )
-                    }
+    fun layersDependInwardAcrossPackagesAndModules() {
+        productionSources().forEach { file ->
+            val lines = file.readLines()
+            val sourceLayer =
+                layer(lines.first { it.startsWith("package ") }.removePrefix("package "))
+            val forbidden = forbiddenLayers[sourceLayer] ?: return@forEach
+            val inner = sourceLayer == "domain" || sourceLayer == "application"
+            for (statement in lines.filter { it.startsWith("import ") }) {
+                val imported = statement.removePrefix("import ").substringBefore(" as ")
+                assertFalse("$file imports forbidden $imported", layer(imported) in forbidden)
+                assertFalse(
+                    "$file imports framework $imported",
+                    inner && platformImports.any(imported::startsWith),
+                )
             }
+        }
+    }
+
+    /** Compose views render state and emit intents in the app and in each feature. */
+    @Test
+    fun viewsDoNotOwnMutableApplicationStateOrAccessRepositories() {
+        val forbidden =
+            listOf(
+                "mutableStateOf(",
+                "mutableStateListOf(",
+                "rememberSaveable",
+                "SessionRepository",
+                "WalletRepository",
+                "FundingRepository",
+                "SubmitDemoPayment",
+            )
+        productionSources().forEach { file ->
+            val source = file.readText()
+            val declaredPackage =
+                source.lineSequence().first { it.startsWith("package ") }.removePrefix("package ")
+            if (layer(declaredPackage) == "ui") {
+                forbidden.forEach {
+                    assertFalse("$file bypasses intent flow with $it", source.contains(it))
+                }
+            }
+        }
     }
 }

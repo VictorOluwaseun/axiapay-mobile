@@ -2,9 +2,9 @@ package com.kesofty.axiapay
 
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.wallet.*
-import com.kesofty.axiapay.presentation.HomeWalletState
 import com.kesofty.axiapay.presentation.auth.AuthUiState
+import com.kesofty.axiapay.wallet.domain.*
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Test

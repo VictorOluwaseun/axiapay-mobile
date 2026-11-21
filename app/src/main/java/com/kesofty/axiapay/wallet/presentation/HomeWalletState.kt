@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.presentation
+package com.kesofty.axiapay.wallet.presentation
 
-import com.kesofty.axiapay.domain.wallet.WalletIssue
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletIssue
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 
 /** Account-owned Home projection; only Demo permits the dashboard to read the simulated ledger. */
 sealed interface HomeWalletState {

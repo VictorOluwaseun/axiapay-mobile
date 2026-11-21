@@ -84,6 +84,7 @@ dependencies {
     // Reuse one BOM declaration to align the app and instrumentation-test Compose dependencies.
     val composeBom = platform(libs.androidx.compose.bom)
 
+    implementation(project(":wallet:domain"))
     implementation(libs.androidx.room.runtime)
     ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
@@ -127,12 +128,23 @@ if (providers.gradleProperty("composeReports").map(String::toBoolean).getOrElse(
     }
 }
 
+// ArchitectureTest checks source-level imports even when a change produces identical bytecode.
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        fileTree("src") {
+            include("main/java/**/*.kt", "demo/java/**/*.kt", "nonDemo/java/**/*.kt")
+        },
+    )
+    inputs.dir(rootProject.layout.projectDirectory.dir("wallet/domain/src/main/kotlin"))
+}
+
 listOf("Dev", "Demo").forEach { flavor ->
     tasks.register("verify$flavor") {
         group = "verification"
         description = "Verifies $flavor formatting, unit tests, lint and all installable outputs."
         dependsOn(
             ":checkKotlinFormat",
+            ":wallet:domain:check",
             "test${flavor}DebugUnitTest",
             "lint${flavor}Debug",
             "assemble${flavor}Debug",

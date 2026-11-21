@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -23,20 +24,25 @@ import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.auth.AuthScreen
 import com.kesofty.axiapay.ui.navigation.StateNavigationHost
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.presentation.*
+import com.kesofty.axiapay.wallet.ui.*
 import kotlinx.coroutines.flow.first
 
 /**
- * Compose composition boundary. Resolve all three Hilt owners before entering a NavHost so their
- * Activity lifetimes, SavedStateHandles, checkpoints, and cross-flow result delivery stay intact.
- * Screens receive immutable state and callbacks; navigation never submits a financial operation.
+ * Compose composition boundary. Resolve Activity-scoped Hilt owners before entering a NavHost so
+ * their Activity lifetimes, SavedStateHandles, checkpoints, and cross-flow result delivery stay
+ * intact. Screens receive immutable state and callbacks; navigation never submits a financial
+ * operation.
  */
 @Composable
 fun AxiaAppRoute(
     viewModel: AxiaViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel(),
     purchaseViewModel: PurchaseViewModel = hiltViewModel(),
+    fundingViewModel: FundingViewModel = hiltViewModel(key = FUNDING_VIEW_MODEL_KEY),
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val context = LocalContext.current
     DisposableEffect(lifecycle, authViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
@@ -49,6 +55,36 @@ fun AxiaAppRoute(
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val purchaseState by purchaseViewModel.uiState.collectAsStateWithLifecycle()
+    val fundingState by fundingViewModel.uiState.collectAsStateWithLifecycle()
+    val fundingRouteId =
+        (state.navigation.sheet as? Sheet.Payment)?.form?.takeIf { it.isFunding }?.requestId
+    val fundingAccountId = authState.account?.id.takeIf { authState.screen == AuthScreen.Dashboard }
+    LaunchedEffect(fundingAccountId, fundingRouteId, authState.screen) {
+        if (authState.screen in setOf(AuthScreen.Restoring, AuthScreen.SessionRecovery)) {
+            return@LaunchedEffect
+        }
+        fundingViewModel.accept(FundingIntent.Bind(fundingAccountId, fundingRouteId))
+    }
+    LaunchedEffect(lifecycle, fundingViewModel) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            fundingViewModel.effects.collect { effect ->
+                val current = fundingViewModel.uiState.value
+                val route =
+                    (viewModel.uiState.value.navigation.sheet as? Sheet.Payment)?.form?.requestId
+                if (
+                    authViewModel.uiState.value.account?.id != effect.accountId ||
+                        current.routeId != effect.routeId ||
+                        route != effect.routeId
+                ) {
+                    return@collect
+                }
+                when (effect.kind) {
+                    FundingEffect.Kind.RefreshWallet -> authViewModel.accept(AuthIntent.RetryWallet)
+                    else -> launchFundingHandoff(context, effect)
+                }
+            }
+        }
+    }
     LaunchedEffect(authState.paymentFeatures) {
         viewModel.accept(AxiaIntent.UpdateFeatures(authState.paymentFeatures))
         purchaseViewModel.accept(PurchaseIntent.UpdateFeatures(authState.paymentFeatures))
@@ -126,6 +162,20 @@ fun AxiaAppRoute(
                                     it.enabled
                                 },
                         onPurchaseIntent = purchaseViewModel::accept,
+                        fundingContent =
+                            if (authState.isDemo) null
+                            else {
+                                {
+                                    FundingSheet(
+                                        fundingState.takeIf {
+                                            it.accountId == fundingAccountId &&
+                                                it.routeId == fundingRouteId
+                                        } ?: FundingUiState(enabled = true, busy = true),
+                                        state.session.offline,
+                                        fundingViewModel::accept,
+                                    )
+                                }
+                            },
                         authShortcutLabel =
                             if (authState.isDemo) null
                             else

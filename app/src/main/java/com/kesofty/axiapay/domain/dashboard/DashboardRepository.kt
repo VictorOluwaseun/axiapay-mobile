@@ -1,7 +1,7 @@
 package com.kesofty.axiapay.domain.dashboard
 
 import com.kesofty.axiapay.domain.auth.AccountIdentity
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 
 /**
  * Last committed display records; their presence never establishes current server authorization.

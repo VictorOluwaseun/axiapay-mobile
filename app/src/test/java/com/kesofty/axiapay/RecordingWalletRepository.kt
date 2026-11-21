@@ -1,6 +1,6 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.domain.*
 import java.math.BigInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable

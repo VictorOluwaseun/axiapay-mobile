@@ -16,11 +16,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kesofty.axiapay.data.DemoSessionSeed
-import com.kesofty.axiapay.domain.wallet.WalletStatus
-import com.kesofty.axiapay.domain.wallet.WalletSummary
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.domain.WalletStatus
+import com.kesofty.axiapay.wallet.domain.WalletSummary
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.io.File
 import java.math.BigInteger
 import java.time.LocalDate

@@ -1,9 +1,9 @@
-package com.kesofty.axiapay.ui
+package com.kesofty.axiapay.wallet.ui
 
 import androidx.annotation.StringRes
 import com.kesofty.axiapay.R
-import com.kesofty.axiapay.domain.wallet.WalletIssue
-import com.kesofty.axiapay.domain.wallet.WalletStatus
+import com.kesofty.axiapay.wallet.domain.WalletIssue
+import com.kesofty.axiapay.wallet.domain.WalletStatus
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.text.NumberFormat

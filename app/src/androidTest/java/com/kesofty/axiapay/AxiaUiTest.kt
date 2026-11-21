@@ -24,6 +24,13 @@ class AxiaUiTest {
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
     }
 
+    /** Wait for the committed demo receipt before interacting with its dialog. */
+    private fun awaitReceipt(text: String): SemanticsNodeInteraction {
+        val receiptText = hasTextExactly(text) and hasAnyAncestor(isDialog())
+        compose.waitUntil(5_000) { compose.onAllNodes(receiptText).fetchSemanticsNodes().size == 1 }
+        return compose.onNode(receiptText)
+    }
+
     /** Demo data keeps its sample plans, local receipt and simulated wallet debit. */
     @Test
     fun dataPurchaseKeepsTheDemoWalletAndSamplePlans() {
@@ -81,7 +88,7 @@ class AxiaUiTest {
         compose.onNodeWithText("Amount (₦)").performTextInput("5000")
         compose.onNodeWithText("Review top-up").performScrollTo().performClick()
         compose.onNodeWithText("Add demo money").performScrollTo().performClick()
-        compose.onNodeWithText("All taken care of.").assertIsDisplayed()
+        awaitReceipt("All taken care of.").assertIsDisplayed()
         compose.onNodeWithText("Done").performScrollTo().performClick()
         compose.onNodeWithText("₦133,450.00").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
@@ -161,7 +168,7 @@ class AxiaUiTest {
         compose.onNodeWithText("Amount (₦)").performTextInput("130000")
         compose.onNodeWithText("Review payment").performScrollTo().performClick()
         compose.onNodeWithText("Save until funded").performScrollTo().performClick()
-        compose.onNode(hasText("Waiting for funds") and hasAnyAncestor(isDialog())).assertExists()
+        awaitReceipt("Waiting for funds").assertExists()
         compose
             .onNode(hasText("Add money") and hasAnyAncestor(isDialog()))
             .performScrollTo()
@@ -169,12 +176,13 @@ class AxiaUiTest {
         compose.onNodeWithText("Amount (₦)").performTextInput("5000")
         compose.onNodeWithText("Review top-up").performScrollTo().performClick()
         compose.onNodeWithText("Add demo money").performScrollTo().performClick()
+        awaitReceipt("All taken care of.").assertIsDisplayed()
         compose.onNodeWithText("Done").performScrollTo().performClick()
         compose.onNodeWithText("₦133,450.00").assertIsDisplayed()
         compose.onNodeWithText("Activity").performClick()
         compose.onNodeWithText("MTN airtime").performScrollTo().performClick()
         compose.onNodeWithText("Complete demo payment").performScrollTo().performClick()
-        compose.onNodeWithText("All taken care of.").assertExists()
+        awaitReceipt("All taken care of.").assertExists()
         compose.onNodeWithText("Done").performScrollTo().performClick()
         compose.onNodeWithText("Home").performClick()
         compose.onNodeWithText("₦3,450.00").assertIsDisplayed()

@@ -32,6 +32,7 @@ import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.presentation.auth.*
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
+import com.kesofty.axiapay.wallet.ui.AccountWalletCard
 
 /**
  * Renders caller-owned account state; token storage, server operations and navigation stay outside
@@ -742,7 +743,12 @@ private fun ServerAccountContent(state: AuthUiState, onIntent: (AuthIntent) -> U
         }
     }
     Spacer(Modifier.height(24.dp))
-    AccountWalletCard(state) { onIntent(AuthIntent.RetryWallet) }
+    AccountWalletCard(
+        wallet = state.wallet,
+        isRefreshing = state.isWalletRefreshing,
+        retryEnabled = !state.isProcessing,
+        onRetry = { onIntent(AuthIntent.RetryWallet) },
+    )
     Spacer(Modifier.height(24.dp))
     AuthNotice(R.string.auth_payment_preview_notice, Glyph.Help)
     AuthErrorMessage(state)

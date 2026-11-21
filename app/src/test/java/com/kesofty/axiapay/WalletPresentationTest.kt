@@ -1,6 +1,6 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.ui.walletMoney
+import com.kesofty.axiapay.wallet.ui.walletMoney
 import java.math.BigInteger
 import java.util.Locale
 import org.junit.Assert.assertEquals

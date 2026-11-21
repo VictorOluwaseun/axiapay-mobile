@@ -3,7 +3,7 @@ package com.kesofty.axiapay.application.auth
 import com.kesofty.axiapay.domain.AuthMethod
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.dashboard.DashboardRepository
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.domain.*
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext

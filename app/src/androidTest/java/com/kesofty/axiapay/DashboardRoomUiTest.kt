@@ -14,15 +14,15 @@ import com.kesofty.axiapay.data.auth.HttpAuthenticationRepository
 import com.kesofty.axiapay.data.dashboard.DashboardRepositoryImpl
 import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.config.*
-import com.kesofty.axiapay.domain.wallet.*
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.presentation.auth.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.domain.*
 import java.io.File
 import java.math.BigInteger
 import java.time.*
@@ -118,7 +118,7 @@ class DashboardRoomUiTest {
                 }
             }
         val wallets =
-            object : WalletRepository by HttpWalletRepository(http) {
+            object : WalletRepository by WalletRepositoryImpl(http) {
                 /** Only a later confirmed response can replace the saved balance. */
                 override suspend fun currentWallet(accessToken: String, currency: String) =
                     wallet.copy(

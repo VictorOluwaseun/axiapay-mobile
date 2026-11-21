@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.ui.components
+package com.kesofty.axiapay.wallet.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,6 +15,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kesofty.axiapay.R
+import com.kesofty.axiapay.ui.components.AxiaIcon
+import com.kesofty.axiapay.ui.components.Glyph
 import com.kesofty.axiapay.ui.theme.*
 
 /** Shares the established dashboard design while callers own wallet data and explicit actions. */

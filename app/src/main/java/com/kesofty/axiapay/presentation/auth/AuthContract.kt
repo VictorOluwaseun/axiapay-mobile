@@ -7,8 +7,8 @@ import com.kesofty.axiapay.domain.auth.AccountIdentity
 import com.kesofty.axiapay.domain.auth.AuthenticationChallenge
 import com.kesofty.axiapay.domain.config.AuthenticationMethods
 import com.kesofty.axiapay.domain.config.RemoteConfiguration
-import com.kesofty.axiapay.domain.wallet.WalletLookupResult
-import com.kesofty.axiapay.presentation.HomeWalletState
+import com.kesofty.axiapay.wallet.domain.WalletLookupResult
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 
 /** Account routes; Dashboard selects its wallet source from the injected account workflow. */
 enum class AuthScreen {

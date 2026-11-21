@@ -1,8 +1,8 @@
 package com.kesofty.axiapay
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.wallet.HttpWalletRepository
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.domain.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
@@ -21,7 +21,7 @@ import org.junit.Test
  * Exercises the actual wallet HTTP adapter with isolated responses, never live credentials or
  * money.
  */
-class HttpWalletRepositoryTest {
+class WalletRepositoryImplTest {
     private val server = MockWebServer()
     private val client =
         OkHttpClient.Builder()
@@ -30,7 +30,7 @@ class HttpWalletRepositoryTest {
             .followSslRedirects(false)
             .callTimeout(3, TimeUnit.SECONDS)
             .build()
-    private lateinit var repository: HttpWalletRepository
+    private lateinit var repository: WalletRepositoryImpl
     private val id = "123e4567-e89b-42d3-a456-426614174001"
     private val body =
         """{"id":"$id","currency":"NGN","walletStatus":"active","availableMinorUnits":"9007199254740993","reservedMinorUnits":"100","totalMinorUnits":"9007199254741093"}"""
@@ -40,7 +40,7 @@ class HttpWalletRepositoryTest {
     fun start() {
         server.start()
         repository =
-            HttpWalletRepository(
+            WalletRepositoryImpl(
                 ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
             )
     }
@@ -142,7 +142,7 @@ class HttpWalletRepositoryTest {
     @Test
     fun unsafeConfigurationAndRedirectsFailClosed() = runTest {
         val invalid =
-            HttpWalletRepository(
+            WalletRepositoryImpl(
                 ApiHttpClient("http://public.example/v1/", true, client, Dispatchers.IO),
             )
         try {
@@ -194,7 +194,7 @@ class HttpWalletRepositoryTest {
                 )
                 .build()
         val observedRepository =
-            HttpWalletRepository(
+            WalletRepositoryImpl(
                 ApiHttpClient(server.url("/v1/").toString(), true, observedClient, Dispatchers.IO),
             )
         server.enqueue(

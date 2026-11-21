@@ -4,7 +4,7 @@ import androidx.room.withTransaction
 import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.domain.auth.AccountIdentity
 import com.kesofty.axiapay.domain.dashboard.*
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 import java.time.Clock
 
 /**

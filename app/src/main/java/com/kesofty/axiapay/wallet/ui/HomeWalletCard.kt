@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.ui.components
+package com.kesofty.axiapay.wallet.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -12,12 +12,10 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kesofty.axiapay.R
-import com.kesofty.axiapay.domain.wallet.WalletStatus
-import com.kesofty.axiapay.presentation.HomeWalletState
+import com.kesofty.axiapay.ui.components.MoneyAmount
 import com.kesofty.axiapay.ui.theme.*
-import com.kesofty.axiapay.ui.walletIssueMessage
-import com.kesofty.axiapay.ui.walletMoney
-import com.kesofty.axiapay.ui.walletStatusLabel
+import com.kesofty.axiapay.wallet.domain.WalletStatus
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.util.Locale
 
 /** Uses the shared demo design with account-owned funds and caller-owned navigation/recovery. */

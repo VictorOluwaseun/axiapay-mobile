@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.domain.wallet
+package com.kesofty.axiapay.wallet.domain
 
 import java.math.BigInteger
 

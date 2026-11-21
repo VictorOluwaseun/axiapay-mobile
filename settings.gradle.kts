@@ -26,4 +26,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "axiapay-mobile"
 
-include(":app")
+include(":app", ":wallet:domain")

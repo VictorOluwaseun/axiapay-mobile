@@ -21,7 +21,6 @@ import com.kesofty.axiapay.data.DemoSessionSeed
 import com.kesofty.axiapay.data.auth.HttpAuthenticationRepository
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.*
-import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.purchases.*
@@ -30,6 +29,8 @@ import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.AxiaApp
 import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.data.WalletRepositoryImpl
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.io.File
 import java.time.*
 import java.util.*
@@ -210,7 +211,7 @@ class PurchaseApiUiTest {
             WalletPurchases(
                 HttpAuthenticationRepository(http, clock),
                 sessions,
-                HttpWalletRepository(http),
+                WalletRepositoryImpl(http),
                 HttpPurchaseRepository(http),
                 AtomicPurchaseRequestStore(file, Dispatchers.IO, journalCommits),
                 clock,

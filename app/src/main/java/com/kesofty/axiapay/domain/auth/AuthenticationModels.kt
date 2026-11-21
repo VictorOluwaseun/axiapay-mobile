@@ -2,7 +2,7 @@ package com.kesofty.axiapay.domain.auth
 
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.AuthMethod
-import com.kesofty.axiapay.domain.wallet.WalletLookupResult
+import com.kesofty.axiapay.wallet.domain.WalletLookupResult
 import java.time.Instant
 
 /** Selects real authentication or the permanently separate demonstration at composition time. */

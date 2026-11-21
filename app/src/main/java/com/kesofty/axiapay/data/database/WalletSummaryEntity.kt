@@ -1,8 +1,8 @@
 package com.kesofty.axiapay.data.database
 
 import androidx.room.*
-import com.kesofty.axiapay.domain.wallet.WalletStatus
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletStatus
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 
 /**
  * Exact display-only wallet snapshot, owned by an API/account/currency and excluded from spending

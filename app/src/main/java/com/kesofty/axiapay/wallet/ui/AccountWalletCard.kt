@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.ui.auth
+package com.kesofty.axiapay.wallet.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,32 +13,33 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kesofty.axiapay.R
-import com.kesofty.axiapay.domain.wallet.*
-import com.kesofty.axiapay.presentation.auth.AuthUiState
 import com.kesofty.axiapay.ui.theme.*
-import com.kesofty.axiapay.ui.walletIssueMessage
-import com.kesofty.axiapay.ui.walletMoney
-import com.kesofty.axiapay.ui.walletStatusLabel
+import com.kesofty.axiapay.wallet.domain.*
 
 /**
  * Render the signed-in account's server wallet independently of the payment preview's demo state.
  */
 @Composable
-internal fun AccountWalletCard(state: AuthUiState, onRetry: () -> Unit) {
+internal fun AccountWalletCard(
+    wallet: WalletLookupResult?,
+    isRefreshing: Boolean,
+    retryEnabled: Boolean,
+    onRetry: () -> Unit,
+) {
     Surface(shape = RoundedCornerShape(24.dp), color = Color.White, border = controlBorder()) {
         Column(
             Modifier.fillMaxWidth().padding(22.dp).testTag("account-wallet"),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.wallet_title), style = MaterialTheme.typography.titleLarge)
-            if (state.isWalletRefreshing) {
+            if (isRefreshing) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(
                     stringResource(R.string.wallet_loading),
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
-            when (val result = state.wallet) {
+            when (val result = wallet) {
                 is WalletLookupResult.Loaded -> WalletDetails(result.wallet)
                 is WalletLookupResult.Failed -> {
                     val message = walletIssueMessage(result.issue)
@@ -55,12 +56,12 @@ internal fun AccountWalletCard(state: AuthUiState, onRetry: () -> Unit) {
             }
             TextButton(
                 onRetry,
-                enabled = !state.isProcessing,
+                enabled = retryEnabled,
                 modifier = Modifier.heightIn(min = 48.dp).testTag("wallet-refresh"),
             ) {
                 Text(
                     stringResource(
-                        if (state.wallet is WalletLookupResult.Loaded) R.string.wallet_refresh
+                        if (wallet is WalletLookupResult.Loaded) R.string.wallet_refresh
                         else R.string.wallet_retry,
                     ),
                 )

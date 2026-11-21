@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.ui.components
+package com.kesofty.axiapay.wallet.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background

@@ -201,8 +201,8 @@ class WalletPurchasesTest {
         val review = f.workflow.review(f.accountId, f.input)
         f.workflow.submit(f.accountId, review)
         f.wallets.failure =
-            com.kesofty.axiapay.domain.wallet.WalletFailure(
-                com.kesofty.axiapay.domain.wallet.WalletIssue.Network,
+            com.kesofty.axiapay.wallet.domain.WalletFailure(
+                com.kesofty.axiapay.wallet.domain.WalletIssue.Network,
             )
         val context = f.workflow.load(f.accountId)
         assertNull(context.wallet)
@@ -213,8 +213,8 @@ class WalletPurchasesTest {
         assertEquals(listOf(review.request), f.workflow.load(f.accountId).requests)
         assertEquals(1, f.api.submissions.size)
         f.wallets.failure =
-            com.kesofty.axiapay.domain.wallet.WalletFailure(
-                com.kesofty.axiapay.domain.wallet.WalletIssue.InvalidSession,
+            com.kesofty.axiapay.wallet.domain.WalletFailure(
+                com.kesofty.axiapay.wallet.domain.WalletIssue.InvalidSession,
             )
         failure(PurchaseIssue.SignInRequired) { f.workflow.load(f.accountId) }
     }

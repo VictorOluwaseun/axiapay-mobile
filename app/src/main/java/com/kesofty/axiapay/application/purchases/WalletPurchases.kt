@@ -2,7 +2,7 @@ package com.kesofty.axiapay.application.purchases
 
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.purchases.*
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.domain.*
 import java.time.Clock
 import java.util.Collections
 import kotlinx.coroutines.CancellationException

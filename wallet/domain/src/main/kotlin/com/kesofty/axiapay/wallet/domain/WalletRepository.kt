@@ -1,4 +1,4 @@
-package com.kesofty.axiapay.domain.wallet
+package com.kesofty.axiapay.wallet.domain
 
 /** Main-safe, cancellable current-account reads; the server derives ownership from the bearer. */
 interface WalletRepository {

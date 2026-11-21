@@ -5,9 +5,9 @@ import androidx.lifecycle.ViewModelStore
 import com.kesofty.axiapay.application.auth.ServerAccountAccess
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
-import com.kesofty.axiapay.domain.wallet.*
-import com.kesofty.axiapay.presentation.HomeWalletState
 import com.kesofty.axiapay.presentation.auth.*
+import com.kesofty.axiapay.wallet.domain.*
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
 import java.time.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*

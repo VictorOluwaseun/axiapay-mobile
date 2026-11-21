@@ -7,7 +7,7 @@ import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.domain.AuthContactType
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.config.*
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.domain.*
 import java.io.File
 import java.math.BigInteger
 import java.time.*

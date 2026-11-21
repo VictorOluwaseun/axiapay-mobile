@@ -210,7 +210,7 @@ A missing wallet (404), network outage or malformed response produces an explici
 
 The real wallet is separate from the payment preview, which still uses its own demo ledger. The demo flavor remains fully simulated and receives no wallet HTTP repository. The API's Redis caching policy stays server-side; the mobile wallet is display data and never authorizes spending.
 
-`HttpWalletRepositoryTest` and `AccountWalletTest` cover the GET/header contract, exact large amounts, failed lookup, no create fallback, login/verification ordering, protected persistence failure, API/session isolation, retries and late cancellation. The opt-in `ServerAuthFlowUiTest` now asserts the real NGN wallet after every supported login/signup flow and Activity recreation.
+`WalletRepositoryImplTest` and `AccountWalletTest` cover the GET/header contract, exact large amounts, failed lookup, no create fallback, login/verification ordering, protected persistence failure, API/session isolation, retries and late cancellation. The opt-in `ServerAuthFlowUiTest` now asserts the real NGN wallet after every supported login/signup flow and Activity recreation.
 
 
 ### Home wallet source
@@ -325,6 +325,46 @@ Only `POST /auth/refresh` receives refresh proof; resource calls send the access
 
 Account entry/recovery and dashboard destinations now use Navigation Compose. The dashboard host includes all four tabs and bulk service, recipient, import, review, progress and retry screens. Existing bottom sheets, offline palettes, drafts and payment request identities keep their established behavior. Back from a tab returns Home; Back through a bulk edit retains its list; accepted progress never opens an old payment review.
 
-`MainActivity` hosts `AxiaAppRoute`, which obtains the three Activity-owned ViewModels through `hiltViewModel()` and collects immutable state. Routes contain no account credentials, payment inputs or amounts. After Android restoration, navigation follows the restored workflow/checkpoint instead of reopening an abandoned authentication form or replaying an operation. Demo fixtures and real Room/authentication recovery remain separate.
+`MainActivity` hosts `AxiaAppRoute`, which obtains the Activity-owned ViewModels through `hiltViewModel()` and collects immutable state. Routes contain no account credentials, payment inputs or amounts. After Android restoration, navigation follows the restored workflow/checkpoint instead of reopening an abandoned authentication form or replaying an operation. Demo fixtures and real Room/authentication recovery remain separate.
 
 The catalog pins Navigation Compose 2.9.8 and Hilt lifecycle Compose 1.3.0, retaining the existing Lifecycle 2.9.4 and Compose BOM for the SDK 37 toolchain. Run `./gradlew verifyAllFlavors --max-workers=1` for shared verification. On the explicitly selected physical phone, the demo `ComposeNavigationTest,NavigationFlowUiTest,HiltGraphTest,AxiaUiTest` suites cover controller restoration, draft retention, owner isolation and simulated payment flows; the dev `ComposeNavigationTest,HomeWalletUiTest,DashboardRoomUiTest,PurchaseApiUiTest` suites cover real-wallet presentation and isolated API adapters. These tests do not authorize a real payment.
+
+## Wallet funding
+
+Dev Add money uses the authenticated funding API, independently of demo simulation. Manual bank-transfer requests capture instructions on the server, accept a customer reference, and remain pending until a privileged operator confirms the deposit and the ledger commits. Reopen Add money to restore request history after app dismissal. Status refresh can recover an already approved credit; it never approves a customer claim or resumes a waiting purchase automatically.
+
+Open OPay launches the official `team.opay.pay` package from an explicit tap. Copy the account number and enter the amount inside OPay; transfer fields are not prefilled and returning never confirms success. A missing-app message directs the customer to another banking app. No incoming-deposit API/webhook is assumed and no real bank credentials are bundled. Operator setup is documented in the API repository at `apps/api/src/modules/wallet-funding/manual-review.md`.
+
+### Buyer cashback
+
+Dev purchase reviews display the API's snapshotted share of provider commission. Successful receipts and Activity show cashback separately from the original debit: pending while accounting recovers, credited only after the wallet journal commits, or no cashback when commission is zero. Pending cashback keeps status/recovery available and prevents acknowledging unfinished accounting. Checking it never submits a second purchase. Money and eligibility remain server-owned; demo fixtures remain simulated.
+
+A configured 100% share gives the buyer the full actual commission (for example, ₦1.50 from a new eligible ₦50 purchase). Existing quotes retain their reviewed rate; no historic cashback is inferred on the device. `HttpPurchaseRepositoryTest` checks the exact response mapping, and `PurchaseApiUiTest.buyerCashbackRemainsSeparateAndRecoverable` checks review, pending/credited receipt, single submission and double-font presentation with an isolated API fixture. Verify with `:app:verifyDev :app:verifyDemo` and the targeted dev device test.
+
+### Home recent purchases
+
+Dev Home now shares the account-owned purchase history used by Activity. It shows the latest three purchases recorded on this device, their server status, original wallet amount and actual credited or pending cashback. View all opens Activity; row taps never open demo receipts. Demo retains its sample transactions and Preview label.
+
+Returning from a purchase or other sheet refreshes history with read-only requests. Same-account rows remain visible during refresh and transient failures; loading, empty, failure and sign-in states never substitute sample transactions. Sign-out or account changes clear observations, and cancelled responses cannot restore another account's data. Home's Hide balance setting also masks purchase and cashback amounts. Tapping a purchase on Home or Activity opens its real receipt with amount, fee, wallet debit, cashback, recipient and transaction reference. Done, Back or dismiss returns to the same tab; receipt refresh only reads existing server state. No new payment, automatic reconciliation, dependency or persistent receipt cache is introduced.
+
+Verification: `:app:verifyDev :app:verifyDemo`, `PurchaseActivityViewModelTest`, the dev `HomeRecentPurchasesUiTest` and demo `DashboardDesignUiTest` on the explicitly selected Samsung. UI tests use synthetic records and include compact 200% text, offline colours, empty/failure feedback, hidden amounts and View all navigation.
+
+
+### Contact phone selection
+
+Phone fields in airtime/data purchases, demo scheduled payments, bulk airtime/data recipients and electricity delivery details include **Pick phone number from contacts**. Android's phone-number picker chooses a specific number when a contact has several. It grants temporary access to that row; AxiaPay requests no address-book permission and never imports names or a contact list. Manual entry remains available.
+
+Selection fills the original form through its existing edit intent. Common separators and Nigerian `+234`/`00234` notation are adapted for local input, while unsupported country codes/extensions still pass through existing validation. Network selection, review and payment confirmation remain explicit. Cancel leaves the draft intact; missing picker or unreadable selection shows recoverable feedback. Registrations are scoped to the account/route or draft/recipient, and leaving the field cancels its read.
+
+Verify with `./gradlew verifyAllFlavors --max-workers=1` and `ContactPhonePickerUiTest` on the explicitly selected physical phone. The device suite uses synthetic contact rows and an Activity Result registry fixture without reading personal contacts or spending funds.
+
+Instrumentation uses pinned AndroidX Test JUnit 1.3.0 and Espresso 3.7.0. The former Espresso 3.5.1 failed before any UI assertion on the connected Android 17 / API 37 Samsung because `InputManager.getInstance` is no longer available. Espresso 3.7.0 uses the supported system-service lookup; its API-21 minimum remains below this app's API-26 minimum. See the [official release notes](https://developer.android.com/jetpack/androidx/releases/test#espresso-3.7.0). App runtime dependencies are unchanged.
+
+
+### Data catalogue browsing
+
+Live data checkout uses a compact network field and one selected-bundle card. The network picker shows named logo rows from the API catalogue; the plan picker provides search across published names/allowances, exact fixed-price ordering, full plan names and validity. Large catalogues use keyed lazy rows. Missing metadata stays explicit and unavailable products cannot be selected. Demo and scheduled previews retain their existing sample flows.
+
+`PurchaseViewModel` owns the transient picker and query. Dismissal preserves the draft, switching networks clears the old bundle, and changing account or visit clears browsing state. Browsing never obtains a quote or spends funds; review and confirmation remain separate intents. The selected price is the plan price, with the complete debit disclosed at review. Existing contact selection, private balance display and offline greyscale remain available.
+
+Verify with `./gradlew verifyAllFlavors --max-workers=1`, then `DevTelecomDesignUiTest` and `PurchaseApiUiTest` on an explicitly selected physical device. These tests use synthetic catalogues/HTTP fixtures, including 120 plans, empty search, network changes, 200% text, offline rendering and explicit payment consent.

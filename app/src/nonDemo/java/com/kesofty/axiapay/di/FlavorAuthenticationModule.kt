@@ -15,11 +15,10 @@ import com.kesofty.axiapay.data.database.*
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.http.ApiHttpLoggingInterceptor
 import com.kesofty.axiapay.data.http.ApiRequestIdGenerator
-import com.kesofty.axiapay.data.wallet.HttpWalletRepository
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.config.RemoteConfigRepository
 import com.kesofty.axiapay.domain.dashboard.DashboardRepository
-import com.kesofty.axiapay.domain.wallet.WalletRepository
+import com.kesofty.axiapay.wallet.domain.WalletRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -153,11 +152,6 @@ internal object AuthenticationInfrastructureModule {
         http: ApiHttpClient,
         clock: Clock,
     ): AuthenticationRepository = HttpAuthenticationRepository(http, clock)
-
-    /** Reads the authenticated server wallet without borrowing or changing the demo session. */
-    @Provides
-    @Singleton
-    fun provideWalletRepository(http: ApiHttpClient): WalletRepository = HttpWalletRepository(http)
 
     /** Stores one real auth record per independently installed flavor using application context. */
     @Provides

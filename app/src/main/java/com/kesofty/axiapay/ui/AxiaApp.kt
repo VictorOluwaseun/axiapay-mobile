@@ -40,6 +40,10 @@ import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.navigation.StateNavigationHost
 import com.kesofty.axiapay.ui.purchases.PurchaseSheet
 import com.kesofty.axiapay.ui.theme.*
+import com.kesofty.axiapay.wallet.presentation.HomeWalletState
+import com.kesofty.axiapay.wallet.ui.DashboardWalletCard
+import com.kesofty.axiapay.wallet.ui.HomeWalletCard
+import com.kesofty.axiapay.wallet.ui.WalletCardCaption
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -53,6 +57,7 @@ fun AxiaApp(
     onRefreshWallet: () -> Unit = {},
     purchases: PurchaseUiState? = null,
     onPurchaseIntent: (PurchaseIntent) -> Unit = {},
+    fundingContent: (@Composable () -> Unit)? = null,
     onOpenAccount: () -> Unit = {},
 ) {
     if (uiState.isRestoring || uiState.restorationFailed) {
@@ -141,6 +146,7 @@ fun AxiaApp(
             authShortcutLabel,
             purchases,
             onPurchaseIntent,
+            fundingContent,
         )
     }
     (uiState.errorResource?.let { stringResource(it) } ?: uiState.error)?.let { message ->
@@ -201,6 +207,7 @@ private fun AppSheet(
     authShortcutLabel: String?,
     purchases: PurchaseUiState?,
     onPurchaseIntent: (PurchaseIntent) -> Unit,
+    fundingContent: (@Composable () -> Unit)?,
 ) {
     val close = { onIntent(AxiaIntent.CloseSheet) }
     val addMoney = { onIntent(AxiaIntent.OpenService("Add money")) }
@@ -248,7 +255,9 @@ private fun AppSheet(
                             }
                     is Sheet.Explore -> ExploreSheet(sheet.service)
                     is Sheet.Payment -> {
-                        if (purchases != null && sheet.form.isWalletPurchaseEntry) {
+                        if (sheet.form.isFunding && fundingContent != null) {
+                            fundingContent()
+                        } else if (purchases != null && sheet.form.isWalletPurchaseEntry) {
                             PurchaseSheet(
                                 purchases,
                                 state.offline,

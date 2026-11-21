@@ -13,10 +13,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
-import com.kesofty.axiapay.domain.wallet.*
-import com.kesofty.axiapay.presentation.auth.AuthUiState
-import com.kesofty.axiapay.ui.auth.AccountWalletCard
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
+import com.kesofty.axiapay.wallet.domain.*
+import com.kesofty.axiapay.wallet.ui.AccountWalletCard
 import java.io.File
 import java.math.BigInteger
 import org.junit.Assert.*
@@ -40,7 +39,9 @@ class AccountWalletUiTest {
         compose.setContent {
             AxiapayTheme {
                 AccountWalletCard(
-                    AuthUiState(wallet = WalletLookupResult.Failed(WalletIssue.Missing)),
+                    wallet = WalletLookupResult.Failed(WalletIssue.Missing),
+                    isRefreshing = false,
+                    retryEnabled = true,
                 ) {
                     retries++
                 }
@@ -76,7 +77,9 @@ class AccountWalletUiTest {
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                     ) {
                         AccountWalletCard(
-                            AuthUiState(wallet = WalletLookupResult.Loaded(wallet)),
+                            wallet = WalletLookupResult.Loaded(wallet),
+                            isRefreshing = false,
+                            retryEnabled = true,
                         ) {}
                     }
                 }

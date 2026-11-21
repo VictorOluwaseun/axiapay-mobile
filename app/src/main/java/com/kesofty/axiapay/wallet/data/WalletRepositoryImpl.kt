@@ -1,7 +1,7 @@
-package com.kesofty.axiapay.data.wallet
+package com.kesofty.axiapay.wallet.data
 
 import com.kesofty.axiapay.data.http.*
-import com.kesofty.axiapay.domain.wallet.*
+import com.kesofty.axiapay.wallet.domain.*
 import java.math.BigInteger
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -10,7 +10,7 @@ import org.json.JSONObject
 /**
  * Reads only GET wallets/me with the explicit bearer; no local wallet cache or creation fallback.
  */
-class HttpWalletRepository(private val http: ApiHttpClient) : WalletRepository {
+class WalletRepositoryImpl(private val http: ApiHttpClient) : WalletRepository {
     override val apiIdentity: String
         get() = http.apiIdentity
 

@@ -26,7 +26,7 @@ import com.kesofty.axiapay.ui.SheetContent
 import com.kesofty.axiapay.ui.SheetHeading
 import com.kesofty.axiapay.ui.components.*
 import com.kesofty.axiapay.ui.theme.*
-import com.kesofty.axiapay.ui.walletMoney
+import com.kesofty.axiapay.wallet.ui.walletMoney
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle

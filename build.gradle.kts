@@ -2,6 +2,7 @@
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.room) apply false
@@ -15,9 +16,11 @@ dependencies {
 }
 
 val kotlinSources =
-    fileTree(rootDir) {
-        include("app/src/**/*.kt", "*.gradle.kts", "app/*.gradle.kts")
-    }
+    files(
+        allprojects.map { module ->
+            module.fileTree(module.projectDir) { include("src/**/*.kt", "*.gradle.kts") }
+        },
+    )
 
 tasks.register<JavaExec>("checkKotlinFormat") {
     group = "verification"

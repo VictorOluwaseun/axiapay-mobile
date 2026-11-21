@@ -1,7 +1,7 @@
 package com.kesofty.axiapay.domain.purchases
 
 import com.kesofty.axiapay.domain.ElectricityMeterType
-import com.kesofty.axiapay.domain.wallet.WalletSummary
+import com.kesofty.axiapay.wallet.domain.WalletSummary
 import java.math.BigInteger
 import java.time.Instant
 

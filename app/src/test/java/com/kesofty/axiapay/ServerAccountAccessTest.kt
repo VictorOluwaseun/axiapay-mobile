@@ -259,7 +259,7 @@ class ServerAccountAccessTest {
         assertEquals(
             AccountAccessResult.SignedIn(
                 api.session.account,
-                com.kesofty.axiapay.domain.wallet.WalletLookupResult.Loaded(
+                com.kesofty.axiapay.wallet.domain.WalletLookupResult.Loaded(
                     RecordingWalletRepository().wallet,
                 ),
             ),
