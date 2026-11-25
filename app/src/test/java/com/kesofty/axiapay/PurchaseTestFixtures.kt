@@ -52,7 +52,9 @@ internal class PurchaseFixture {
                     "123e4567-e89b-42d3-a456-426614174005"
                 },
             submitPurchase = SubmitPurchase(access, purchases, requests, clock),
-            payments = WalletPurchases(access, purchases, requests),
+            recoverPurchase = RecoverPurchase(access, purchases, requests),
+            reconcilePurchase = ReconcilePurchase(access, purchases, requests),
+            acknowledgePurchase = AcknowledgePurchase(requests),
         )
     }
 }

@@ -1,7 +1,6 @@
 package com.kesofty.axiapay.di
 
 import com.kesofty.axiapay.application.purchases.PurchaseUseCases
-import com.kesofty.axiapay.application.purchases.WalletPurchases
 import dagger.BindsOptionalOf
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -14,9 +13,6 @@ import dagger.hilt.android.components.ViewModelComponent
 @Module
 @InstallIn(ViewModelComponent::class)
 internal interface PurchaseUseCaseModule {
-    /** Absent in demo: the existing demo payment form/actions remain the only purchase path. */
-    @BindsOptionalOf fun optionalWalletPurchases(): WalletPurchases
-
     /** The live form can load catalogues and handle payment intents in the non-demo flavor. */
     @BindsOptionalOf fun optionalPurchaseUseCases(): PurchaseUseCases
 }

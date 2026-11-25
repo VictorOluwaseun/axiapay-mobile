@@ -116,13 +116,13 @@ constructor(
                 val request =
                     state.context?.requests?.find { it.requestKey == intent.requestKey } ?: return
                 progress(refreshWallet = true) {
-                    operations.payments.recover(state.accountId, request)
+                    operations.recoverPurchase(state.accountId, request)
                 }
             }
             PurchaseIntent.CheckStatus -> {
                 val request = state.progress?.request ?: return
                 progress(refreshWallet = true) {
-                    operations.payments.recover(state.accountId, request)
+                    operations.recoverPurchase(state.accountId, request)
                 }
             }
             PurchaseIntent.Reconcile -> {
@@ -131,7 +131,7 @@ constructor(
                     return
                 }
                 progress(refreshWallet = true) {
-                    operations.payments.reconcile(state.accountId, current.request)
+                    operations.reconcilePurchase(state.accountId, current.request)
                 }
             }
             PurchaseIntent.RetrySubmission -> {
@@ -479,12 +479,12 @@ constructor(
     private fun acknowledge() {
         val state = mutableState.value
         val progress = state.progress ?: return
-        val workflow = useCases?.payments ?: return
+        val operations = useCases ?: return
         if (progress.payment?.canAcknowledge != true) {
             return
         }
         execute {
-            workflow.acknowledge(progress)
+            operations.acknowledgePurchase(progress)
             ActionResult.Acknowledged
         }
     }

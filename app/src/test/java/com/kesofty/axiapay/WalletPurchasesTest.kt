@@ -115,7 +115,7 @@ class WalletPurchasesTest {
             listOf(review.request),
             f.useCases.refreshPurchaseContext(f.accountId).requests,
         )
-        val missing = f.useCases.payments.recover(f.accountId, review.request)
+        val missing = f.useCases.recoverPurchase(f.accountId, review.request)
         assertEquals(PurchaseIssue.NotFound, missing.issue)
         assertEquals(1, f.api.submissions.size)
         f.api.submitFailure = null
@@ -123,7 +123,7 @@ class WalletPurchasesTest {
         val result = f.useCases.submitPurchase.retry(f.accountId, review.request)
         assertTrue(requireNotNull(result.payment).isFinal)
         assertEquals(listOf(review.request, review.request), f.api.submissions)
-        f.useCases.payments.acknowledge(result)
+        f.useCases.acknowledgePurchase(result)
         assertTrue(f.store.records.single().acknowledged)
         assertEquals(1, f.api.quoteCalls)
     }
@@ -134,14 +134,55 @@ class WalletPurchasesTest {
         val f = PurchaseFixture()
         val review = f.useCases.reviewPurchase(f.accountId, f.input)
         f.useCases.submitPurchase(f.accountId, review)
-        f.useCases.payments.recover(f.accountId, review.request)
+        f.useCases.recoverPurchase(f.accountId, review.request)
         assertEquals(0, f.api.reconciles)
         f.api.status = PurchasePaymentStatus.Failed
-        val result = f.useCases.payments.reconcile(f.accountId, review.request)
+        val result = f.useCases.reconcilePurchase(f.accountId, review.request)
         assertEquals(PurchasePaymentStatus.Failed, result.payment?.status)
-        f.useCases.payments.reconcile(f.accountId, review.request)
+        f.useCases.reconcilePurchase(f.accountId, review.request)
         assertEquals(1, f.api.reconciles)
         assertEquals(1, f.api.submissions.size)
+    }
+
+    /** Losing the session after the status lookup must prevent a reconciliation request. */
+    @Test
+    fun sessionChangeAfterObservationBlocksReconciliation() = runTest {
+        val f = PurchaseFixture()
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.useCases.submitPurchase(f.accountId, review)
+        val purchases =
+            object : PurchaseRepository by f.api {
+                /** End the captured session once a pending payment has been observed. */
+                override suspend fun findByRequestKey(
+                    accessToken: String,
+                    requestKey: String,
+                ): PurchasePayment? {
+                    val payment = f.api.findByRequestKey(accessToken, requestKey)
+                    f.sessions.value = null
+                    return payment
+                }
+            }
+        val useCases = f.createUseCases(purchases = purchases)
+        failure(PurchaseIssue.SessionChanged) {
+            useCases.reconcilePurchase(f.accountId, review.request)
+        }
+        assertEquals(1, f.api.gets)
+        assertEquals(0, f.api.reconciles)
+        assertEquals(listOf(review.request), f.api.submissions)
+    }
+
+    /** Final progress for another request cannot acknowledge the saved receipt. */
+    @Test
+    fun acknowledgementRequiresTheOriginalPaymentKey() = runTest {
+        val f = PurchaseFixture()
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.api.status = PurchasePaymentStatus.Succeeded
+        val progress = f.useCases.submitPurchase(f.accountId, review)
+        val otherPayment = requireNotNull(progress.payment).copy(requestKey = "different-key")
+        failure(PurchaseIssue.InvalidResponse) {
+            f.useCases.acknowledgePurchase(progress.copy(payment = otherPayment))
+        }
+        assertFalse(f.store.read(review.request.owner).single().acknowledged)
     }
 
     /** Neither another account nor another API can resume a saved payment. */
@@ -207,7 +248,7 @@ class WalletPurchasesTest {
         val unknown = f.useCases.submitPurchase(f.accountId, review)
         assertNull(unknown.payment)
         assertEquals(PurchaseIssue.InvalidResponse, unknown.issue)
-        failure(PurchaseIssue.Unavailable) { f.useCases.payments.acknowledge(unknown) }
+        failure(PurchaseIssue.Unavailable) { f.useCases.acknowledgePurchase(unknown) }
         assertFalse(f.store.records.single().acknowledged)
     }
 
@@ -241,7 +282,7 @@ class WalletPurchasesTest {
         val context = f.useCases.refreshPurchaseContext(f.accountId)
         assertNull(context.wallet)
         assertEquals(listOf(review.request), context.requests)
-        assertNotNull(f.useCases.payments.recover(f.accountId, review.request).payment)
+        assertNotNull(f.useCases.recoverPurchase(f.accountId, review.request).payment)
         f.wallets.failure = null
         f.api.catalogueFailure = PurchaseIssue.Unavailable
         assertEquals(

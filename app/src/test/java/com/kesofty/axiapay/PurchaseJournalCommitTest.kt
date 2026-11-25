@@ -172,14 +172,14 @@ class PurchaseJournalCommitTest {
         val progress = useCases.submitPurchase(f.accountId, review)
         commits.failure = CommitStage.DirectorySync
         repeat(2) {
-            expectStorage { useCases.payments.acknowledge(progress) }
+            expectStorage { useCases.acknowledgePurchase(progress) }
             assertEquals(
                 review.request.requestKey,
                 store.read(review.request.owner).single().requestKey,
             )
         }
         commits.failure = null
-        useCases.payments.acknowledge(progress)
+        useCases.acknowledgePurchase(progress)
         assertTrue(store.read(review.request.owner).single().acknowledged)
         assertEquals(1, f.api.submissions.size)
     }

@@ -257,19 +257,22 @@ class PurchaseApiUiTest {
         val contexts = PurchaseContextReader(catalogue, requests)
         val useCases =
             PurchaseUseCases(
-                LoadCachedPurchaseContext(access, wallets, contexts),
-                RefreshPurchaseContext(
-                    access,
-                    wallets,
-                    DashboardRepositoryImpl(database, clock),
-                    catalogue,
-                    contexts,
-                ),
-                PreparePurchase(),
-                VerifyElectricityMeter(access, purchases, clock),
-                ReviewPurchase(access, wallets, purchases, clock) { requestKey },
-                SubmitPurchase(access, purchases, requests, clock),
-                WalletPurchases(access, purchases, requests),
+                loadCachedPurchaseContext = LoadCachedPurchaseContext(access, wallets, contexts),
+                refreshPurchaseContext =
+                    RefreshPurchaseContext(
+                        access,
+                        wallets,
+                        DashboardRepositoryImpl(database, clock),
+                        catalogue,
+                        contexts,
+                    ),
+                preparePurchase = PreparePurchase(),
+                verifyElectricityMeter = VerifyElectricityMeter(access, purchases, clock),
+                reviewPurchase = ReviewPurchase(access, wallets, purchases, clock) { requestKey },
+                submitPurchase = SubmitPurchase(access, purchases, requests, clock),
+                recoverPurchase = RecoverPurchase(access, purchases, requests),
+                reconcilePurchase = ReconcilePurchase(access, purchases, requests),
+                acknowledgePurchase = AcknowledgePurchase(requests),
             )
         return PurchaseViewModel(Optional.of(useCases), clock).also {
             it.accept(

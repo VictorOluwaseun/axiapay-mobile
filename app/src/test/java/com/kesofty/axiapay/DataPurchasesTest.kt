@@ -174,8 +174,8 @@ class DataPurchasesTest {
         f.api.status = PurchasePaymentStatus.Succeeded
         f.api.observed =
             f.api.payment(data).copy(quote = f.api.quoted.copy(service = PurchaseService.Airtime))
-        failure(PurchaseIssue.InvalidResponse) { f.useCases.payments.recover(f.accountId, data) }
-        failure(PurchaseIssue.InvalidResponse) { f.useCases.payments.reconcile(f.accountId, data) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.recoverPurchase(f.accountId, data) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.reconcilePurchase(f.accountId, data) }
         assertEquals(0, f.api.reconciles)
         assertTrue(f.api.submissions.isEmpty())
     }
@@ -213,7 +213,7 @@ class DataPurchasesTest {
         )
         assertEquals(
             PurchaseIssue.NotFound,
-            f.useCases.payments.recover(f.accountId, review.request).issue,
+            f.useCases.recoverPurchase(f.accountId, review.request).issue,
         )
         assertEquals(1, f.api.submissions.size)
         f.api.submitFailure = null
@@ -221,7 +221,7 @@ class DataPurchasesTest {
         val result = f.useCases.submitPurchase.retry(f.accountId, review.request)
         assertEquals(PurchaseService.Data, result.payment?.quote?.service)
         assertEquals(listOf(review.request, review.request), f.api.submissions)
-        f.useCases.payments.acknowledge(result)
+        f.useCases.acknowledgePurchase(result)
         assertTrue(f.store.records.single().acknowledged)
         assertEquals(1, f.api.quoteCalls)
     }
