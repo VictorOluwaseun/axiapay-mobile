@@ -1,0 +1,295 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "f0728797e90de6049ae7e1911b893d86",
+    "entities": [
+      {
+        "tableName": "accounts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`api_identity` TEXT NOT NULL, `account_id` TEXT NOT NULL, `contact_kind` TEXT NOT NULL, `contact_value` TEXT NOT NULL, `verified_at_epoch_ms` INTEGER NOT NULL, `fetched_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`api_identity`, `account_id`))",
+        "fields": [
+          {
+            "fieldPath": "apiIdentity",
+            "columnName": "api_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "account_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactKind",
+            "columnName": "contact_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactValue",
+            "columnName": "contact_value",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verifiedAtEpochMs",
+            "columnName": "verified_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchedAtEpochMs",
+            "columnName": "fetched_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "api_identity",
+            "account_id"
+          ]
+        }
+      },
+      {
+        "tableName": "wallet_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`api_identity` TEXT NOT NULL, `account_id` TEXT NOT NULL, `wallet_id` TEXT NOT NULL, `currency` TEXT NOT NULL, `wallet_status` TEXT NOT NULL, `available_minor_units` TEXT NOT NULL, `reserved_minor_units` TEXT NOT NULL, `total_minor_units` TEXT NOT NULL, `fetched_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`api_identity`, `account_id`, `currency`), FOREIGN KEY(`api_identity`, `account_id`) REFERENCES `accounts`(`api_identity`, `account_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "apiIdentity",
+            "columnName": "api_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "account_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "walletId",
+            "columnName": "wallet_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "walletStatus",
+            "columnName": "wallet_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availableMinorUnits",
+            "columnName": "available_minor_units",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reservedMinorUnits",
+            "columnName": "reserved_minor_units",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalMinorUnits",
+            "columnName": "total_minor_units",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fetchedAtEpochMs",
+            "columnName": "fetched_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "api_identity",
+            "account_id",
+            "currency"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_wallet_summaries_api_identity_wallet_id",
+            "unique": true,
+            "columnNames": [
+              "api_identity",
+              "wallet_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_wallet_summaries_api_identity_wallet_id` ON `${TABLE_NAME}` (`api_identity`, `wallet_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "accounts",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "api_identity",
+              "account_id"
+            ],
+            "referencedColumns": [
+              "api_identity",
+              "account_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "app_configuration",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`api_identity` TEXT NOT NULL, `version` TEXT NOT NULL, `etag` TEXT NOT NULL, `signup_email_enabled` INTEGER NOT NULL, `signup_phone_enabled` INTEGER NOT NULL, `login_email_enabled` INTEGER NOT NULL, `login_phone_enabled` INTEGER NOT NULL, `signup_password_enabled` INTEGER NOT NULL, `signup_otp_enabled` INTEGER NOT NULL, `login_password_enabled` INTEGER NOT NULL, `login_otp_enabled` INTEGER NOT NULL, `airtime_enabled` INTEGER NOT NULL, `data_enabled` INTEGER NOT NULL, `tv_enabled` INTEGER NOT NULL, `electricity_enabled` INTEGER NOT NULL, `education_enabled` INTEGER NOT NULL, `insurance_enabled` INTEGER NOT NULL, `bank_transfer_enabled` INTEGER NOT NULL, `merchant_enabled` INTEGER NOT NULL, `airtime_conversion_enabled` INTEGER NOT NULL, `checked_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`api_identity`))",
+        "fields": [
+          {
+            "fieldPath": "apiIdentity",
+            "columnName": "api_identity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "etag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signupEmailEnabled",
+            "columnName": "signup_email_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signupPhoneEnabled",
+            "columnName": "signup_phone_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginEmailEnabled",
+            "columnName": "login_email_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginPhoneEnabled",
+            "columnName": "login_phone_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signupPasswordEnabled",
+            "columnName": "signup_password_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signupOtpEnabled",
+            "columnName": "signup_otp_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginPasswordEnabled",
+            "columnName": "login_password_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginOtpEnabled",
+            "columnName": "login_otp_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "airtimeEnabled",
+            "columnName": "airtime_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataEnabled",
+            "columnName": "data_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tvEnabled",
+            "columnName": "tv_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "electricityEnabled",
+            "columnName": "electricity_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "educationEnabled",
+            "columnName": "education_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "insuranceEnabled",
+            "columnName": "insurance_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankTransferEnabled",
+            "columnName": "bank_transfer_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchantEnabled",
+            "columnName": "merchant_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "airtimeConversionEnabled",
+            "columnName": "airtime_conversion_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedAtEpochMs",
+            "columnName": "checked_at_epoch_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "api_identity"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f0728797e90de6049ae7e1911b893d86')"
+    ]
+  }
+}

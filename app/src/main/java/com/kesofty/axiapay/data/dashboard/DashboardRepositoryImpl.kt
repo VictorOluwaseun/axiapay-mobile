@@ -22,11 +22,19 @@ class DashboardRepositoryImpl(private val database: AxiaDatabase, private val cl
             )
         }
 
-    /** Upsert verified identity while retaining previously committed wallet data. */
+    /**
+     * Commit identity only when its display content changes, retaining wallet and catalogue
+     * children.
+     */
     override suspend fun saveAccount(apiIdentity: String, account: AccountIdentity) {
-        database
-            .dashboard()
-            .saveAccount(AccountEntity.fromAccount(apiIdentity, account, clock.millis()))
+        database.withTransaction {
+            val previous = database.dashboard().account(apiIdentity, account.id)?.toAccount()
+            if (previous != account) {
+                database
+                    .dashboard()
+                    .saveAccount(AccountEntity.fromAccount(apiIdentity, account, clock.millis()))
+            }
+        }
     }
 
     /** Cascade deletion is limited to the supplied API/account. */
