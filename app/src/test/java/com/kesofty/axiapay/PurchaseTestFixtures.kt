@@ -144,6 +144,8 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) :
     var beforeSubmit: (() -> Unit)? = null
     var quoteGate: CompletableDeferred<Unit>? = null
     var submitGate: CompletableDeferred<Unit>? = null
+    var historyGate: CompletableDeferred<Unit>? = null
+    var historyFailure: PurchaseIssue? = null
 
     override suspend fun products(
         accessToken: String,
@@ -199,7 +201,10 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) :
         requestKey: String,
     ): PurchasePayment? {
         gets++
-        return observed
+        val snapshot = observed
+        historyGate?.let { withContext(NonCancellable) { it.await() } }
+        historyFailure?.let { throw PurchaseFailure(it) }
+        return snapshot
     }
 
     override suspend fun reconcile(accessToken: String, paymentId: String): PurchasePayment {
