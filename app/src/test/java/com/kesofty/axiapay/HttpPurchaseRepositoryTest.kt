@@ -2,6 +2,7 @@ package com.kesofty.axiapay
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
+import com.kesofty.axiapay.data.purchases.remote.HttpPurchaseCatalogueRemoteDataSource
 import com.kesofty.axiapay.domain.purchases.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ class HttpPurchaseRepositoryTest {
             .followRedirects(false)
             .callTimeout(3, TimeUnit.SECONDS)
             .build()
+    private lateinit var catalogue: HttpPurchaseCatalogueRemoteDataSource
     private lateinit var api: HttpPurchaseRepository
     private val f = PurchaseFixture()
 
@@ -31,10 +33,9 @@ class HttpPurchaseRepositoryTest {
     @Before
     fun start() {
         server.start()
-        api =
-            HttpPurchaseRepository(
-                ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO),
-            )
+        val http = ApiHttpClient(server.url("/v1/").toString(), true, client, Dispatchers.IO)
+        api = HttpPurchaseRepository(http)
+        catalogue = HttpPurchaseCatalogueRemoteDataSource(http)
     }
 
     /** Close all test-owned sockets and threads. */
@@ -130,7 +131,10 @@ class HttpPurchaseRepositoryTest {
                     .toString(),
             ),
         )
-        assertEquals(listOf(cursor, second), api.products("synthetic-token", "NGN").map { it.id })
+        assertEquals(
+            listOf(cursor, second),
+            catalogue.products("synthetic-token", "NGN").map { it.id },
+        )
         for (index in 0..1) {
             val request = server.takeRequest()
             assertEquals("GET", request.method)
@@ -138,7 +142,7 @@ class HttpPurchaseRepositoryTest {
             assertEquals("no-store", request.headers["Cache-Control"])
             assertTrue(
                 request.target.startsWith(
-                    "/v1/service-catalog/products?serviceType=airtime&currency=NGN&limit=25",
+                    "/v1/service-catalog/products?serviceType=airtime&currency=NGN&limit=100",
                 ),
             )
             assertEquals(index == 1, request.target.contains("afterId=$cursor"))
@@ -292,12 +296,12 @@ class HttpPurchaseRepositoryTest {
                     .toString(),
             ),
         )
-        val selected = api.products("synthetic-token", "NGN", PurchaseService.Data).single()
+        val selected = catalogue.products("synthetic-token", "NGN", PurchaseService.Data).single()
         assertEquals("125050", selected.fixedMinorUnits.toString())
         assertEquals("1 GB", selected.allowanceLabel)
         assertEquals(2592000L, selected.validitySeconds)
         assertEquals(
-            "/v1/service-catalog/products?serviceType=data&currency=NGN&limit=25",
+            "/v1/service-catalog/products?serviceType=data&currency=NGN&limit=100",
             server.takeRequest().target,
         )
         val review = dataQuote()
@@ -351,7 +355,7 @@ class HttpPurchaseRepositoryTest {
                 ),
             )
             try {
-                api.products("token", "NGN", PurchaseService.Data)
+                catalogue.products("token", "NGN", PurchaseService.Data)
                 fail()
             } catch (failure: PurchaseFailure) {
                 assertEquals(PurchaseIssue.InvalidResponse, failure.issue)
@@ -476,11 +480,11 @@ class HttpPurchaseRepositoryTest {
                     .toString(),
             ),
         )
-        val product = api.products("token", "NGN", PurchaseService.Electricity).single()
+        val product = catalogue.products("token", "NGN", PurchaseService.Electricity).single()
         assertEquals("ikeja-electric", product.providerCode)
         assertEquals(com.kesofty.axiapay.domain.ElectricityMeterType.Prepaid, product.meterType)
         assertEquals(
-            "/v1/service-catalog/products?serviceType=electricity&currency=NGN&limit=25",
+            "/v1/service-catalog/products?serviceType=electricity&currency=NGN&limit=100",
             server.takeRequest().target,
         )
         server.enqueue(response(201, meter().toString()))

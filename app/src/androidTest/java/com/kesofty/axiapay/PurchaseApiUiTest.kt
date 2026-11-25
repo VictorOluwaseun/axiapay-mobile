@@ -638,7 +638,7 @@ class PurchaseApiUiTest {
         assertFalse(quoteCommand.has("amountMinorUnits"))
         assertTrue(
             requests.any {
-                it.target == "/v1/service-catalog/products?serviceType=data&currency=NGN&limit=25"
+                it.target == "/v1/service-catalog/products?serviceType=data&currency=NGN&limit=100"
             },
         )
         assertEquals(1, posts.get())
