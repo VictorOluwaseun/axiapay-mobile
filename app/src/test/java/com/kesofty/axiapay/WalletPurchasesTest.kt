@@ -9,6 +9,36 @@ import org.junit.Test
 
 /** Proves ownership, durable consent identity, and honest recovery at the application boundary. */
 class WalletPurchasesTest {
+    /** Activity includes acknowledged receipts and can never submit or reconcile them. */
+    @Test
+    fun activityReadsCurrentOutcomesWithoutSpendingAgain() = runTest {
+        val f = PurchaseFixture()
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.api.status = PurchasePaymentStatus.Succeeded
+        val progress = f.useCases.submitPurchase(f.accountId, review)
+        f.useCases.acknowledgePurchase(progress)
+        val history = f.useCases.loadPurchaseHistory(f.accountId)
+        assertEquals(PurchasePaymentStatus.Succeeded, history.single().payment?.status)
+        assertTrue(history.single().request.acknowledged)
+        assertEquals(1, f.api.submissions.size)
+        assertEquals(0, f.api.reconciles)
+        assertEquals(1, f.api.quoteCalls)
+        failure(PurchaseIssue.SessionChanged) { f.useCases.loadPurchaseHistory("another-account") }
+    }
+
+    /** A locally saved request without a server payment remains visibly unconfirmed. */
+    @Test
+    fun activityDoesNotInventSuccessForMissingPayments() = runTest {
+        val f = PurchaseFixture()
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.store.save(review.request)
+        val history = f.useCases.loadPurchaseHistory(f.accountId)
+        assertNull(history.single().payment)
+        assertEquals(PurchaseIssue.NotFound, history.single().issue)
+        assertTrue(f.api.submissions.isEmpty())
+        assertEquals(0, f.api.reconciles)
+    }
+
     /**
      * Rotated access retains the same consent identity and does not invalidate an in-flight review.
      */

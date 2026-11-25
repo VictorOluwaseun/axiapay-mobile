@@ -11,4 +11,5 @@ data class PurchaseUseCases(
     val recoverPurchase: RecoverPurchase,
     val reconcilePurchase: ReconcilePurchase,
     val acknowledgePurchase: AcknowledgePurchase,
+    val loadPurchaseHistory: LoadPurchaseHistory,
 )

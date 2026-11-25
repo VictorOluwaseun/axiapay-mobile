@@ -71,6 +71,7 @@ internal object FlavorPurchaseModule {
             recoverPurchase = RecoverPurchase(access, purchases, requests),
             reconcilePurchase = ReconcilePurchase(access, purchases, requests),
             acknowledgePurchase = AcknowledgePurchase(requests),
+            loadPurchaseHistory = LoadPurchaseHistory(access, purchases, requests),
         )
     }
 }
