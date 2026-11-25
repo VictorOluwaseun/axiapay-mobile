@@ -266,9 +266,10 @@ class PurchaseApiUiTest {
                     contexts,
                 ),
                 PreparePurchase(),
+                VerifyElectricityMeter(access, purchases, clock),
                 ReviewPurchase(access, wallets, purchases, clock) { requestKey },
                 SubmitPurchase(access, purchases, requests, clock),
-                WalletPurchases(access, purchases, requests, clock),
+                WalletPurchases(access, purchases, requests),
             )
         return PurchaseViewModel(Optional.of(useCases), clock).also {
             it.accept(

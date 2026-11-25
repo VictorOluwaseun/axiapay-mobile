@@ -46,15 +46,14 @@ internal object FlavorPurchaseModule {
     ): PurchaseSessionAccess =
         PurchaseSessionAccess(authentication, sessions, wallets, purchases, clock)
 
-    /** Supply meter verification and saved-payment recovery to live purchase screens. */
+    /** Supply saved-payment recovery to live purchase screens. */
     @Provides
     @ViewModelScoped
     fun provideWalletPurchases(
         access: PurchaseSessionAccess,
         purchases: PurchaseRepository,
         requests: PurchaseRequestStore,
-        clock: Clock,
-    ): WalletPurchases = WalletPurchases(access, purchases, requests, clock)
+    ): WalletPurchases = WalletPurchases(access, purchases, requests)
 
     /** Expose local form reads, verified refreshes and explicit payment actions to the form. */
     @Provides
@@ -76,6 +75,7 @@ internal object FlavorPurchaseModule {
             refreshPurchaseContext =
                 RefreshPurchaseContext(access, wallets, dashboard, catalogues, contexts),
             preparePurchase = PreparePurchase(),
+            verifyElectricityMeter = VerifyElectricityMeter(access, purchases, clock),
             reviewPurchase = ReviewPurchase(access, wallets, purchases, clock, newRequestId),
             submitPurchase = SubmitPurchase(access, purchases, requests, clock),
             payments = payments,

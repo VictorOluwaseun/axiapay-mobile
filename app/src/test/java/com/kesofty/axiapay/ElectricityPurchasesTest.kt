@@ -68,7 +68,7 @@ class ElectricityPurchasesTest {
     /** Prepare normalized contact and exact meter/amount once before requesting a quote. */
     private suspend fun input(f: PurchaseFixture): PurchaseQuoteInput {
         val product = f.api.catalogue.first()
-        val verified = f.useCases.payments.verifyMeter(f.accountId, product, "00123456789")
+        val verified = f.useCases.verifyElectricityMeter(f.accountId, product, "00123456789")
         return requireNotNull(
             PreparePurchase()(product, "00123456789", "100", verified, "08012345678").input,
         )
@@ -155,7 +155,7 @@ class ElectricityPurchasesTest {
             )) {
             f.api.meter = wrong
             failure(PurchaseIssue.InvalidResponse) {
-                f.useCases.payments.verifyMeter(
+                f.useCases.verifyElectricityMeter(
                     f.accountId,
                     f.api.catalogue.first(),
                     original.accountNumber,

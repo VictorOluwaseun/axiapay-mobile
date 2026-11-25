@@ -392,7 +392,7 @@ constructor(
         val state = mutableState.value
         val product = state.selectedProduct ?: return
         val owner = state.accountId ?: return
-        val workflow = useCases?.payments ?: return
+        val operations = useCases ?: return
         if (
             state.screen != PurchaseScreen.Form ||
                 state.service != PurchaseService.Electricity ||
@@ -402,7 +402,9 @@ constructor(
         }
         editForm { copy(verifiedMeter = null) }
         execute {
-            ActionResult.MeterVerified(workflow.verifyMeter(owner, product, state.recipient))
+            ActionResult.MeterVerified(
+                operations.verifyElectricityMeter(owner, product, state.recipient),
+            )
         }
     }
 

@@ -5,6 +5,7 @@ data class PurchaseUseCases(
     val loadCachedPurchaseContext: LoadCachedPurchaseContext,
     val refreshPurchaseContext: RefreshPurchaseContext,
     val preparePurchase: PreparePurchase,
+    val verifyElectricityMeter: VerifyElectricityMeter,
     val reviewPurchase: ReviewPurchase,
     val submitPurchase: SubmitPurchase,
     val payments: WalletPurchases,

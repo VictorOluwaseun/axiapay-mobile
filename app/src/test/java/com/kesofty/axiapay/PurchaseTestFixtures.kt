@@ -46,12 +46,13 @@ internal class PurchaseFixture {
             refreshPurchaseContext =
                 RefreshPurchaseContext(access, walletRepository, dashboard, catalogue, contexts),
             preparePurchase = PreparePurchase(),
+            verifyElectricityMeter = VerifyElectricityMeter(access, purchases, clock),
             reviewPurchase =
                 ReviewPurchase(access, walletRepository, purchases, clock) {
                     "123e4567-e89b-42d3-a456-426614174005"
                 },
             submitPurchase = SubmitPurchase(access, purchases, requests, clock),
-            payments = WalletPurchases(access, purchases, requests, clock),
+            payments = WalletPurchases(access, purchases, requests),
         )
     }
 }
