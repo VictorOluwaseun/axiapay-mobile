@@ -43,6 +43,8 @@ constructor(
     val effects = effectChannel.receiveAsFlow()
     private var action: Job? = null
     private var ticker: Job? = null
+    private var refresh: Job? = null
+    private var refreshGeneration = 0L
     private var visit = 0L
 
     /** Keep one operation per visit; Views emit intents and never mutate the render snapshot. */
@@ -104,7 +106,11 @@ constructor(
             }
             PurchaseIntent.Confirm -> confirm()
             PurchaseIntent.History ->
-                mutableState.value = state.copy(screen = PurchaseScreen.History, issue = null)
+                mutableState.value =
+                    state.copy(
+                        screen = PurchaseScreen.History,
+                        issue = null,
+                    )
             PurchaseIntent.NewPurchase -> newPurchase()
             is PurchaseIntent.CheckSaved -> {
                 val request =
@@ -163,13 +169,14 @@ constructor(
             return
         }
         visit += 1
+        cancelRefresh()
         action?.cancel()
         ticker?.cancel()
         val screen =
             when {
                 intent.routeId == null -> PurchaseScreen.Hidden
                 intent.accountId == null -> PurchaseScreen.SignIn
-                else -> PurchaseScreen.Loading
+                else -> PurchaseScreen.Form
             }
         mutableState.value =
             PurchaseUiState(
@@ -180,22 +187,134 @@ constructor(
                 service = intent.service,
                 featureAvailable = features.allows(intent.service),
             )
-        if (screen == PurchaseScreen.Loading) {
+        if (screen == PurchaseScreen.Form) {
             load()
         }
     }
 
-    /** Loading/restoration discovers existing references instead of submitting them. */
+    /**
+     * Restore local form data first, then refresh without owning the payment action or disabling
+     * input.
+     */
     private fun load() {
         val owner = mutableState.value.accountId ?: return
         val operations = useCases ?: return
+        if (mutableState.value.isRefreshing) return
+        if (
+            mutableState.value.screen !in
+                setOf(PurchaseScreen.Form, PurchaseScreen.History, PurchaseScreen.LoadFailure)
+        )
+            return
+        val origin = visit
+        val generation = ++refreshGeneration
         val service = mutableState.value.service
-        execute { ActionResult.Loaded(operations.refreshPurchaseContext(owner, service)) }
+        val restoreRecovery = mutableState.value.context == null
+        mutableState.value = mutableState.value.copy(isRefreshing = true, refreshIssue = null)
+        refresh = viewModelScope.launch {
+            try {
+                val cached = operations.loadCachedPurchaseContext(owner, service)
+                if (!ownsRefresh(origin, generation)) return@launch
+                applyCatalogue(cached, restoreRecovery)
+                val current = operations.refreshPurchaseContext(owner, service)
+                if (!ownsRefresh(origin, generation)) return@launch
+                applyCatalogue(current, false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (!ownsRefresh(origin, generation)) return@launch
+                val issue = (failure as? PurchaseFailure)?.issue ?: PurchaseIssue.Unavailable
+                failRefresh(owner, issue)
+            } finally {
+                if (ownsRefresh(origin, generation)) {
+                    mutableState.value = mutableState.value.copy(isRefreshing = false)
+                }
+            }
+        }
+    }
+
+    /**
+     * A refresh can update display terms only while its original visit and refresh generation still
+     * own them.
+     */
+    private fun ownsRefresh(origin: Long, generation: Long): Boolean =
+        origin == visit && generation == refreshGeneration
+
+    /**
+     * Entering review/progress or another visit retires background callbacks before they can
+     * overwrite newer state.
+     */
+    private fun cancelRefresh() {
+        refreshGeneration += 1
+        refresh?.cancel()
+        refresh = null
+        mutableState.value = mutableState.value.copy(isRefreshing = false)
+    }
+
+    /**
+     * Preserve drafts and valid API selections; withdrawn products require a new explicit choice.
+     */
+    private fun applyCatalogue(context: PurchaseContext, restoreRecovery: Boolean) {
+        val operations = useCases ?: return
+        val state = mutableState.value
+        val selected = context.products.find { it.id == state.selectedProductId }
+        val provider =
+            state.selectedProviderCode?.takeIf { code ->
+                context.products.any { it.providerCode == code }
+            }
+        val verification = state.verifiedMeter.takeIf { selected == state.selectedProduct }
+        val check =
+            operations.preparePurchase(
+                selected,
+                state.recipient,
+                state.amount,
+                verification,
+                state.contactPhoneNumber,
+            )
+        val screen =
+            if (restoreRecovery && context.requests.any { !it.acknowledged }) PurchaseScreen.History
+            else state.screen
+        mutableState.value =
+            state.copy(
+                context = context,
+                selectedProductId = selected?.id,
+                selectedProviderCode = provider,
+                verifiedMeter = verification,
+                prepared = check.input,
+                inputIssue = check.issue,
+                refreshIssue = context.issue,
+                screen = screen,
+                issue =
+                    if (state.selectedProductId != null && selected == null)
+                        PurchaseIssue.ProductUnavailable
+                    else state.issue,
+            )
+    }
+
+    /**
+     * Transient refresh failures keep drafts and cached choices; an invalid session immediately
+     * drops owned snapshots.
+     */
+    private fun failRefresh(owner: String, issue: PurchaseIssue) {
+        if (issue in setOf(PurchaseIssue.SignInRequired, PurchaseIssue.SessionChanged)) {
+            mutableState.value =
+                mutableState.value.copy(
+                    screen = PurchaseScreen.SignIn,
+                    context = null,
+                    selectedProductId = null,
+                    selectedProviderCode = null,
+                    prepared = null,
+                    issue = issue,
+                )
+            effectChannel.trySend(PurchaseEffect.RefreshWallet(owner))
+            return
+        }
+        mutableState.value = mutableState.value.copy(refreshIssue = issue)
     }
 
     /** Data network selection clears the previous plan so a hidden plan cannot be purchased. */
     private fun selectProvider(code: String) {
         val state = mutableState.value
+        if (state.screen != PurchaseScreen.Form) return
         if (
             state.service == PurchaseService.Airtime ||
                 code !in state.providers ||
@@ -215,6 +334,7 @@ constructor(
 
     /** Only a visible catalogue product from this visit can be selected. */
     private fun selectProduct(id: String) {
+        if (mutableState.value.screen != PurchaseScreen.Form) return
         if (mutableState.value.visibleProducts.none { it.id == id }) {
             return
         }
@@ -229,11 +349,11 @@ constructor(
      * remains authoritative.
      */
     private fun editForm(update: PurchaseUiState.() -> PurchaseUiState) {
+        val operations = useCases ?: return
         val state = mutableState.value
         if (state.screen != PurchaseScreen.Form) {
             return
         }
-        val operations = useCases ?: return
         val changed = state.update().copy(issue = null)
         val check =
             operations.preparePurchase(
@@ -341,6 +461,8 @@ constructor(
                 state.context,
                 service = state.service,
                 featureAvailable = features.allows(state.service),
+                isRefreshing = state.isRefreshing,
+                refreshIssue = state.refreshIssue,
             )
     }
 
@@ -363,9 +485,6 @@ constructor(
 
     /** IO produces typed results; only the owning visit may reduce them into state/effects. */
     private sealed interface ActionResult {
-        /** Fresh owned display data and saved receipt/recovery references. */
-        data class Loaded(val context: PurchaseContext) : ActionResult
-
         /** Owner-bound verified meter for the unchanged form. */
         data class MeterVerified(val value: VerifiedMeter) : ActionResult
 
@@ -386,19 +505,6 @@ constructor(
     private fun applyResult(result: ActionResult) {
         val state = mutableState.value
         when (result) {
-            is ActionResult.Loaded ->
-                mutableState.value =
-                    state.copy(
-                        context = result.context,
-                        issue = result.context.issue,
-                        screen =
-                            if (
-                                result.context.requests.any { !it.acknowledged } ||
-                                    result.context.wallet == null
-                            )
-                                PurchaseScreen.History
-                            else PurchaseScreen.Form,
-                    )
             is ActionResult.MeterVerified -> editForm { copy(verifiedMeter = result.value) }
             is ActionResult.Reviewed -> {
                 mutableState.value =
@@ -458,7 +564,12 @@ constructor(
         if (mutableState.value.isProcessing) {
             return
         }
-        mutableState.value = mutableState.value.copy(isProcessing = true, issue = null)
+        cancelRefresh()
+        mutableState.value =
+            mutableState.value.copy(
+                isProcessing = true,
+                issue = null,
+            )
         action = viewModelScope.launch {
             var refreshAccountWallet = refreshWallet
             try {

@@ -72,6 +72,7 @@ fun PurchaseSheet(
         if (offline) {
             Text(stringResource(R.string.telecom_offline), color = Warning)
         }
+        PurchaseRefreshStatus(state, onIntent)
         if (state.isProcessing) {
             Text(stringResource(R.string.telecom_processing), color = Pine)
             LinearProgressIndicator(
@@ -122,20 +123,14 @@ private fun ColumnScope.PurchaseFields(
     hidden: Boolean,
     onIntent: (PurchaseIntent) -> Unit,
 ) {
-    val context = state.context ?: return
-    val wallet = context.wallet
-    if (wallet == null) {
-        PrimaryButton(stringResource(R.string.telecom_retry_load), enabled = !state.isProcessing) {
-            onIntent(PurchaseIntent.Reload)
-        }
-        SavedPaymentsLink(state, onIntent)
-        return
+    val context = state.context
+    context?.wallet?.let { wallet ->
+        InfoRow(
+            stringResource(R.string.telecom_wallet_balance),
+            if (hidden) stringResource(R.string.telecom_balance_hidden)
+            else walletMoney(wallet.availableMinorUnits, wallet.currency),
+        )
     }
-    InfoRow(
-        stringResource(R.string.telecom_wallet_balance),
-        if (hidden) stringResource(R.string.telecom_balance_hidden)
-        else walletMoney(wallet.availableMinorUnits, wallet.currency),
-    )
     Text(
         stringResource(
             if (state.service == PurchaseService.Electricity) R.string.electricity_live_provider
@@ -203,8 +198,9 @@ private fun ColumnScope.PurchaseFields(
             }
         }
     }
-    if (context.products.isEmpty()) {
-        Text(stringResource(R.string.telecom_empty), Modifier.testTag("telecom-empty"))
+    if (context?.products.isNullOrEmpty() && !state.isRefreshing) {
+        if (state.refreshIssue != null) Notice(state.refreshIssue)
+        else Text(stringResource(R.string.telecom_empty), Modifier.testTag("telecom-empty"))
         TextButton({ onIntent(PurchaseIntent.Reload) }, enabled = !state.isProcessing) {
             Text(stringResource(R.string.telecom_retry_load))
         }

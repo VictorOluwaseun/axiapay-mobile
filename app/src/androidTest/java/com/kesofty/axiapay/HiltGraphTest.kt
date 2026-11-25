@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.espresso.Espresso
 import com.kesofty.axiapay.domain.ConnectionMode
+import com.kesofty.axiapay.domain.config.PaymentFeatures
 import com.kesofty.axiapay.domain.purchases.PurchaseService
 import com.kesofty.axiapay.presentation.*
 import com.kesofty.axiapay.presentation.auth.AuthIntent
@@ -68,9 +69,21 @@ class HiltGraphTest {
     fun realPurchaseEntriesCannotUseTheDemoLedgerWithoutSignIn() {
         Assume.assumeTrue(BuildConfig.FLAVOR != "demo")
         compose.onNodeWithText("Explore demo").performScrollTo().performClick()
+        val auth = compose.runOnIdle {
+            ViewModelProvider(compose.activity)[AuthViewModel::class.java]
+        }
+        compose.waitUntil(35_000) { !auth.uiState.value.isConfigRefreshing }
+        // Exercise the sign-in boundary with these services enabled, including on a fresh device.
+        compose.runOnIdle {
+            val models = ViewModelProvider(compose.activity)
+            val features = PaymentFeatures(airtime = true, data = true, electricity = true)
+            models[AxiaViewModel::class.java].accept(AxiaIntent.UpdateFeatures(features))
+            models[PurchaseViewModel::class.java].accept(PurchaseIntent.UpdateFeatures(features))
+        }
         for (service in listOf("Airtime", "Data", "Electricity")) {
             compose
                 .onNode(hasTextExactly(service) and hasClickAction())
+                .assertIsEnabled()
                 .performScrollTo()
                 .performClick()
             compose.onNodeWithTag("telecom-sign-in").performScrollTo().assertIsDisplayed()

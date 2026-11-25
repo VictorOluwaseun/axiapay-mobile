@@ -87,6 +87,49 @@ class DataPurchasesTest {
     }
 
     /**
+     * A stored plan opens offline and survives a failed refresh while its recipient is being
+     * edited.
+     */
+    @Test
+    fun failedRefreshKeepsTheSavedDataPlanAndRecipientDraft() = runTest {
+        val f = fixture()
+        val owner = PurchaseOwner(f.accountId, f.api.apiIdentity)
+        val plan = f.api.catalogue.single()
+        f.catalogue.seed(owner, PurchaseService.Data, listOf(plan))
+
+        val cached = f.useCases.loadCachedPurchaseContext(f.accountId, PurchaseService.Data)
+        assertEquals(listOf(plan), cached.products)
+        assertTrue(cached.isCached)
+        assertEquals(0, f.authentication.identityRequests)
+        assertEquals(0, f.wallets.requests)
+        assertEquals(0, f.api.productsCalls)
+
+        val download = CompletableDeferred<Unit>()
+        f.api.productsGate = download
+        f.api.catalogueFailure = PurchaseIssue.Network
+        val vm = vm(f)
+        vm.accept(PurchaseIntent.Bind(f.accountId, "offline-data", PurchaseService.Data))
+        vm.accept(PurchaseIntent.SelectProvider(plan.providerCode))
+        vm.accept(PurchaseIntent.SelectProduct(plan.id))
+        vm.accept(PurchaseIntent.EditRecipient("08012345678"))
+        assertTrue(vm.uiState.value.isRefreshing)
+        val draft = requireNotNull(vm.uiState.value.prepared)
+
+        download.complete(Unit)
+        val state = vm.uiState.value
+        assertFalse(state.isRefreshing)
+        assertEquals(PurchaseIssue.Network, state.refreshIssue)
+        assertEquals(PurchaseScreen.Form, state.screen)
+        assertEquals(listOf(plan), state.context?.products)
+        assertEquals(plan, state.selectedProduct)
+        assertEquals(plan.providerCode, state.selectedProviderCode)
+        assertEquals("08012345678", state.recipient)
+        assertEquals(draft, state.prepared)
+        assertEquals(0, f.api.quoteCalls)
+        assertTrue(f.api.submissions.isEmpty())
+    }
+
+    /**
      * Catalogue and owned wallet reads produce the exact selected plan without an amount override.
      */
     @Test

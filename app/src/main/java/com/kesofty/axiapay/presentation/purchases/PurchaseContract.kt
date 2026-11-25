@@ -64,6 +64,8 @@ data class PurchaseUiState(
     val verifiedMeter: VerifiedMeter? = null,
     val contactPhoneNumber: String = "",
     val featureAvailable: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val refreshIssue: PurchaseIssue? = null,
 ) {
     /** Form-bound meter syntax permits a non-spending verification intent. */
     val canVerifyMeter: Boolean
@@ -108,7 +110,7 @@ data class PurchaseUiState(
             enabled,
             accountId,
             routeId,
-            if (accountId == null) PurchaseScreen.SignIn else PurchaseScreen.Loading,
+            if (accountId == null) PurchaseScreen.SignIn else PurchaseScreen.Form,
             service = service,
         )
     }

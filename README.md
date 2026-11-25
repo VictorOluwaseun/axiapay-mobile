@@ -311,6 +311,14 @@ Remote configuration reads Room before HTTP revalidation. A 200 atomically repla
 
 `LocalDashboardTest` exercises startup-before-refresh, offline retention, expiry, ownership, logout and missing-wallet invalidation. `DashboardDatabaseTest` verifies actual SQLite reopen, exact amounts, foreign-key retention/deletion and API/account isolation. `DashboardRoomUiTest` verifies a reopened database renders the real Home wallet while remote access is suspended, retains it on failure, then shows a later committed server response. Device checks use an explicitly selected physical phone.
 
+### Local-first purchase options
+
+Airtime and Data open an editable form immediately. The purchase workflow reads the signed-in account's saved wallet and catalogue from Room before starting HTTP. Network/plan pickers use those saved products while a small status line indicates background refresh. A first-ever cache miss still permits typing the recipient and amount while the real catalogue arrives; no local sample networks or prices are invented.
+
+`PurchaseCatalogueRepositoryImpl` commits a complete successful download atomically, updates only changed rows, and removes withdrawn IDs. Unchanged responses leave account, wallet and catalogue content/timestamps untouched. The UI then reads the committed result, retains typed fields and valid selections, and requires a new choice when the selected product disappears. Failed or cancelled downloads retain the last complete snapshot. Cache identity includes API, account, currency and service; logout removes dependent catalogue rows and late responses cannot repopulate them.
+
+Refresh has a separate lifecycle from review/payment actions. It never submits, reconciles or replays a purchase, and stale callbacks cannot overwrite review or a newer visit. Review still requests a current server quote and server authorization. `LocalPurchaseFlowTest`, the delayed-response cases in `PurchaseApiUiTest`, and `PurchaseCatalogueStorageTest` cover these behaviours, including SQLite restart, 1→2 migration, unchanged responses and withdrawal of a 1,000-product catalogue.
+
 ### Access and refresh sessions
 
 Non-demo authentication receives a 15-minute access token and a rotating refresh token bound to a fixed 30-day session family. The complete pair, family identity and deadlines are stored in one AES-GCM encrypted Keystore-backed record. Existing token-only records remain readable until their original expiry; they cannot refresh implicitly. The API independently checks expiry, revocation, account/device state and spending permission.

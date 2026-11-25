@@ -1,0 +1,4 @@
+<resources>
+    <string name="purchase_updating_options">Updating options…</string>
+    <string name="purchase_refresh_failed">Couldn’t refresh. Your saved options are still available.</string>
+</resources>

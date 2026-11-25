@@ -42,6 +42,7 @@ import java.io.File
 import java.time.*
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
@@ -60,7 +61,7 @@ class PurchaseApiUiTest {
         OkHttpClient.Builder()
             .retryOnConnectionFailure(false)
             .followRedirects(false)
-            .callTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
             .build()
     private val now = Instant.parse("2026-10-16T12:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
@@ -72,6 +73,9 @@ class PurchaseApiUiTest {
     private val requestKey = "123e4567-e89b-42d3-a456-426614174005"
     private val posts = AtomicInteger()
     private val quotes = AtomicInteger()
+    private val catalogueDownloads = AtomicInteger()
+    @Volatile private var catalogueGate: CountDownLatch? = null
+    @Volatile private var catalogueUnavailable = false
     private val requests = ConcurrentLinkedQueue<RecordedRequest>()
     @Volatile private var service = PurchaseService.Airtime
     @Volatile private var meterType = "prepaid"
@@ -153,7 +157,10 @@ class PurchaseApiUiTest {
                                     .put("totalMinorUnits", "500000")
                                     .toString(),
                             )
-                        request.target.startsWith("/v1/service-catalog/products?") ->
+                        request.target.startsWith("/v1/service-catalog/products?") -> {
+                            catalogueDownloads.incrementAndGet()
+                            catalogueGate?.await(25, TimeUnit.SECONDS)
+                            if (catalogueUnavailable) return response(503, "{}")
                             response(
                                 200,
                                 JSONObject()
@@ -161,6 +168,7 @@ class PurchaseApiUiTest {
                                     .put("nextCursor", JSONObject.NULL)
                                     .toString(),
                             )
+                        }
                         request.target == "/v1/payments/account-validations" ->
                             response(
                                 verificationCode,
@@ -208,6 +216,7 @@ class PurchaseApiUiTest {
     /** Close test-owned files, UI jobs and sockets without touching the real credential store. */
     @After
     fun close() {
+        catalogueGate?.countDown()
         compose.runOnIdle { owners.clear() }
         if (::database.isInitialized) database.close()
         client.dispatcher.cancelAll()
@@ -457,8 +466,17 @@ class PurchaseApiUiTest {
         json.put("fulfilment", receipt)
     }
 
-    /** Render AppSheet integration; direct sheet rendering makes large-font pixels capturable. */
-    private fun show(offline: Boolean = false, fontScale: Float = 1f, sheetOnly: Boolean = false) {
+    /**
+     * Render AppSheet integration and await attached content; local state can now finish before the
+     * first UI frame.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    private fun show(
+        offline: Boolean = false,
+        fontScale: Float = 1f,
+        sheetOnly: Boolean = false,
+        waitForOptions: Boolean = true,
+    ) {
         val form =
             PaymentFormState(
                 "visit",
@@ -502,13 +520,16 @@ class PurchaseApiUiTest {
             }
         }
         compose.runOnIdle { vm.accept(PurchaseIntent.Bind(accountId, "visit", service)) }
-        waitFor(PurchaseScreen.Form)
+        if (waitForOptions) waitFor(PurchaseScreen.Form)
+        compose.waitUntilAtLeastOneExists(hasTestTag("telecom-recipient"), timeoutMillis = 15_000)
     }
 
     /** Wait for bounded IO without using animation/timer idleness as a payment signal. */
     private fun waitFor(screen: PurchaseScreen) {
         compose.waitUntil(15_000) {
-            vm.uiState.value.screen == screen && !vm.uiState.value.isProcessing
+            vm.uiState.value.screen == screen &&
+                !vm.uiState.value.isProcessing &&
+                !vm.uiState.value.isRefreshing
         }
     }
 
@@ -525,6 +546,111 @@ class PurchaseApiUiTest {
         Espresso.closeSoftKeyboard()
         compose.onNodeWithTag("telecom-review").performScrollTo().assertIsEnabled().performClick()
         waitFor(PurchaseScreen.Review)
+    }
+
+    /**
+     * A first-ever download never blocks recipient or amount entry, and its result preserves the
+     * draft.
+     */
+    @Test
+    fun firstCatalogueDownloadKeepsTheFormEditable() {
+        catalogueGate = CountDownLatch(1)
+        try {
+            show(sheetOnly = true, waitForOptions = false)
+            compose.waitUntil(5000) { catalogueDownloads.get() == 1 }
+            compose.onNodeWithTag("telecom-product-$productId").assertDoesNotExist()
+            compose
+                .onNodeWithTag("telecom-recipient")
+                .performScrollTo()
+                .assertIsEnabled()
+                .performTextInput("08012345678")
+            compose
+                .onNodeWithTag("telecom-amount")
+                .performScrollTo()
+                .assertIsEnabled()
+                .performTextInput("250")
+            assertTrue(vm.uiState.value.isRefreshing)
+        } finally {
+            catalogueGate!!.countDown()
+        }
+        waitFor(PurchaseScreen.Form)
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("telecom-product-$productId").performScrollTo().assertIsEnabled()
+        assertEquals("08012345678", vm.uiState.value.recipient)
+        assertEquals("250", vm.uiState.value.amount)
+        assertEquals(0, quotes.get())
+        assertEquals(0, posts.get())
+    }
+
+    /**
+     * A later visit can pick cached networks before HTTP returns, then adopts changed availability.
+     */
+    @Test
+    fun cachedNetworkPickerWorksDuringBackgroundRefresh() {
+        show(fontScale = 2f, sheetOnly = true)
+        productAvailable = false
+        catalogueGate = CountDownLatch(1)
+        try {
+            compose.runOnIdle { vm.accept(PurchaseIntent.Bind(accountId, "cached-visit", service)) }
+            compose.waitUntil(5000) {
+                catalogueDownloads.get() == 2 &&
+                    vm.uiState.value.context?.products?.isNotEmpty() == true
+            }
+            compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
+            compose
+                .onNodeWithTag("telecom-recipient")
+                .performScrollTo()
+                .assertIsEnabled()
+                .performTextInput("08012345678")
+            compose
+                .onNodeWithTag("telecom-amount")
+                .performScrollTo()
+                .assertIsEnabled()
+                .performTextInput("250")
+            assertTrue(vm.uiState.value.isRefreshing)
+            assertTrue(vm.uiState.value.selectedProduct!!.isSubmissionAvailable)
+        } finally {
+            catalogueGate!!.countDown()
+        }
+        waitFor(PurchaseScreen.Form)
+        assertFalse(vm.uiState.value.selectedProduct!!.isSubmissionAvailable)
+        assertEquals("08012345678", vm.uiState.value.recipient)
+        assertEquals("250", vm.uiState.value.amount)
+        assertEquals(0, quotes.get())
+        assertEquals(0, posts.get())
+    }
+
+    /** The data picker uses Room while HTTP is unavailable and keeps edits made during refresh. */
+    @Test
+    fun failedCatalogueRefreshPreservesTheCachedPlanAndRecipient() {
+        service = PurchaseService.Data
+        show(offline = true, sheetOnly = true)
+        catalogueUnavailable = true
+        val download = CountDownLatch(1)
+        catalogueGate = download
+        try {
+            compose.runOnIdle { vm.accept(PurchaseIntent.Bind(accountId, "cached-data", service)) }
+            compose.waitUntil(10_000) {
+                catalogueDownloads.get() == 2 && vm.uiState.value.context?.isCached == true
+            }
+            compose.onNodeWithTag("telecom-network-mtn").performScrollTo().performClick()
+            compose.onNodeWithTag("telecom-product-$productId").performScrollTo().performClick()
+            compose
+                .onNodeWithTag("telecom-recipient")
+                .performScrollTo()
+                .performTextInput("08012345678")
+        } finally {
+            download.countDown()
+        }
+        waitFor(PurchaseScreen.Form)
+        val state = vm.uiState.value
+        assertEquals(PurchaseIssue.Unavailable, state.refreshIssue)
+        assertEquals(productId, state.selectedProductId)
+        assertEquals("mtn", state.selectedProviderCode)
+        assertEquals("08012345678", state.recipient)
+        assertTrue(requireNotNull(state.context).isCached)
+        assertEquals(0, quotes.get())
+        assertEquals(0, posts.get())
     }
 
     /** Full UI quote/confirm/status flow uses the owned wallet, with one explicit consent POST. */
