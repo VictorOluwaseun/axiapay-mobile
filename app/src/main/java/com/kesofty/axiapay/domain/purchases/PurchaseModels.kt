@@ -128,6 +128,20 @@ enum class PurchasePaymentStatus {
     Failed,
 }
 
+/** Server-reported reward state; eligibility alone is never a spendable wallet credit. */
+enum class PurchaseCashbackStatus {
+    NotEligible,
+    Pending,
+    NotEarned,
+    Credited,
+}
+
+/** Exact server credit amount, held in memory only alongside its purchase receipt. */
+data class PurchaseCashback(val status: PurchaseCashbackStatus, val amountMinorUnits: BigInteger?) {
+    /** Keep reward amounts out of diagnostic interpolation. */
+    override fun toString() = "PurchaseCashback(status=$status, amount=redacted)"
+}
+
 /** Authenticated progress. Pending and reserved outcomes must never become successful receipts. */
 data class PurchasePayment(
     val id: String,
@@ -137,6 +151,7 @@ data class PurchasePayment(
     val createdAt: Instant,
     val submissionStartedAt: Instant?,
     val electricityReceipt: ElectricityReceipt? = null,
+    val cashback: PurchaseCashback? = null,
 ) {
     /** Final server outcomes permit acknowledgement of the local recovery reference. */
     val isFinal: Boolean

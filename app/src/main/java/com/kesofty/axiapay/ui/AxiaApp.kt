@@ -58,6 +58,8 @@ fun AxiaApp(
     purchases: PurchaseUiState? = null,
     onPurchaseIntent: (PurchaseIntent) -> Unit = {},
     fundingContent: (@Composable () -> Unit)? = null,
+    activityContent: (@Composable () -> Unit)? = null,
+    recentActivityContent: (@Composable () -> Unit)? = null,
     onOpenAccount: () -> Unit = {},
 ) {
     if (uiState.isRestoring || uiState.restorationFailed) {
@@ -105,6 +107,7 @@ fun AxiaApp(
                                     onRefreshWallet,
                                     onOpenAccount,
                                     uiState.features,
+                                    recentActivityContent,
                                 )
                             AppDestination.Payments ->
                                 PaymentsScreen(
@@ -120,14 +123,16 @@ fun AxiaApp(
                                     uiState.features,
                                 )
                             AppDestination.Activity ->
-                                ActivityScreen(
-                                    state,
-                                    navigation.activityFilter,
-                                    { onIntent(AxiaIntent.FilterActivity(it)) },
-                                    onReceipt,
-                                    { onIntent(AxiaIntent.OpenSms(it)) },
-                                    { onIntent(AxiaIntent.Bulk(BulkIntent.OpenBatch(it))) },
-                                )
+                                if (activityContent != null) activityContent()
+                                else
+                                    ActivityScreen(
+                                        state,
+                                        navigation.activityFilter,
+                                        { onIntent(AxiaIntent.FilterActivity(it)) },
+                                        onReceipt,
+                                        { onIntent(AxiaIntent.OpenSms(it)) },
+                                        { onIntent(AxiaIntent.Bulk(BulkIntent.OpenBatch(it))) },
+                                    )
                             AppDestination.Plans -> PlansScreen(state, open, onIntent)
                             else -> Unit
                         }
@@ -352,7 +357,9 @@ private fun BottomNavigation(selectedTab: Int, onSelect: (Int) -> Unit) {
     }
 }
 
-/** Render the current wallet source above the independently owned payment previews. */
+/**
+ * Render the wallet and account-owned recent purchases; demo retains its separate sample ledger.
+ */
 @Composable
 private fun HomeScreen(
     state: DemoSession,
@@ -364,6 +371,7 @@ private fun HomeScreen(
     onRefreshWallet: () -> Unit,
     onOpenAccount: () -> Unit,
     features: com.kesofty.axiapay.domain.config.PaymentFeatures,
+    recentActivityContent: (@Composable () -> Unit)?,
 ) {
     LazyColumn(
         modifier = Modifier.testTag("home-dashboard"),
@@ -444,17 +452,20 @@ private fun HomeScreen(
             }
         }
         item {
-            Column {
+            Column(Modifier.testTag("home-recent-activity")) {
                 SectionHeading(
-                    "Recent activity",
-                    "View all",
-                    stringResource(R.string.dashboard_preview),
+                    stringResource(R.string.home_activity_title),
+                    stringResource(R.string.home_activity_view_all),
+                    if (recentActivityContent == null) stringResource(R.string.dashboard_preview)
+                    else null,
                 ) {
                     onTab(2)
                 }
-                state.payments.take(3).forEach { payment ->
-                    PaymentRow(payment, state.hidden) { onReceipt(payment.id) }
-                }
+                if (recentActivityContent != null) recentActivityContent()
+                else
+                    state.payments.take(3).forEach { payment ->
+                        PaymentRow(payment, state.hidden) { onReceipt(payment.id) }
+                    }
             }
         }
         item {

@@ -1,0 +1,16 @@
+<resources>
+    <string name="live_activity_title">Your money, in view.</string>
+    <string name="live_activity_subtitle">Recent purchases made on this device.</string>
+    <string name="live_activity_refresh">Refresh activity</string>
+    <string name="live_activity_error">Activity could not be refreshed. Try again to check the latest payment status.</string>
+    <string name="live_activity_empty">Your purchases will appear here.</string>
+    <string name="live_activity_succeeded">Successful</string>
+    <string name="live_activity_failed">Failed</string>
+    <string name="live_activity_pending">Pending</string>
+    <string name="live_activity_awaiting_funds">Awaiting funds</string>
+    <string name="live_activity_unconfirmed">Not confirmed</string>
+    <string name="live_activity_unknown">Payment status unavailable</string>
+    <string name="home_activity_title">Recent activity</string>
+    <string name="home_activity_view_all">View all</string>
+    <string name="home_activity_hidden_amount">••••</string>
+</resources>

@@ -85,9 +85,18 @@ class PurchaseActivityViewModelTest {
         fixture.useCases.acknowledgePurchase(
             fixture.useCases.submitPurchase(fixture.accountId, review),
         )
+        fixture.api.observed =
+            fixture.api.observed!!.copy(
+                cashback =
+                    PurchaseCashback(
+                        PurchaseCashbackStatus.Credited,
+                        java.math.BigInteger.valueOf(300),
+                    ),
+            )
         viewModel.accept(PurchaseActivityIntent.Bind(fixture.accountId, true))
         val entries = viewModel.uiState.value.entries
         assertEquals(review.request.requestKey, entries.single().request.requestKey)
+        assertEquals(PurchaseCashbackStatus.Credited, entries.single().payment?.cashback?.status)
         val reads = fixture.api.gets
         viewModel.accept(PurchaseActivityIntent.Bind(fixture.accountId, true))
         assertEquals(reads, fixture.api.gets)
@@ -156,7 +165,19 @@ class PurchaseActivityViewModelTest {
         assertEquals(entry, viewModel.uiState.value.selectedEntry)
         assertEquals(reads, fixture.api.gets)
         assertNull(viewModel.uiState.value.forAccount("other-account").selectedEntry)
+        fixture.api.observed =
+            fixture.api.observed!!.copy(
+                cashback =
+                    PurchaseCashback(
+                        PurchaseCashbackStatus.Credited,
+                        java.math.BigInteger.valueOf(150),
+                    ),
+            )
         viewModel.accept(PurchaseActivityIntent.Refresh)
+        assertEquals(
+            java.math.BigInteger.valueOf(150),
+            viewModel.uiState.value.selectedEntry?.payment?.cashback?.amountMinorUnits,
+        )
         fixture.api.historyFailure = PurchaseIssue.Network
         viewModel.accept(PurchaseActivityIntent.Refresh)
         assertNotNull(viewModel.uiState.value.selectedEntry)

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cashback_credited">Cashback credited to wallet: %1$s</string>
+    <string name="cashback_pending">Your purchase succeeded. Cashback is being confirmed.</string>
+    <string name="cashback_none">No cashback was earned on this purchase.</string>
+</resources>

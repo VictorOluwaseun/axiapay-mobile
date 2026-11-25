@@ -108,6 +108,44 @@ class HttpPurchaseRepositoryTest {
             .put("createdAt", f.now.toString())
             .put("submissionStartedAt", JSONObject.NULL)
 
+    /**
+     * A credited reward is separate from the original debit; pending cashback remains recoverable.
+     */
+    @Test
+    fun cashbackReceiptUsesOnlyCommittedServerAmounts() = runTest {
+        val saved =
+            PurchaseRequest(
+                PurchaseOwner(f.accountId, api.apiIdentity),
+                "123e4567-e89b-42d3-a456-426614174005",
+                f.api.quoted.id,
+                f.now,
+            )
+        val json = payment(saved, "succeeded")
+        json.put(
+            "cashback",
+            JSONObject()
+                .put("status", "pending")
+                .put("amountMinorUnits", JSONObject.NULL)
+                .put("creditedAt", JSONObject.NULL),
+        )
+        server.enqueue(response(200, json.toString()))
+        val pending = api.findByRequestKey("synthetic-token", saved.requestKey)!!
+        assertEquals(PurchaseCashbackStatus.Pending, pending.cashback?.status)
+        assertNull(pending.cashback?.amountMinorUnits)
+        json
+            .getJSONObject("cashback")
+            .put("status", "credited")
+            .put("amountMinorUnits", "150")
+            .put("creditedAt", f.now.toString())
+        server.enqueue(response(200, json.toString()))
+        val credited = api.findByRequestKey("synthetic-token", saved.requestKey)!!
+        assertEquals(PurchaseCashbackStatus.Credited, credited.cashback?.status)
+        assertEquals(java.math.BigInteger("150"), credited.cashback?.amountMinorUnits)
+        assertEquals(java.math.BigInteger("10100"), credited.quote.totalDebitMinorUnits)
+        assertEquals("GET", server.takeRequest().method)
+        assertEquals("GET", server.takeRequest().method)
+    }
+
     /** Catalogue pages retain account bearer and effective filters, without demo fallback. */
     @Test
     fun cataloguePaginationRetainsFiltersAndBearer() = runTest {

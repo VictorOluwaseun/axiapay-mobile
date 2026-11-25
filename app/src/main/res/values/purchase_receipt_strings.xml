@@ -1,0 +1,14 @@
+<resources>
+    <string name="purchase_receipt_title">Purchase receipt</string>
+    <string name="purchase_receipt_recipient">Recipient</string>
+    <string name="purchase_receipt_amount">Amount</string>
+    <string name="purchase_receipt_debit">Wallet debit</string>
+    <string name="purchase_receipt_cashback">Cashback</string>
+    <string name="purchase_receipt_cashback_ineligible">This purchase was not eligible for cashback.</string>
+    <string name="purchase_receipt_date">Date</string>
+    <string name="purchase_receipt_reference">Transaction reference</string>
+    <string name="purchase_receipt_request_reference">Request reference</string>
+    <string name="purchase_receipt_unavailable">Not available yet</string>
+    <string name="purchase_receipt_error">Could not refresh this receipt. The last available details are shown.</string>
+    <string name="purchase_receipt_refresh">Refresh receipt</string>
+</resources>

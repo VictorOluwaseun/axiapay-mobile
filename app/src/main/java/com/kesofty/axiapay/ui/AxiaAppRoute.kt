@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -23,6 +24,9 @@ import com.kesofty.axiapay.presentation.navigation.accountBackStack
 import com.kesofty.axiapay.presentation.purchases.*
 import com.kesofty.axiapay.ui.auth.AuthScreen
 import com.kesofty.axiapay.ui.navigation.StateNavigationHost
+import com.kesofty.axiapay.ui.purchases.PurchaseActivityScreen
+import com.kesofty.axiapay.ui.purchases.PurchaseReceiptSheet
+import com.kesofty.axiapay.ui.purchases.RecentPurchases
 import com.kesofty.axiapay.ui.theme.AxiapayTheme
 import com.kesofty.axiapay.wallet.presentation.*
 import com.kesofty.axiapay.wallet.ui.*
@@ -40,6 +44,7 @@ fun AxiaAppRoute(
     authViewModel: AuthViewModel = hiltViewModel(),
     purchaseViewModel: PurchaseViewModel = hiltViewModel(),
     fundingViewModel: FundingViewModel = hiltViewModel(key = FUNDING_VIEW_MODEL_KEY),
+    activityViewModel: PurchaseActivityViewModel = hiltViewModel(),
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
@@ -56,6 +61,18 @@ fun AxiaAppRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val purchaseState by purchaseViewModel.uiState.collectAsStateWithLifecycle()
     val fundingState by fundingViewModel.uiState.collectAsStateWithLifecycle()
+    val activityState by activityViewModel.uiState.collectAsStateWithLifecycle()
+    val activityAccountId =
+        authState.account?.id.takeIf { authState.screen == AuthScreen.Dashboard }
+    val activityVisible =
+        authState.screen == AuthScreen.Dashboard &&
+            !authState.isDemo &&
+            state.navigation.tab in setOf(0, 2) &&
+            state.navigation.sheet == null &&
+            state.navigation.bulk.screen == null
+    LaunchedEffect(activityAccountId, activityVisible) {
+        activityViewModel.accept(PurchaseActivityIntent.Bind(activityAccountId, activityVisible))
+    }
     val fundingRouteId =
         (state.navigation.sheet as? Sheet.Payment)?.form?.takeIf { it.isFunding }?.requestId
     val fundingAccountId = authState.account?.id.takeIf { authState.screen == AuthScreen.Dashboard }
@@ -162,6 +179,43 @@ fun AxiaAppRoute(
                                     it.enabled
                                 },
                         onPurchaseIntent = purchaseViewModel::accept,
+                        recentActivityContent =
+                            if (authState.isDemo) null
+                            else {
+                                {
+                                    RecentPurchases(
+                                        state = activityState.forAccount(activityAccountId),
+                                        hidden = state.session.hidden,
+                                        onRefresh = {
+                                            activityViewModel.accept(PurchaseActivityIntent.Refresh)
+                                        },
+                                        onSignIn = { authViewModel.accept(AuthIntent.OpenAccount) },
+                                        onOpenReceipt = {
+                                            activityViewModel.accept(
+                                                PurchaseActivityIntent.OpenReceipt(it),
+                                            )
+                                        },
+                                    )
+                                }
+                            },
+                        activityContent =
+                            if (authState.isDemo) null
+                            else {
+                                {
+                                    PurchaseActivityScreen(
+                                        activityState.forAccount(activityAccountId),
+                                        {
+                                            activityViewModel.accept(PurchaseActivityIntent.Refresh)
+                                        },
+                                        { authViewModel.accept(AuthIntent.OpenAccount) },
+                                        {
+                                            activityViewModel.accept(
+                                                PurchaseActivityIntent.OpenReceipt(it),
+                                            )
+                                        },
+                                    )
+                                }
+                            },
                         fundingContent =
                             if (authState.isDemo) null
                             else {
@@ -187,6 +241,22 @@ fun AxiaAppRoute(
                         authViewModel.accept(AuthIntent.OpenAccount)
                     }
                 else -> AuthScreen(authState, state.session.offline, authViewModel::accept)
+            }
+        }
+        if (activityVisible) {
+            val currentActivity = activityState.forAccount(activityAccountId)
+            currentActivity.selectedEntry?.let { entry ->
+                key(entry.request.requestKey) {
+                    PurchaseReceiptSheet(
+                        entry = entry,
+                        loading = currentActivity.loading,
+                        issue = currentActivity.issue,
+                        onRefresh = { activityViewModel.accept(PurchaseActivityIntent.Refresh) },
+                        onDismiss = {
+                            activityViewModel.accept(PurchaseActivityIntent.CloseReceipt)
+                        },
+                    )
+                }
             }
         }
     }

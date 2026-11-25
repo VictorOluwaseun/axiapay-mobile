@@ -144,7 +144,48 @@ internal object PurchaseJsonCodec {
             nullableString(json, "submissionStartedAt")?.let(Instant::parse),
             if (quote.service == PurchaseService.Electricity) receipt(json, quote, status)
             else null,
+            cashback(json, status),
         )
+    }
+
+    /**
+     * Parse committed reward evidence separately from payment status; never infer a credit from
+     * eligibility.
+     */
+    private fun cashback(
+        json: JSONObject,
+        paymentStatus: PurchasePaymentStatus,
+    ): PurchaseCashback? {
+        if (!json.has("cashback")) return null
+        val reward = json.getJSONObject("cashback")
+        val status =
+            when (string(reward, "status")) {
+                "not_eligible" -> PurchaseCashbackStatus.NotEligible
+                "pending" -> PurchaseCashbackStatus.Pending
+                "not_earned" -> PurchaseCashbackStatus.NotEarned
+                "credited" -> PurchaseCashbackStatus.Credited
+                else -> error("Unknown cashback status")
+            }
+        val credited = status == PurchaseCashbackStatus.Credited
+        val value =
+            when (status) {
+                PurchaseCashbackStatus.Credited,
+                PurchaseCashbackStatus.NotEarned -> amount(reward, "amountMinorUnits")
+                else -> {
+                    require(reward.isNull("amountMinorUnits"))
+                    null
+                }
+            }
+        if (credited) {
+            require(
+                paymentStatus == PurchasePaymentStatus.Succeeded &&
+                    requireNotNull(value) > BigInteger.ZERO,
+            )
+            Instant.parse(string(reward, "creditedAt"))
+        }
+        if (!credited) require(reward.isNull("creditedAt"))
+        if (status == PurchaseCashbackStatus.NotEarned) require(value == BigInteger.ZERO)
+        return PurchaseCashback(status, value)
     }
 
     /** Accept only implemented service contracts, never a guessed provider mapping. */
