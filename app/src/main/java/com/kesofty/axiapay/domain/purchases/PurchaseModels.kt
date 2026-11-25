@@ -185,6 +185,7 @@ data class PurchaseContext(
     val products: List<PurchaseProduct>,
     val requests: List<PurchaseRequest>,
     val issue: PurchaseIssue? = null,
+    val isCached: Boolean = false,
 )
 
 /** Explicitly reviewed terms retain one logical identity across retries. */

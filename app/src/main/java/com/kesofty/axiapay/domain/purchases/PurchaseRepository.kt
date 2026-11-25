@@ -8,13 +8,6 @@ interface PurchaseRepository {
     /** Normalized origin/prefix must match the API that issued the protected credential. */
     val apiIdentity: String
 
-    /** Read all bounded service-scoped catalogue pages with the same currency/filter scope. */
-    suspend fun products(
-        accessToken: String,
-        currency: String,
-        service: PurchaseService = PurchaseService.Airtime,
-    ): List<PurchaseProduct>
-
     /**
      * Verify an electricity meter without reserving or paying; provider terms remain authoritative.
      */

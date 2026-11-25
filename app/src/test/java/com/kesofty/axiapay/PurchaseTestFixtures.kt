@@ -1,6 +1,7 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.application.purchases.*
+import com.kesofty.axiapay.data.purchases.remote.PurchaseCatalogueRemoteDataSource
 import com.kesofty.axiapay.domain.auth.StoredAuthenticationSession
 import com.kesofty.axiapay.domain.purchases.*
 import java.math.BigInteger
@@ -19,6 +20,7 @@ internal class PurchaseFixture {
                 authentication.session.accessToken,
                 now.plusSeconds(3600),
                 authentication.apiIdentity,
+                accountId,
             ),
         )
     val wallets = RecordingWalletRemoteDataSource()
@@ -26,10 +28,20 @@ internal class PurchaseFixture {
     val api = RecordingPurchaseRepository(now, wallets.wallet.id)
     val dashboard = InMemoryDashboardRepository()
     val walletRepository = dashboard.walletRepository(wallets)
+    val catalogue = MemoryPurchaseCatalogue(api)
+    val access = PurchaseSessionAccess(authentication, sessions, walletRepository, api, clock)
     val workflow =
-        WalletPurchases(authentication, sessions, walletRepository, api, store, dashboard, clock) {
+        WalletPurchases(access, walletRepository, api, store, clock) {
             "123e4567-e89b-42d3-a456-426614174005"
         }
+    private val contexts = PurchaseContextReader(catalogue, store)
+    val useCases =
+        PurchaseUseCases(
+            LoadCachedPurchaseContext(access, walletRepository, contexts),
+            RefreshPurchaseContext(access, walletRepository, dashboard, catalogue, contexts),
+            PreparePurchase(),
+            workflow,
+        )
     val input = PurchaseQuoteInput(api.product.id, "+2348012345678", BigInteger.valueOf(10000))
 }
 
@@ -57,7 +69,8 @@ internal class MemoryPurchaseRequests : PurchaseRequestStore {
 }
 
 /** Observable API port supports uncertainty and cancellation-resistant responses. */
-internal class RecordingPurchaseRepository(now: Instant, walletId: String) : PurchaseRepository {
+internal class RecordingPurchaseRepository(now: Instant, walletId: String) :
+    PurchaseRepository, PurchaseCatalogueRemoteDataSource {
     override var apiIdentity = "https://api.example.test/v1/"
     val product =
         PurchaseProduct(
@@ -93,6 +106,7 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
     var quoteWallet: String? = null
     var quotedInput: PurchaseQuoteInput? = null
     var productsCalls = 0
+    var productsGate: CompletableDeferred<Unit>? = null
     var catalogueFailure: PurchaseIssue? = null
     var quoteCalls = 0
     var gets = 0
@@ -117,8 +131,10 @@ internal class RecordingPurchaseRepository(now: Instant, walletId: String) : Pur
     ): List<PurchaseProduct> {
         productsCalls++
         requestedService = service
+        val snapshot = catalogue.filter { it.service == service }
+        productsGate?.let { withContext(NonCancellable) { it.await() } }
         catalogueFailure?.let { throw PurchaseFailure(it) }
-        return catalogue.filter { it.service == service }
+        return snapshot
     }
 
     /** Injectable non-spending verification for correlation, expiry and late-result checks. */

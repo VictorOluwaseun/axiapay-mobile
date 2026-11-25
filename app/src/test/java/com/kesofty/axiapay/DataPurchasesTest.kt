@@ -67,7 +67,7 @@ class DataPurchasesTest {
 
     /** Construct the actual reducer/workflow with a test lifecycle owner. */
     private fun vm(f: PurchaseFixture) =
-        PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
+        PurchaseViewModel(Optional.of(f.useCases), f.clock).also {
             it.accept(
                 PurchaseIntent.UpdateFeatures(
                     com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
@@ -92,7 +92,7 @@ class DataPurchasesTest {
     @Test
     fun fixedPlanReviewUsesOwnedWalletAndPublishedTerms() = runTest {
         val f = fixture()
-        val context = f.workflow.load(f.accountId, PurchaseService.Data)
+        val context = f.useCases.refreshPurchaseContext(f.accountId, PurchaseService.Data)
         assertEquals(PurchaseService.Data, f.api.requestedService)
         assertEquals(listOf(f.api.catalogue.first()), context.products)
         val prepared = input(f)
@@ -120,10 +120,13 @@ class DataPurchasesTest {
         val foreign =
             data.copy(owner = data.owner.copy(accountId = "123e4567-e89b-42d3-a456-426614174099"))
         f.store.records = listOf(data, airtime, foreign)
-        assertEquals(listOf(data), f.workflow.load(f.accountId, PurchaseService.Data).requests)
+        assertEquals(
+            listOf(data),
+            f.useCases.refreshPurchaseContext(f.accountId, PurchaseService.Data).requests,
+        )
         assertEquals(
             listOf(airtime),
-            f.workflow.load(f.accountId, PurchaseService.Airtime).requests,
+            f.useCases.refreshPurchaseContext(f.accountId, PurchaseService.Airtime).requests,
         )
         f.api.status = PurchasePaymentStatus.Succeeded
         f.api.observed =
@@ -163,7 +166,7 @@ class DataPurchasesTest {
         f.api.catalogueFailure = PurchaseIssue.Unavailable
         assertEquals(
             listOf(review.request),
-            f.workflow.load(f.accountId, PurchaseService.Data).requests,
+            f.useCases.refreshPurchaseContext(f.accountId, PurchaseService.Data).requests,
         )
         assertEquals(PurchaseIssue.NotFound, f.workflow.recover(f.accountId, review.request).issue)
         assertEquals(1, f.api.submissions.size)

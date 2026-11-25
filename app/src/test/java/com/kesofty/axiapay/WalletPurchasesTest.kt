@@ -45,7 +45,7 @@ class WalletPurchasesTest {
     @Test
     fun reviewUsesOwnedWalletAndPersistsOnlyOnConfirmation() = runTest {
         val f = PurchaseFixture()
-        val context = f.workflow.load(f.accountId)
+        val context = f.useCases.refreshPurchaseContext(f.accountId)
         val review = f.workflow.review(f.accountId, f.input)
         assertEquals(requireNotNull(context.wallet).id, f.api.quoteWallet)
         assertEquals(f.input, f.api.quotedInput)
@@ -86,7 +86,10 @@ class WalletPurchasesTest {
         val unknown = f.workflow.submit(f.accountId, review)
         assertNull(unknown.payment)
         assertEquals(PurchaseIssue.Network, unknown.issue)
-        assertEquals(listOf(review.request), f.workflow.load(f.accountId).requests)
+        assertEquals(
+            listOf(review.request),
+            f.useCases.refreshPurchaseContext(f.accountId).requests,
+        )
         val missing = f.workflow.recover(f.accountId, review.request)
         assertEquals(PurchaseIssue.NotFound, missing.issue)
         assertEquals(1, f.api.submissions.size)
@@ -135,7 +138,7 @@ class WalletPurchasesTest {
         }
         failure(PurchaseIssue.NotFound) { f.workflow.retrySubmission(f.accountId, review.request) }
         f.api.apiIdentity = "https://another.example.test/v1/"
-        failure(PurchaseIssue.Configuration) { f.workflow.load(f.accountId) }
+        failure(PurchaseIssue.Configuration) { f.useCases.refreshPurchaseContext(f.accountId) }
         assertTrue(f.api.submissions.isEmpty())
     }
 
@@ -157,7 +160,7 @@ class WalletPurchasesTest {
         f.authentication.beforeIdentity = { f.sessions.value = newer }
         f.sessions.value = old
         f.authentication.failure = AuthenticationFailure(AccountAccessIssue.InvalidCredentials)
-        failure(PurchaseIssue.SignInRequired) { f.workflow.load(f.accountId) }
+        failure(PurchaseIssue.SignInRequired) { f.useCases.refreshPurchaseContext(f.accountId) }
         assertEquals(newer, f.sessions.value)
         assertTrue(f.api.submissions.isEmpty())
     }
@@ -204,19 +207,22 @@ class WalletPurchasesTest {
             com.kesofty.axiapay.wallet.domain.WalletFailure(
                 com.kesofty.axiapay.wallet.domain.WalletIssue.Network,
             )
-        val context = f.workflow.load(f.accountId)
+        val context = f.useCases.refreshPurchaseContext(f.accountId)
         assertNull(context.wallet)
         assertEquals(listOf(review.request), context.requests)
         assertNotNull(f.workflow.recover(f.accountId, review.request).payment)
         f.wallets.failure = null
         f.api.catalogueFailure = PurchaseIssue.Unavailable
-        assertEquals(listOf(review.request), f.workflow.load(f.accountId).requests)
+        assertEquals(
+            listOf(review.request),
+            f.useCases.refreshPurchaseContext(f.accountId).requests,
+        )
         assertEquals(1, f.api.submissions.size)
         f.wallets.failure =
             com.kesofty.axiapay.wallet.domain.WalletFailure(
                 com.kesofty.axiapay.wallet.domain.WalletIssue.InvalidSession,
             )
-        failure(PurchaseIssue.SignInRequired) { f.workflow.load(f.accountId) }
+        failure(PurchaseIssue.SignInRequired) { f.useCases.refreshPurchaseContext(f.accountId) }
     }
 
     /** Assertions retain classified failures rather than relying on raw upstream strings. */

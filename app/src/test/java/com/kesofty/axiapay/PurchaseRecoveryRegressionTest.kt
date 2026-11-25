@@ -1,7 +1,7 @@
 package com.kesofty.axiapay
 
 import androidx.lifecycle.ViewModelStore
-import com.kesofty.axiapay.application.purchases.PreparePurchase
+import com.kesofty.axiapay.application.purchases.PurchaseSessionAccess
 import com.kesofty.axiapay.application.purchases.WalletPurchases
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.presentation.purchases.*
@@ -216,12 +216,10 @@ class PurchaseRecoveryRegressionTest {
     /** Compose an actual application operation with isolated ports for the failure under test. */
     private fun workflow(f: PurchaseFixture, api: PurchaseRepository, store: PurchaseRequestStore) =
         WalletPurchases(
-            f.authentication,
-            f.sessions,
+            PurchaseSessionAccess(f.authentication, f.sessions, f.walletRepository, api, f.clock),
             f.walletRepository,
             api,
             store,
-            f.dashboard,
             f.clock,
         ) {
             "123e4567-e89b-42d3-a456-426614174005"
@@ -229,14 +227,18 @@ class PurchaseRecoveryRegressionTest {
 
     /** Lifecycle ownership makes cancellation and expiry behavior match production. */
     private fun vm(f: PurchaseFixture, workflow: WalletPurchases = f.workflow) =
-        PurchaseViewModel(Optional.of(workflow), PreparePurchase(), f.clock).also {
-            it.accept(
-                PurchaseIntent.UpdateFeatures(
-                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
-                ),
+        PurchaseViewModel(
+                Optional.of(f.useCases.copy(payments = workflow)),
+                f.clock,
             )
-            owners.put("review", it)
-        }
+            .also {
+                it.accept(
+                    PurchaseIntent.UpdateFeatures(
+                        com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                    ),
+                )
+                owners.put("review", it)
+            }
 
     /** Create an immutable airtime review through actual intents without submitting anything. */
     private fun review(vm: PurchaseViewModel, f: PurchaseFixture) {

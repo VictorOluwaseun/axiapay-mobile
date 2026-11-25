@@ -1,7 +1,6 @@
 package com.kesofty.axiapay.data.purchases
 
 import com.kesofty.axiapay.data.http.ApiHttpClient
-import com.kesofty.axiapay.data.purchases.remote.HttpPurchaseCatalogueRemoteDataSource
 import com.kesofty.axiapay.data.purchases.remote.PurchaseJsonCodec
 import com.kesofty.axiapay.data.purchases.remote.mapPurchaseResponse
 import com.kesofty.axiapay.domain.purchases.*
@@ -9,17 +8,8 @@ import org.json.JSONObject
 
 /** Maps verified meter, quote and payment requests to the first-party purchase API. */
 class HttpPurchaseRepository(private val http: ApiHttpClient) : PurchaseRepository {
-    private val catalogue = HttpPurchaseCatalogueRemoteDataSource(http)
-
     override val apiIdentity: String
         get() = mapPurchaseResponse { http.apiIdentity }
-
-    /** Read the service catalogue for callers using the purchase repository. */
-    override suspend fun products(
-        accessToken: String,
-        currency: String,
-        service: PurchaseService,
-    ): List<PurchaseProduct> = catalogue.products(accessToken, currency, service)
 
     /** Verify exact meter text with the selected server product; never send a payment here. */
     override suspend fun verifyMeter(

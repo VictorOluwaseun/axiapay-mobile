@@ -3,8 +3,7 @@ package com.kesofty.axiapay.presentation.purchases
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kesofty.axiapay.application.purchases.PreparePurchase
-import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.application.purchases.PurchaseUseCases
 import com.kesofty.axiapay.application.purchases.hasMeterSyntax
 import com.kesofty.axiapay.domain.ElectricityMeterType
 import com.kesofty.axiapay.domain.purchases.*
@@ -33,13 +32,12 @@ import kotlinx.coroutines.launch
 class PurchaseViewModel
 @Inject
 constructor(
-    feature: Optional<WalletPurchases>,
-    private val prepare: PreparePurchase,
+    feature: Optional<PurchaseUseCases>,
     private val clock: Clock,
 ) : ViewModel() {
-    private val purchases = feature.orElse(null)
+    private val useCases = feature.orElse(null)
     private var features = com.kesofty.axiapay.domain.config.PaymentFeatures.Disabled
-    private val mutableState = MutableStateFlow(PurchaseUiState(enabled = purchases != null))
+    private val mutableState = MutableStateFlow(PurchaseUiState(enabled = useCases != null))
     val uiState = mutableState.asStateFlow()
     private val effectChannel = Channel<PurchaseEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
@@ -58,9 +56,7 @@ constructor(
                 )
             return
         }
-        if (purchases == null) {
-            return
-        }
+        val purchases = useCases?.payments ?: return
         if (intent is PurchaseIntent.Bind) {
             bind(intent)
             return
@@ -192,9 +188,9 @@ constructor(
     /** Loading/restoration discovers existing references instead of submitting them. */
     private fun load() {
         val owner = mutableState.value.accountId ?: return
-        val workflow = purchases ?: return
+        val operations = useCases ?: return
         val service = mutableState.value.service
-        execute { ActionResult.Loaded(workflow.load(owner, service)) }
+        execute { ActionResult.Loaded(operations.refreshPurchaseContext(owner, service)) }
     }
 
     /** Data network selection clears the previous plan so a hidden plan cannot be purchased. */
@@ -237,9 +233,10 @@ constructor(
         if (state.screen != PurchaseScreen.Form) {
             return
         }
+        val operations = useCases ?: return
         val changed = state.update().copy(issue = null)
         val check =
-            prepare(
+            operations.preparePurchase(
                 changed.selectedProduct,
                 changed.recipient,
                 changed.amount,
@@ -271,7 +268,7 @@ constructor(
         val state = mutableState.value
         val product = state.selectedProduct ?: return
         val owner = state.accountId ?: return
-        val workflow = purchases ?: return
+        val workflow = useCases?.payments ?: return
         if (
             state.screen != PurchaseScreen.Form ||
                 state.service != PurchaseService.Electricity ||
@@ -290,7 +287,7 @@ constructor(
         val state = mutableState.value
         val input = state.prepared ?: return
         val owner = state.accountId ?: return
-        val workflow = purchases ?: return
+        val workflow = useCases?.payments ?: return
         if (state.screen != PurchaseScreen.Form) {
             return
         }
@@ -305,7 +302,7 @@ constructor(
         val state = mutableState.value
         val reviewed = state.review ?: return
         val owner = state.accountId ?: return
-        val workflow = purchases ?: return
+        val workflow = useCases?.payments ?: return
         if (
             state.screen != PurchaseScreen.Review ||
                 state.secondsRemaining == 0L ||
@@ -354,7 +351,7 @@ constructor(
     private fun acknowledge() {
         val state = mutableState.value
         val progress = state.progress ?: return
-        val workflow = purchases ?: return
+        val workflow = useCases?.payments ?: return
         if (progress.payment?.canAcknowledge != true) {
             return
         }

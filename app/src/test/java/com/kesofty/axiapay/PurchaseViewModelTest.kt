@@ -1,7 +1,6 @@
 package com.kesofty.axiapay
 
 import androidx.lifecycle.ViewModelStore
-import com.kesofty.axiapay.application.purchases.PreparePurchase
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.presentation.purchases.*
 import java.util.Optional
@@ -32,7 +31,7 @@ class PurchaseViewModelTest {
 
     /** Own every constructed reducer so timer jobs never survive a test. */
     private fun vm(f: PurchaseFixture, key: String = "airtime") =
-        PurchaseViewModel(Optional.of(f.workflow), PreparePurchase(), f.clock).also {
+        PurchaseViewModel(Optional.of(f.useCases), f.clock).also {
             it.accept(
                 PurchaseIntent.UpdateFeatures(
                     com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
@@ -224,7 +223,7 @@ class PurchaseViewModelTest {
     @Test
     fun absentFlavorCapabilityCannotExecuteRealActions() {
         val f = PurchaseFixture()
-        val vm = PurchaseViewModel(Optional.empty(), PreparePurchase(), f.clock)
+        val vm = PurchaseViewModel(Optional.empty(), f.clock)
         owners.put("demo", vm)
         vm.accept(PurchaseIntent.Bind(f.accountId, "demo"))
         vm.accept(PurchaseIntent.Confirm)

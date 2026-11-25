@@ -24,6 +24,8 @@ import com.kesofty.axiapay.data.dashboard.DashboardRepositoryImpl
 import com.kesofty.axiapay.data.database.AxiaDatabase
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.*
+import com.kesofty.axiapay.data.purchases.local.RoomPurchaseCatalogueLocalDataSource
+import com.kesofty.axiapay.data.purchases.remote.HttpPurchaseCatalogueRemoteDataSource
 import com.kesofty.axiapay.domain.*
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.purchases.*
@@ -197,6 +199,7 @@ class PurchaseApiUiTest {
                     "a".repeat(43),
                     now.plusSeconds(3600),
                     http.apiIdentity,
+                    accountId,
                 ),
             )
         compose.runOnIdle { vm = createViewModel("first") }
@@ -220,22 +223,43 @@ class PurchaseApiUiTest {
 
     /** Construct real adapters/workflow with isolated session persistence for a test UI owner. */
     private fun createViewModel(key: String): PurchaseViewModel {
-        val workflow =
-            WalletPurchases(
+        val wallets =
+            WalletRepositoryImpl(
+                HttpWalletRemoteDataSource(http),
+                RoomWalletLocalDataSource(database, clock),
+            )
+        val purchases = HttpPurchaseRepository(http)
+        val access =
+            PurchaseSessionAccess(
                 HttpAuthenticationRepository(http, clock),
                 sessions,
-                WalletRepositoryImpl(
-                    HttpWalletRemoteDataSource(http),
-                    RoomWalletLocalDataSource(database, clock),
-                ),
-                HttpPurchaseRepository(http),
-                AtomicPurchaseRequestStore(file, Dispatchers.IO, journalCommits),
-                DashboardRepositoryImpl(database, clock),
+                wallets,
+                purchases,
                 clock,
-            ) {
-                requestKey
-            }
-        return PurchaseViewModel(Optional.of(workflow), PreparePurchase(), clock).also {
+            )
+        val requests = AtomicPurchaseRequestStore(file, Dispatchers.IO, journalCommits)
+        val catalogue =
+            PurchaseCatalogueRepositoryImpl(
+                HttpPurchaseCatalogueRemoteDataSource(http),
+                RoomPurchaseCatalogueLocalDataSource(database, clock),
+                sessions,
+                clock,
+            )
+        val contexts = PurchaseContextReader(catalogue, requests)
+        val useCases =
+            PurchaseUseCases(
+                LoadCachedPurchaseContext(access, wallets, contexts),
+                RefreshPurchaseContext(
+                    access,
+                    wallets,
+                    DashboardRepositoryImpl(database, clock),
+                    catalogue,
+                    contexts,
+                ),
+                PreparePurchase(),
+                WalletPurchases(access, wallets, purchases, requests, clock) { requestKey },
+            )
+        return PurchaseViewModel(Optional.of(useCases), clock).also {
             it.accept(
                 PurchaseIntent.UpdateFeatures(
                     com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,

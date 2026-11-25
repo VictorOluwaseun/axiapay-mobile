@@ -1,10 +1,14 @@
 package com.kesofty.axiapay.di
 
 import android.content.Context
-import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.application.purchases.*
+import com.kesofty.axiapay.data.database.AxiaDatabase
 import com.kesofty.axiapay.data.http.ApiHttpClient
 import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
 import com.kesofty.axiapay.data.purchases.HttpPurchaseRepository
+import com.kesofty.axiapay.data.purchases.PurchaseCatalogueRepositoryImpl
+import com.kesofty.axiapay.data.purchases.local.RoomPurchaseCatalogueLocalDataSource
+import com.kesofty.axiapay.data.purchases.remote.HttpPurchaseCatalogueRemoteDataSource
 import com.kesofty.axiapay.domain.auth.*
 import com.kesofty.axiapay.domain.dashboard.DashboardRepository
 import com.kesofty.axiapay.domain.purchases.*
@@ -29,31 +33,51 @@ import kotlinx.coroutines.Dispatchers
 @InstallIn(ViewModelComponent::class)
 internal object FlavorPurchaseModule {
     /**
-     * Bind one plain workflow per UI owner; the durable journal and HTTP pool are shared
-     * infrastructure.
+     * All purchase operations for this screen verify ownership against the same session sources.
      */
     @Provides
     @ViewModelScoped
-    fun provideWalletPurchases(
+    fun providePurchaseSessionAccess(
         authentication: AuthenticationRepository,
         sessions: AuthenticationSessionStore,
         wallets: WalletRepository,
         purchases: PurchaseRepository,
-        requestStore: PurchaseRequestStore,
-        dashboard: DashboardRepository,
+        clock: Clock,
+    ): PurchaseSessionAccess =
+        PurchaseSessionAccess(authentication, sessions, wallets, purchases, clock)
+
+    /** Compose the existing quote, confirmation and payment recovery workflow. */
+    @Provides
+    @ViewModelScoped
+    fun provideWalletPurchases(
+        access: PurchaseSessionAccess,
+        wallets: WalletRepository,
+        purchases: PurchaseRepository,
+        requests: PurchaseRequestStore,
         clock: Clock,
         newRequestId: () -> String,
-    ): WalletPurchases =
-        WalletPurchases(
-            authentication,
-            sessions,
-            wallets,
-            purchases,
-            requestStore,
-            dashboard,
-            clock,
-            newRequestId,
+    ): WalletPurchases = WalletPurchases(access, wallets, purchases, requests, clock, newRequestId)
+
+    /** Expose local form reads, verified refreshes and explicit payment actions to the form. */
+    @Provides
+    @ViewModelScoped
+    fun providePurchaseUseCases(
+        access: PurchaseSessionAccess,
+        wallets: WalletRepository,
+        dashboard: DashboardRepository,
+        catalogues: PurchaseCatalogueRepository,
+        requests: PurchaseRequestStore,
+        payments: WalletPurchases,
+    ): PurchaseUseCases {
+        val contexts = PurchaseContextReader(catalogues, requests)
+        return PurchaseUseCases(
+            loadCachedPurchaseContext = LoadCachedPurchaseContext(access, wallets, contexts),
+            refreshPurchaseContext =
+                RefreshPurchaseContext(access, wallets, dashboard, catalogues, contexts),
+            preparePurchase = PreparePurchase(),
+            payments = payments,
         )
+    }
 }
 
 /**
@@ -68,6 +92,25 @@ internal object PurchaseInfrastructureModule {
     @Singleton
     fun providePurchaseRepository(http: ApiHttpClient): PurchaseRepository =
         HttpPurchaseRepository(http)
+
+    /**
+     * Share durable catalogue coordination across live purchase owners, with no Activity
+     * references.
+     */
+    @Provides
+    @Singleton
+    fun providePurchaseCatalogueRepository(
+        http: ApiHttpClient,
+        database: AxiaDatabase,
+        sessions: AuthenticationSessionStore,
+        clock: Clock,
+    ): PurchaseCatalogueRepository =
+        PurchaseCatalogueRepositoryImpl(
+            HttpPurchaseCatalogueRemoteDataSource(http),
+            RoomPurchaseCatalogueLocalDataSource(database, clock),
+            sessions,
+            clock,
+        )
 
     /**
      * A singleton journal serializes independent ViewModels; no tokens, recipients or balances
