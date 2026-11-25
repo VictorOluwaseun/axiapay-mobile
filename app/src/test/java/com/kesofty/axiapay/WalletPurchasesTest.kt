@@ -35,8 +35,8 @@ class WalletPurchasesTest {
                     refreshCredentials = initial.refreshCredentials!!.copy(token = "s".repeat(43)),
                 )
         }
-        val review = fixture.workflow.review(fixture.accountId, fixture.input)
-        val result = fixture.workflow.submit(fixture.accountId, review)
+        val review = fixture.useCases.reviewPurchase(fixture.accountId, fixture.input)
+        val result = fixture.useCases.submitPurchase(fixture.accountId, review)
         assertEquals(review.request, result.request)
         assertEquals(listOf(review.request), fixture.api.submissions)
     }
@@ -46,34 +46,59 @@ class WalletPurchasesTest {
     fun reviewUsesOwnedWalletAndPersistsOnlyOnConfirmation() = runTest {
         val f = PurchaseFixture()
         val context = f.useCases.refreshPurchaseContext(f.accountId)
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         assertEquals(requireNotNull(context.wallet).id, f.api.quoteWallet)
         assertEquals(f.input, f.api.quotedInput)
         assertTrue(f.api.submissions.isEmpty())
         assertTrue(f.store.records.isEmpty())
         f.api.beforeSubmit = { assertEquals(listOf(review.request), f.store.records) }
-        val progress = f.workflow.submit(f.accountId, review)
+        val progress = f.useCases.submitPurchase(f.accountId, review)
         assertEquals(PurchasePaymentStatus.Pending, progress.payment?.status)
         assertFalse(requireNotNull(progress.payment).isFinal)
         assertEquals(listOf(review.request), f.api.submissions)
+    }
+
+    /**
+     * Server terms for another selection cannot create a review or durable spending instruction.
+     */
+    @Test
+    fun reviewRejectsQuotesForADifferentPurchase() = runTest {
+        val f = PurchaseFixture()
+        val quote = f.api.quoted
+        val mismatches =
+            listOf(
+                quote.copy(walletId = "another-wallet"),
+                quote.copy(productId = "another-product"),
+                quote.copy(recipientIdentifier = "+2348098765432"),
+                quote.copy(currency = "USD"),
+                quote.copy(principalMinorUnits = quote.principalMinorUnits + 1.toBigInteger()),
+            )
+        for (differentQuote in mismatches) {
+            f.api.quoted = differentQuote
+            failure(PurchaseIssue.InvalidResponse) {
+                f.useCases.reviewPurchase(f.accountId, f.input)
+            }
+        }
+        assertTrue(f.store.records.isEmpty())
+        assertTrue(f.api.submissions.isEmpty())
     }
 
     /** A failed durable commit or stale/unavailable review cannot send a purchase. */
     @Test
     fun unsafeConfirmationSendsNothing() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         f.store.failure = true
-        failure(PurchaseIssue.Storage) { f.workflow.submit(f.accountId, review) }
+        failure(PurchaseIssue.Storage) { f.useCases.submitPurchase(f.accountId, review) }
         f.store.failure = false
         failure(PurchaseIssue.ProductUnavailable) {
-            f.workflow.submit(
+            f.useCases.submitPurchase(
                 f.accountId,
                 review.copy(quote = review.quote.copy(isSubmissionAvailable = false)),
             )
         }
         f.clock.current = review.quote.expiresAt
-        failure(PurchaseIssue.QuoteExpired) { f.workflow.submit(f.accountId, review) }
+        failure(PurchaseIssue.QuoteExpired) { f.useCases.submitPurchase(f.accountId, review) }
         assertTrue(f.api.submissions.isEmpty())
     }
 
@@ -81,24 +106,24 @@ class WalletPurchasesTest {
     @Test
     fun uncertaintySurvivesReadOnlyRecoveryAndOriginalIdentityRetry() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         f.api.submitFailure = PurchaseIssue.Network
-        val unknown = f.workflow.submit(f.accountId, review)
+        val unknown = f.useCases.submitPurchase(f.accountId, review)
         assertNull(unknown.payment)
         assertEquals(PurchaseIssue.Network, unknown.issue)
         assertEquals(
             listOf(review.request),
             f.useCases.refreshPurchaseContext(f.accountId).requests,
         )
-        val missing = f.workflow.recover(f.accountId, review.request)
+        val missing = f.useCases.payments.recover(f.accountId, review.request)
         assertEquals(PurchaseIssue.NotFound, missing.issue)
         assertEquals(1, f.api.submissions.size)
         f.api.submitFailure = null
         f.api.status = PurchasePaymentStatus.Succeeded
-        val result = f.workflow.retrySubmission(f.accountId, review.request)
+        val result = f.useCases.submitPurchase.retry(f.accountId, review.request)
         assertTrue(requireNotNull(result.payment).isFinal)
         assertEquals(listOf(review.request, review.request), f.api.submissions)
-        f.workflow.acknowledge(result)
+        f.useCases.payments.acknowledge(result)
         assertTrue(f.store.records.single().acknowledged)
         assertEquals(1, f.api.quoteCalls)
     }
@@ -107,14 +132,14 @@ class WalletPurchasesTest {
     @Test
     fun reconcilePreservesAcceptedIdentityAndRequiresAnExplicitCall() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
-        f.workflow.submit(f.accountId, review)
-        f.workflow.recover(f.accountId, review.request)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.useCases.submitPurchase(f.accountId, review)
+        f.useCases.payments.recover(f.accountId, review.request)
         assertEquals(0, f.api.reconciles)
         f.api.status = PurchasePaymentStatus.Failed
-        val result = f.workflow.reconcile(f.accountId, review.request)
+        val result = f.useCases.payments.reconcile(f.accountId, review.request)
         assertEquals(PurchasePaymentStatus.Failed, result.payment?.status)
-        f.workflow.reconcile(f.accountId, review.request)
+        f.useCases.payments.reconcile(f.accountId, review.request)
         assertEquals(1, f.api.reconciles)
         assertEquals(1, f.api.submissions.size)
     }
@@ -123,10 +148,12 @@ class WalletPurchasesTest {
     @Test
     fun accountApiAndRecordScopesAreEnforced() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
-        failure(PurchaseIssue.SessionChanged) { f.workflow.submit("another-account", review) }
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         failure(PurchaseIssue.SessionChanged) {
-            f.workflow.submit(
+            f.useCases.submitPurchase("another-account", review)
+        }
+        failure(PurchaseIssue.SessionChanged) {
+            f.useCases.submitPurchase(
                 f.accountId,
                 review.copy(
                     request =
@@ -136,7 +163,9 @@ class WalletPurchasesTest {
                 ),
             )
         }
-        failure(PurchaseIssue.NotFound) { f.workflow.retrySubmission(f.accountId, review.request) }
+        failure(PurchaseIssue.NotFound) {
+            f.useCases.submitPurchase.retry(f.accountId, review.request)
+        }
         f.api.apiIdentity = "https://another.example.test/v1/"
         failure(PurchaseIssue.Configuration) { f.useCases.refreshPurchaseContext(f.accountId) }
         assertTrue(f.api.submissions.isEmpty())
@@ -149,7 +178,7 @@ class WalletPurchasesTest {
         f.api.quoteGate = CompletableDeferred()
         val old = requireNotNull(f.sessions.value)
         val newer = old.copy(accessToken = "b".repeat(43))
-        val review = async { runCatching { f.workflow.review(f.accountId, f.input) } }
+        val review = async { runCatching { f.useCases.reviewPurchase(f.accountId, f.input) } }
         yield()
         f.sessions.value = newer
         f.api.quoteGate!!.complete(Unit)
@@ -169,16 +198,16 @@ class WalletPurchasesTest {
     @Test
     fun mismatchedQuoteTermsRemainUnconfirmedAndPendingCannotBeAcknowledged() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         f.api.quoted =
             f.api.quoted.copy(
                 feeMinorUnits = 999.toBigInteger(),
                 totalDebitMinorUnits = 10999.toBigInteger(),
             )
-        val unknown = f.workflow.submit(f.accountId, review)
+        val unknown = f.useCases.submitPurchase(f.accountId, review)
         assertNull(unknown.payment)
         assertEquals(PurchaseIssue.InvalidResponse, unknown.issue)
-        failure(PurchaseIssue.Unavailable) { f.workflow.acknowledge(unknown) }
+        failure(PurchaseIssue.Unavailable) { f.useCases.payments.acknowledge(unknown) }
         assertFalse(f.store.records.single().acknowledged)
     }
 
@@ -186,10 +215,12 @@ class WalletPurchasesTest {
     @Test
     fun cancellationDuringPersistenceDoesNotSubmitAfterTheUserLeaves() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         f.store.saveGate = CompletableDeferred()
         val action =
-            launch(start = CoroutineStart.UNDISPATCHED) { f.workflow.submit(f.accountId, review) }
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                f.useCases.submitPurchase(f.accountId, review)
+            }
         action.cancel()
         f.store.saveGate!!.complete(Unit)
         action.join()
@@ -201,8 +232,8 @@ class WalletPurchasesTest {
     @Test
     fun savedRequestsRemainRecoverableDuringDisplayOutages() = runTest {
         val f = PurchaseFixture()
-        val review = f.workflow.review(f.accountId, f.input)
-        f.workflow.submit(f.accountId, review)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        f.useCases.submitPurchase(f.accountId, review)
         f.wallets.failure =
             com.kesofty.axiapay.wallet.domain.WalletFailure(
                 com.kesofty.axiapay.wallet.domain.WalletIssue.Network,
@@ -210,7 +241,7 @@ class WalletPurchasesTest {
         val context = f.useCases.refreshPurchaseContext(f.accountId)
         assertNull(context.wallet)
         assertEquals(listOf(review.request), context.requests)
-        assertNotNull(f.workflow.recover(f.accountId, review.request).payment)
+        assertNotNull(f.useCases.payments.recover(f.accountId, review.request).payment)
         f.wallets.failure = null
         f.api.catalogueFailure = PurchaseIssue.Unavailable
         assertEquals(

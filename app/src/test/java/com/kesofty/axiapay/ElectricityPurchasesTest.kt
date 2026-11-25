@@ -68,7 +68,7 @@ class ElectricityPurchasesTest {
     /** Prepare normalized contact and exact meter/amount once before requesting a quote. */
     private suspend fun input(f: PurchaseFixture): PurchaseQuoteInput {
         val product = f.api.catalogue.first()
-        val verified = f.workflow.verifyMeter(f.accountId, product, "00123456789")
+        val verified = f.useCases.payments.verifyMeter(f.accountId, product, "00123456789")
         return requireNotNull(
             PreparePurchase()(product, "00123456789", "100", verified, "08012345678").input,
         )
@@ -104,7 +104,7 @@ class ElectricityPurchasesTest {
     fun prepaidAndPostpaidUseOwnedWalletAndExactMeter() = runTest {
         for (type in ElectricityMeterType.entries) {
             val f = fixture(type)
-            val review = f.workflow.review(f.accountId, input(f))
+            val review = f.useCases.reviewPurchase(f.accountId, input(f))
             assertEquals(f.wallets.wallet.id, f.api.quoteWallet)
             assertEquals("00123456789", review.quote.recipientIdentifier)
             assertEquals(type, review.quote.meterValidation?.meterType)
@@ -120,22 +120,24 @@ class ElectricityPurchasesTest {
         val f = fixture()
         val valid = input(f)
         failure(PurchaseIssue.MeterVerificationRequired) {
-            f.workflow.review(f.accountId, valid.copy(verifiedMeter = null))
+            f.useCases.reviewPurchase(f.accountId, valid.copy(verifiedMeter = null))
         }
         val foreign =
             valid.verifiedMeter!!.copy(owner = valid.verifiedMeter.owner.copy(accountId = "other"))
         failure(PurchaseIssue.SessionChanged) {
-            f.workflow.review(f.accountId, valid.copy(verifiedMeter = foreign))
+            f.useCases.reviewPurchase(f.accountId, valid.copy(verifiedMeter = foreign))
         }
         val otherApi =
             valid.verifiedMeter.copy(
                 owner = valid.verifiedMeter.owner.copy(apiIdentity = "https://other.test/"),
             )
         failure(PurchaseIssue.SessionChanged) {
-            f.workflow.review(f.accountId, valid.copy(verifiedMeter = otherApi))
+            f.useCases.reviewPurchase(f.accountId, valid.copy(verifiedMeter = otherApi))
         }
         f.clock.current = f.now.plusSeconds(121)
-        failure(PurchaseIssue.MeterVerificationExpired) { f.workflow.review(f.accountId, valid) }
+        failure(PurchaseIssue.MeterVerificationExpired) {
+            f.useCases.reviewPurchase(f.accountId, valid)
+        }
         assertEquals(0, f.api.quoteCalls)
     }
 
@@ -153,14 +155,18 @@ class ElectricityPurchasesTest {
             )) {
             f.api.meter = wrong
             failure(PurchaseIssue.InvalidResponse) {
-                f.workflow.verifyMeter(f.accountId, f.api.catalogue.first(), original.accountNumber)
+                f.useCases.payments.verifyMeter(
+                    f.accountId,
+                    f.api.catalogue.first(),
+                    original.accountNumber,
+                )
             }
         }
         f.api.meter = original
         val prepared = input(f)
         f.api.quoted =
             f.api.quoted.copy(meterValidation = original.copy(customerName = "different"))
-        failure(PurchaseIssue.InvalidResponse) { f.workflow.review(f.accountId, prepared) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.reviewPurchase(f.accountId, prepared) }
         assertTrue(f.api.submissions.isEmpty())
     }
 

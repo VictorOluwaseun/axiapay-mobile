@@ -57,6 +57,12 @@ interface PurchaseRequestStore {
     suspend fun save(request: PurchaseRequest)
 
     /**
+     * Confirm the exact saved request is durable before retrying. A missing or changed record
+     * fails.
+     */
+    suspend fun requireDurablySaved(request: PurchaseRequest)
+
+    /**
      * Mark a correlated final receipt as acknowledged, retaining its reference for receipt lookup.
      */
     suspend fun acknowledge(request: PurchaseRequest)

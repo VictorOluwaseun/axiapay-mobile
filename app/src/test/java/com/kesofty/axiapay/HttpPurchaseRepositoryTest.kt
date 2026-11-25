@@ -367,7 +367,7 @@ class HttpPurchaseRepositoryTest {
     /** Missing required data terms cannot become a review or a successful payment receipt. */
     @Test
     fun dataQuotesAndReceiptsRejectMissingPlanTerms() = runTest {
-        val saved = f.workflow.review(f.accountId, f.input).request
+        val saved = f.useCases.reviewPurchase(f.accountId, f.input).request
         for (invalid in
             listOf(
                 dataQuote().put("allowanceLabel", JSONObject.NULL),

@@ -141,7 +141,7 @@ class DataPurchasesTest {
         val prepared = input(f)
         assertNull(prepared.amountMinorUnits)
         assertEquals(PurchaseService.Data, prepared.service)
-        val reviewed = f.workflow.review(f.accountId, prepared)
+        val reviewed = f.useCases.reviewPurchase(f.accountId, prepared)
         assertEquals(f.wallets.wallet.id, f.api.quoteWallet)
         assertEquals("125050", reviewed.quote.principalMinorUnits.toString())
         assertEquals("1 GB", reviewed.quote.allowanceLabel)
@@ -154,7 +154,7 @@ class DataPurchasesTest {
     @Test
     fun savedReferencesStayAccountApiAndServiceScoped() = runTest {
         val f = fixture()
-        val data = f.workflow.review(f.accountId, input(f)).request
+        val data = f.useCases.reviewPurchase(f.accountId, input(f)).request
         val airtime =
             data.copy(
                 requestKey = "123e4567-e89b-42d3-a456-426614174022",
@@ -174,8 +174,8 @@ class DataPurchasesTest {
         f.api.status = PurchasePaymentStatus.Succeeded
         f.api.observed =
             f.api.payment(data).copy(quote = f.api.quoted.copy(service = PurchaseService.Airtime))
-        failure(PurchaseIssue.InvalidResponse) { f.workflow.recover(f.accountId, data) }
-        failure(PurchaseIssue.InvalidResponse) { f.workflow.reconcile(f.accountId, data) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.payments.recover(f.accountId, data) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.payments.reconcile(f.accountId, data) }
         assertEquals(0, f.api.reconciles)
         assertTrue(f.api.submissions.isEmpty())
     }
@@ -184,15 +184,15 @@ class DataPurchasesTest {
     @Test
     fun quoteAndRequestServiceMustMatchBeforeSubmission() = runTest {
         val f = fixture()
-        val reviewed = f.workflow.review(f.accountId, input(f))
+        val reviewed = f.useCases.reviewPurchase(f.accountId, input(f))
         failure(PurchaseIssue.InvalidResponse) {
-            f.workflow.submit(
+            f.useCases.submitPurchase(
                 f.accountId,
                 reviewed.copy(request = reviewed.request.copy(service = PurchaseService.Airtime)),
             )
         }
         f.api.quoted = f.api.quoted.copy(service = PurchaseService.Airtime)
-        failure(PurchaseIssue.InvalidResponse) { f.workflow.review(f.accountId, input(f)) }
+        failure(PurchaseIssue.InvalidResponse) { f.useCases.reviewPurchase(f.accountId, input(f)) }
         assertTrue(f.api.submissions.isEmpty())
         assertTrue(f.store.records.isEmpty())
     }
@@ -203,22 +203,25 @@ class DataPurchasesTest {
     @Test
     fun uncertainDataPurchaseKeepsOriginalKeyAndRecoveryDuringOutages() = runTest {
         val f = fixture()
-        val review = f.workflow.review(f.accountId, input(f))
+        val review = f.useCases.reviewPurchase(f.accountId, input(f))
         f.api.submitFailure = PurchaseIssue.Network
-        assertNull(f.workflow.submit(f.accountId, review).payment)
+        assertNull(f.useCases.submitPurchase(f.accountId, review).payment)
         f.api.catalogueFailure = PurchaseIssue.Unavailable
         assertEquals(
             listOf(review.request),
             f.useCases.refreshPurchaseContext(f.accountId, PurchaseService.Data).requests,
         )
-        assertEquals(PurchaseIssue.NotFound, f.workflow.recover(f.accountId, review.request).issue)
+        assertEquals(
+            PurchaseIssue.NotFound,
+            f.useCases.payments.recover(f.accountId, review.request).issue,
+        )
         assertEquals(1, f.api.submissions.size)
         f.api.submitFailure = null
         f.api.status = PurchasePaymentStatus.Succeeded
-        val result = f.workflow.retrySubmission(f.accountId, review.request)
+        val result = f.useCases.submitPurchase.retry(f.accountId, review.request)
         assertEquals(PurchaseService.Data, result.payment?.quote?.service)
         assertEquals(listOf(review.request, review.request), f.api.submissions)
-        f.workflow.acknowledge(result)
+        f.useCases.payments.acknowledge(result)
         assertTrue(f.store.records.single().acknowledged)
         assertEquals(1, f.api.quoteCalls)
     }

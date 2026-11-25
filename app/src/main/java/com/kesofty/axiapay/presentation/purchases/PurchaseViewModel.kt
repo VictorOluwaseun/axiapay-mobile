@@ -58,7 +58,7 @@ constructor(
                 )
             return
         }
-        val purchases = useCases?.payments ?: return
+        val operations = useCases ?: return
         if (intent is PurchaseIntent.Bind) {
             bind(intent)
             return
@@ -115,11 +115,15 @@ constructor(
             is PurchaseIntent.CheckSaved -> {
                 val request =
                     state.context?.requests?.find { it.requestKey == intent.requestKey } ?: return
-                progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
+                progress(refreshWallet = true) {
+                    operations.payments.recover(state.accountId, request)
+                }
             }
             PurchaseIntent.CheckStatus -> {
                 val request = state.progress?.request ?: return
-                progress(refreshWallet = true) { purchases.recover(state.accountId, request) }
+                progress(refreshWallet = true) {
+                    operations.payments.recover(state.accountId, request)
+                }
             }
             PurchaseIntent.Reconcile -> {
                 val current = state.progress ?: return
@@ -127,7 +131,7 @@ constructor(
                     return
                 }
                 progress(refreshWallet = true) {
-                    purchases.reconcile(state.accountId, current.request)
+                    operations.payments.reconcile(state.accountId, current.request)
                 }
             }
             PurchaseIntent.RetrySubmission -> {
@@ -140,7 +144,7 @@ constructor(
                     return
                 }
                 progress(refreshWallet = true) {
-                    purchases.retrySubmission(state.accountId, current.request)
+                    operations.submitPurchase.retry(state.accountId, current.request)
                 }
             }
             PurchaseIntent.Done -> acknowledge()
@@ -407,11 +411,11 @@ constructor(
         val state = mutableState.value
         val input = state.prepared ?: return
         val owner = state.accountId ?: return
-        val workflow = useCases?.payments ?: return
+        val operations = useCases ?: return
         if (state.screen != PurchaseScreen.Form) {
             return
         }
-        execute { ActionResult.Reviewed(workflow.review(owner, input)) }
+        execute { ActionResult.Reviewed(operations.reviewPurchase(owner, input)) }
     }
 
     /**
@@ -422,7 +426,7 @@ constructor(
         val state = mutableState.value
         val reviewed = state.review ?: return
         val owner = state.accountId ?: return
-        val workflow = useCases?.payments ?: return
+        val operations = useCases ?: return
         if (
             state.screen != PurchaseScreen.Review ||
                 state.secondsRemaining == 0L ||
@@ -430,7 +434,7 @@ constructor(
         ) {
             return
         }
-        progress(refreshWallet = true) { workflow.submit(owner, reviewed) }
+        progress(refreshWallet = true) { operations.submitPurchase(owner, reviewed) }
     }
 
     /**

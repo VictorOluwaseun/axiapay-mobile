@@ -46,17 +46,15 @@ internal object FlavorPurchaseModule {
     ): PurchaseSessionAccess =
         PurchaseSessionAccess(authentication, sessions, wallets, purchases, clock)
 
-    /** Compose the existing quote, confirmation and payment recovery workflow. */
+    /** Supply meter verification and saved-payment recovery to live purchase screens. */
     @Provides
     @ViewModelScoped
     fun provideWalletPurchases(
         access: PurchaseSessionAccess,
-        wallets: WalletRepository,
         purchases: PurchaseRepository,
         requests: PurchaseRequestStore,
         clock: Clock,
-        newRequestId: () -> String,
-    ): WalletPurchases = WalletPurchases(access, wallets, purchases, requests, clock, newRequestId)
+    ): WalletPurchases = WalletPurchases(access, purchases, requests, clock)
 
     /** Expose local form reads, verified refreshes and explicit payment actions to the form. */
     @Provides
@@ -67,7 +65,10 @@ internal object FlavorPurchaseModule {
         dashboard: DashboardRepository,
         catalogues: PurchaseCatalogueRepository,
         requests: PurchaseRequestStore,
+        purchases: PurchaseRepository,
         payments: WalletPurchases,
+        clock: Clock,
+        newRequestId: () -> String,
     ): PurchaseUseCases {
         val contexts = PurchaseContextReader(catalogues, requests)
         return PurchaseUseCases(
@@ -75,6 +76,8 @@ internal object FlavorPurchaseModule {
             refreshPurchaseContext =
                 RefreshPurchaseContext(access, wallets, dashboard, catalogues, contexts),
             preparePurchase = PreparePurchase(),
+            reviewPurchase = ReviewPurchase(access, wallets, purchases, clock, newRequestId),
+            submitPurchase = SubmitPurchase(access, purchases, requests, clock),
             payments = payments,
         )
     }

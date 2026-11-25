@@ -176,7 +176,23 @@ data class PurchaseRequest(
     val createdAt: Instant,
     val acknowledged: Boolean = false,
     val service: PurchaseService = PurchaseService.Airtime,
-)
+) {
+    /** Confirmation and recovery belong to the account and API that issued this request. */
+    internal fun requireOwnedBy(currentOwner: PurchaseOwner) {
+        if (owner != currentOwner) throw PurchaseFailure(PurchaseIssue.SessionChanged)
+    }
+
+    /** A payment can update this request only when the server echoes its key, quote and service. */
+    internal fun requireMatchingPayment(payment: PurchasePayment) {
+        if (
+            payment.requestKey != requestKey ||
+                payment.quote.id != quoteId ||
+                payment.quote.service != service
+        ) {
+            throw PurchaseFailure(PurchaseIssue.InvalidResponse)
+        }
+    }
+}
 
 /** Server wallet and catalogue alongside this account's durable recovery references. */
 data class PurchaseContext(
@@ -200,7 +216,15 @@ data class PurchaseProgress(
     val payment: PurchasePayment?,
     val quote: PurchaseQuote?,
     val issue: PurchaseIssue? = null,
-)
+) {
+    /** Build observed progress using the correlated server payment and its own quote. */
+    internal constructor(
+        request: PurchaseRequest,
+        payment: PurchasePayment,
+    ) : this(request, payment, payment.quote) {
+        request.requireMatchingPayment(payment)
+    }
+}
 
 /**
  * Safe actionable classifications; server bodies, tokens and provider diagnostics never reach UI.

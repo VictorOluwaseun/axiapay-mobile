@@ -1,8 +1,7 @@
 package com.kesofty.axiapay
 
 import androidx.lifecycle.ViewModelStore
-import com.kesofty.axiapay.application.purchases.PurchaseSessionAccess
-import com.kesofty.axiapay.application.purchases.WalletPurchases
+import com.kesofty.axiapay.application.purchases.PurchaseUseCases
 import com.kesofty.axiapay.domain.purchases.*
 import com.kesofty.axiapay.presentation.purchases.*
 import java.util.Optional
@@ -38,7 +37,7 @@ class PurchaseRecoveryRegressionTest {
             for (service in listOf(PurchaseService.Airtime, PurchaseService.Data)) {
                 val f = fixture(service)
                 val requestA =
-                    f.workflow.review(f.accountId, f.input.copy(service = service)).request
+                    f.useCases.reviewPurchase(f.accountId, f.input.copy(service = service)).request
                 val requestB =
                     requestA.copy(
                         requestKey = "123e4567-e89b-42d3-a456-426614174080",
@@ -69,8 +68,8 @@ class PurchaseRecoveryRegressionTest {
         try {
             val f = PurchaseFixture()
             val saved =
-                f.workflow
-                    .review(f.accountId, f.input)
+                f.useCases
+                    .reviewPurchase(f.accountId, f.input)
                     .request
                     .copy(
                         requestKey = "123e4567-e89b-42d3-a456-426614174080",
@@ -156,8 +155,7 @@ class PurchaseRecoveryRegressionTest {
                         throw PurchaseFailure(PurchaseIssue.Storage)
                     }
                 }
-            val workflow = workflow(f, f.api, store)
-            val vm = vm(f, workflow)
+            val vm = vm(f, f.createUseCases(requests = store))
             vm.accept(PurchaseIntent.Bind(f.accountId, "visit"))
             review(vm, f)
             vm.accept(PurchaseIntent.Confirm)
@@ -202,7 +200,7 @@ class PurchaseRecoveryRegressionTest {
         }
 
     /** Missing quote responses are distinct from a network failure and may produce null terms. */
-    private fun missingQuotes(f: PurchaseFixture): WalletPurchases {
+    private fun missingQuotes(f: PurchaseFixture): PurchaseUseCases {
         val api =
             object : PurchaseRepository by f.api {
                 /** Reproduce the owned-quote 404 contract without a fake successful quote. */
@@ -210,35 +208,19 @@ class PurchaseRecoveryRegressionTest {
                     throw PurchaseFailure(PurchaseIssue.NotFound)
                 }
             }
-        return workflow(f, api, f.store)
+        return f.createUseCases(purchases = api)
     }
 
-    /** Compose an actual application operation with isolated ports for the failure under test. */
-    private fun workflow(f: PurchaseFixture, api: PurchaseRepository, store: PurchaseRequestStore) =
-        WalletPurchases(
-            PurchaseSessionAccess(f.authentication, f.sessions, f.walletRepository, api, f.clock),
-            f.walletRepository,
-            api,
-            store,
-            f.clock,
-        ) {
-            "123e4567-e89b-42d3-a456-426614174005"
-        }
-
     /** Lifecycle ownership makes cancellation and expiry behavior match production. */
-    private fun vm(f: PurchaseFixture, workflow: WalletPurchases = f.workflow) =
-        PurchaseViewModel(
-                Optional.of(f.useCases.copy(payments = workflow)),
-                f.clock,
+    private fun vm(f: PurchaseFixture, useCases: PurchaseUseCases = f.useCases) =
+        PurchaseViewModel(Optional.of(useCases), f.clock).also {
+            it.accept(
+                PurchaseIntent.UpdateFeatures(
+                    com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
+                ),
             )
-            .also {
-                it.accept(
-                    PurchaseIntent.UpdateFeatures(
-                        com.kesofty.axiapay.domain.config.PaymentFeatures.AllEnabled,
-                    ),
-                )
-                owners.put("review", it)
-            }
+            owners.put("review", it)
+        }
 
     /** Create an immutable airtime review through actual intents without submitting anything. */
     private fun review(vm: PurchaseViewModel, f: PurchaseFixture) {

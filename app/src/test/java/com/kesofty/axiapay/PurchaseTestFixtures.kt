@@ -29,20 +29,31 @@ internal class PurchaseFixture {
     val dashboard = InMemoryDashboardRepository()
     val walletRepository = dashboard.walletRepository(wallets)
     val catalogue = MemoryPurchaseCatalogue(api)
-    val access = PurchaseSessionAccess(authentication, sessions, walletRepository, api, clock)
-    val workflow =
-        WalletPurchases(access, walletRepository, api, store, clock) {
-            "123e4567-e89b-42d3-a456-426614174005"
-        }
-    private val contexts = PurchaseContextReader(catalogue, store)
-    val useCases =
-        PurchaseUseCases(
-            LoadCachedPurchaseContext(access, walletRepository, contexts),
-            RefreshPurchaseContext(access, walletRepository, dashboard, catalogue, contexts),
-            PreparePurchase(),
-            workflow,
-        )
     val input = PurchaseQuoteInput(api.product.id, "+2348012345678", BigInteger.valueOf(10000))
+    val useCases = createUseCases()
+
+    /** Assemble purchase operations with the repo and journal used by this test owner. */
+    fun createUseCases(
+        purchases: PurchaseRepository = api,
+        requests: PurchaseRequestStore = store,
+    ): PurchaseUseCases {
+        val access =
+            PurchaseSessionAccess(authentication, sessions, walletRepository, purchases, clock)
+        val contexts = PurchaseContextReader(catalogue, requests)
+        return PurchaseUseCases(
+            loadCachedPurchaseContext =
+                LoadCachedPurchaseContext(access, walletRepository, contexts),
+            refreshPurchaseContext =
+                RefreshPurchaseContext(access, walletRepository, dashboard, catalogue, contexts),
+            preparePurchase = PreparePurchase(),
+            reviewPurchase =
+                ReviewPurchase(access, walletRepository, purchases, clock) {
+                    "123e4567-e89b-42d3-a456-426614174005"
+                },
+            submitPurchase = SubmitPurchase(access, purchases, requests, clock),
+            payments = WalletPurchases(access, purchases, requests, clock),
+        )
+    }
 }
 
 /** Retains original references without exposing a mutable backing list to callers. */
@@ -61,6 +72,12 @@ internal class MemoryPurchaseRequests : PurchaseRequestStore {
             records.filterNot { it.owner == request.owner && it.requestKey == request.requestKey } +
                 request
         saveGate?.let { withContext(NonCancellable) { it.await() } }
+    }
+
+    /** A retry may only send the exact request that survived a successful storage check. */
+    override suspend fun requireDurablySaved(request: PurchaseRequest) {
+        if (request !in records) throw PurchaseFailure(PurchaseIssue.NotFound)
+        if (failure) throw PurchaseFailure(PurchaseIssue.Storage)
     }
 
     override suspend fun acknowledge(request: PurchaseRequest) {

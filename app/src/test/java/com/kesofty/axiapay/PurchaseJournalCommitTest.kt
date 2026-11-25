@@ -1,6 +1,5 @@
 package com.kesofty.axiapay
 
-import com.kesofty.axiapay.application.purchases.WalletPurchases
 import com.kesofty.axiapay.data.purchases.AtomicPurchaseRequestStore
 import com.kesofty.axiapay.data.purchases.PurchaseJournalCommitOperations
 import com.kesofty.axiapay.domain.purchases.*
@@ -96,17 +95,17 @@ class PurchaseJournalCommitTest {
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
         val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
-        val review = f.workflow.review(f.accountId, f.input)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
         val earlier =
             review.request.copy(
                 requestKey = UUID.randomUUID().toString(),
                 quoteId = UUID.randomUUID().toString(),
             )
         store.save(earlier)
-        val workflow = workflow(f, store)
+        val useCases = f.createUseCases(requests = store)
         commits.failure = stage
         repeat(2) {
-            expectStorage { workflow.submit(f.accountId, review) }
+            expectStorage { useCases.submitPurchase(f.accountId, review) }
             assertTrue(f.api.submissions.isEmpty())
             val expected =
                 if (stage == CommitStage.DirectorySync) listOf(earlier, review.request)
@@ -122,7 +121,7 @@ class PurchaseJournalCommitTest {
         commits.calls.clear()
         assertEquals(
             PurchasePaymentStatus.Pending,
-            workflow.submit(f.accountId, review).payment?.status,
+            useCases.submitPurchase(f.accountId, review).payment?.status,
         )
         assertEquals(
             listOf(CommitStage.FileSync, CommitStage.Replace, CommitStage.DirectorySync),
@@ -130,6 +129,32 @@ class PurchaseJournalCommitTest {
         )
         assertEquals(listOf(review.request), f.api.submissions)
         assertEquals(listOf(earlier, review.request), store.read(review.request.owner))
+    }
+
+    /** A cold retry keeps the same key and waits for a successful directory sync before sending. */
+    @Test
+    fun coldRetryOfAReadableRequestRequiresDurableStorage() = runTest {
+        val f = PurchaseFixture()
+        val file = temporary.newFolder().resolve("requests.json")
+        val commits = CommitOperations()
+        val firstStore = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
+        val review = f.useCases.reviewPurchase(f.accountId, f.input)
+        commits.failure = CommitStage.DirectorySync
+        expectStorage {
+            f.createUseCases(requests = firstStore).submitPurchase(f.accountId, review)
+        }
+
+        val restoredStore = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
+        val saved = restoredStore.read(review.request.owner).single()
+        assertEquals(review.request, saved)
+        val submitPurchase = f.createUseCases(requests = restoredStore).submitPurchase
+        expectStorage { submitPurchase.retry(f.accountId, saved) }
+        assertTrue(f.api.submissions.isEmpty())
+
+        commits.failure = null
+        assertNotNull(submitPurchase.retry(f.accountId, saved).payment)
+        assertEquals(listOf(review.request), f.api.submissions)
+        assertEquals(1, f.api.quoteCalls)
     }
 
     /**
@@ -141,20 +166,20 @@ class PurchaseJournalCommitTest {
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
         val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
-        val workflow = workflow(f, store)
-        val review = workflow.review(f.accountId, f.input)
+        val useCases = f.createUseCases(requests = store)
+        val review = useCases.reviewPurchase(f.accountId, f.input)
         f.api.status = PurchasePaymentStatus.Succeeded
-        val progress = workflow.submit(f.accountId, review)
+        val progress = useCases.submitPurchase(f.accountId, review)
         commits.failure = CommitStage.DirectorySync
         repeat(2) {
-            expectStorage { workflow.acknowledge(progress) }
+            expectStorage { useCases.payments.acknowledge(progress) }
             assertEquals(
                 review.request.requestKey,
                 store.read(review.request.owner).single().requestKey,
             )
         }
         commits.failure = null
-        workflow.acknowledge(progress)
+        useCases.payments.acknowledge(progress)
         assertTrue(store.read(review.request.owner).single().acknowledged)
         assertEquals(1, f.api.submissions.size)
     }
@@ -168,7 +193,7 @@ class PurchaseJournalCommitTest {
         val file = temporary.newFolder().resolve("requests.json")
         val commits = CommitOperations()
         val store = AtomicPurchaseRequestStore(file, Dispatchers.IO, commits)
-        val request = f.workflow.review(f.accountId, f.input).request
+        val request = f.useCases.reviewPurchase(f.accountId, f.input).request
         store.save(request)
         val backup = File(file.path + ".bak")
         Files.move(file.toPath(), backup.toPath(), StandardCopyOption.ATOMIC_MOVE)
@@ -183,18 +208,6 @@ class PurchaseJournalCommitTest {
         assertEquals(listOf(request), store.read(request.owner))
         assertFalse(backup.exists())
     }
-
-    /** Compose the production workflow with the real journal and isolated remote ports. */
-    private fun workflow(f: PurchaseFixture, store: PurchaseRequestStore) =
-        WalletPurchases(
-            f.access,
-            f.walletRepository,
-            f.api,
-            store,
-            f.clock,
-        ) {
-            UUID.randomUUID().toString()
-        }
 
     /** A failed storage barrier must retain its classification instead of permitting a mutation. */
     private suspend fun expectStorage(operation: suspend () -> Any?) {

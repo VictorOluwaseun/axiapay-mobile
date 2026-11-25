@@ -72,6 +72,16 @@ internal constructor(
     }
 
     /**
+     * A rename can be visible before directory sync succeeds. Confirm the saved entry under the
+     * journal lock.
+     */
+    override suspend fun requireDurablySaved(request: PurchaseRequest) = storage {
+        val records = readAll()
+        if (request !in records) throw PurchaseFailure(PurchaseIssue.NotFound)
+        commits.syncDirectory(requireNotNull(file.parentFile))
+    }
+
+    /**
      * Retain receipt references after acknowledgement; only acknowledged entries may be pruned at
      * capacity.
      */
